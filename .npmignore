@@ -1,0 +1,2 @@
+# Tests are dev-only — never shipped to npm consumers.
+*.test.ts

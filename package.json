@@ -1,0 +1,62 @@
+{
+  "name": "@gonrocca/zero-pi",
+  "version": "0.1.10",
+  "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow, skill auto-learning, and an animated ZERO startup banner. Adds capability to pi without modifying pi.",
+  "type": "module",
+  "keywords": [
+    "pi",
+    "pi-package",
+    "pi-extension",
+    "zero",
+    "sdd",
+    "spec-driven-development",
+    "ai-coding-agent"
+  ],
+  "pi": {
+    "prompts": [
+      "./prompts"
+    ],
+    "skills": [
+      "./skills"
+    ],
+    "extensions": [
+      "./extensions/startup-banner.ts",
+      "./extensions/zero-models.ts",
+      "./extensions/autotune-extension.ts",
+      "./extensions/spec-merge-extension.ts"
+    ]
+  },
+  "files": [
+    "prompts",
+    "skills",
+    "extensions/startup-banner.ts",
+    "extensions/zero-models.ts",
+    "extensions/autotune.ts",
+    "extensions/autotune-extension.ts",
+    "extensions/spec-merge.ts",
+    "extensions/spec-merge-extension.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test --experimental-strip-types",
+    "prepublishOnly": "node --test --experimental-strip-types"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  },
+  "author": "Gonzalo Rocca",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gonzalonicolasr/zero.git",
+    "directory": "packages/zero-pi"
+  },
+  "homepage": "https://github.com/gonzalonicolasr/zero/tree/main/packages/zero-pi#readme",
+  "bugs": {
+    "url": "https://github.com/gonzalonicolasr/zero/issues"
+  }
+}
