@@ -11,6 +11,7 @@ import { join } from "node:path";
 import {
   aggregate,
   decideAdjustments,
+  dedupeRunRecords,
   HIGH_AVG_CORREGIR,
   HIGH_AVG_REPLANTEAR,
   MIN_V2_SAMPLES,
@@ -304,6 +305,139 @@ test("readRunRecords reads a mixed v1/v2 log, dropping only malformed lines", (t
   );
   assert.equal(records[0].verdicts, undefined, "the v1 record has no verdicts");
   assert.deepEqual(records[1].verdicts, ["corregir", "pasa"]);
+});
+
+// ---------------------------------------------------------------------------
+// dedupeRunRecords
+// ---------------------------------------------------------------------------
+
+test("dedupeRunRecords collapses two records with the same (feature, ts) to one", () => {
+  const a = makeRecord({ feature: "dup", ts: "2026-05-17T12:00:00.000Z" });
+  const b = makeRecord({ feature: "dup", ts: "2026-05-17T12:00:00.000Z" });
+  const out = dedupeRunRecords([a, b]);
+  assert.equal(out.length, 1, "the identical (feature, ts) pair collapses to a single record");
+});
+
+test("dedupeRunRecords keeps the FIRST occurrence on an identity tie", () => {
+  // Same (feature, ts) identity, distinguishable content: the kept record must
+  // be the first one's content, not the second's.
+  const first = makeRecord({
+    feature: "dup",
+    ts: "2026-05-17T12:00:00.000Z",
+    verdict: "pasa",
+    rounds: 1,
+  });
+  const second = makeRecord({
+    feature: "dup",
+    ts: "2026-05-17T12:00:00.000Z",
+    verdict: "cap-reached",
+    rounds: 7,
+  });
+  const out = dedupeRunRecords([first, second]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].verdict, "pasa", "the first record's verdict is kept");
+  assert.equal(out[0].rounds, 1, "the first record's rounds are kept");
+  assert.strictEqual(out[0], first, "the kept record is the first object, not the second");
+});
+
+test("dedupeRunRecords is order-independent: same unique set wherever the duplicate sits", () => {
+  const a = makeRecord({ feature: "alpha", ts: "2026-05-17T01:00:00.000Z" });
+  const b = makeRecord({ feature: "beta", ts: "2026-05-17T02:00:00.000Z" });
+  const c = makeRecord({ feature: "gamma", ts: "2026-05-17T03:00:00.000Z" });
+  const dupOfB = makeRecord({ feature: "beta", ts: "2026-05-17T02:00:00.000Z" });
+
+  // The duplicate of beta sits at three different positions in the list.
+  const dupEarly = dedupeRunRecords([dupOfB, a, b, c]);
+  const dupMiddle = dedupeRunRecords([a, dupOfB, b, c]);
+  const dupLate = dedupeRunRecords([a, b, c, dupOfB]);
+
+  // Each de-duplicated set carries exactly the three distinct identities.
+  const identities = (records: RunRecord[]) =>
+    records.map((r) => `${r.feature}|${r.ts}`).sort();
+  assert.deepEqual(identities(dupEarly), ["alpha|2026-05-17T01:00:00.000Z", "beta|2026-05-17T02:00:00.000Z", "gamma|2026-05-17T03:00:00.000Z"]);
+  assert.deepEqual(identities(dupEarly), identities(dupMiddle));
+  assert.deepEqual(identities(dupMiddle), identities(dupLate));
+  assert.equal(dupEarly.length, 3);
+  assert.equal(dupMiddle.length, 3);
+  assert.equal(dupLate.length, 3);
+});
+
+test("dedupeRunRecords does not collapse same feature with different ts", () => {
+  const a = makeRecord({ feature: "same-feature", ts: "2026-05-17T10:00:00.000Z" });
+  const b = makeRecord({ feature: "same-feature", ts: "2026-05-17T11:00:00.000Z" });
+  const out = dedupeRunRecords([a, b]);
+  assert.equal(out.length, 2, "differing ts is a distinct identity — no collapse");
+});
+
+test("dedupeRunRecords does not collapse same ts with different feature", () => {
+  const a = makeRecord({ feature: "feature-a", ts: "2026-05-17T10:00:00.000Z" });
+  const b = makeRecord({ feature: "feature-b", ts: "2026-05-17T10:00:00.000Z" });
+  const out = dedupeRunRecords([a, b]);
+  assert.equal(out.length, 2, "differing feature is a distinct identity — no collapse");
+});
+
+test("dedupeRunRecords passes a duplicate-free log through unchanged (identity)", () => {
+  const records = [
+    makeRecord({ feature: "alpha", ts: "2026-05-17T01:00:00.000Z" }),
+    makeRecord({ feature: "beta", ts: "2026-05-17T02:00:00.000Z" }),
+    makeRecord({ feature: "gamma", ts: "2026-05-17T03:00:00.000Z" }),
+  ];
+  const out = dedupeRunRecords(records);
+  assert.equal(out.length, 3);
+  assert.deepEqual(out, records, "a log with no duplicates is the identity");
+});
+
+test("dedupeRunRecords returns an empty array for empty input", () => {
+  assert.deepEqual(dedupeRunRecords([]), []);
+});
+
+test("dedupeRunRecords dedupes v1 and v2 records identically — identity ignores v/verdicts", () => {
+  // A v1 record and a v2 record share the same (feature, ts) identity; they
+  // must collapse despite the differing `v` and `verdicts` fields.
+  const v1 = makeRecord({ feature: "cross-ver", ts: "2026-05-17T12:00:00.000Z" });
+  const v2 = makeV2Record({
+    feature: "cross-ver",
+    ts: "2026-05-17T12:00:00.000Z",
+    verdict: "pasa",
+    rounds: 2,
+    verdicts: ["corregir", "pasa"],
+  });
+  const out = dedupeRunRecords([v1, v2]);
+  assert.equal(out.length, 1, "(feature, ts) collapses across schema versions");
+  assert.strictEqual(out[0], v1, "the first occurrence (the v1 record) is kept");
+
+  // Two v2 records with the same identity collapse the same way.
+  const v2a = makeV2Record({ feature: "v2-dup", ts: "2026-05-18T09:00:00.000Z" });
+  const v2b = makeV2Record({ feature: "v2-dup", ts: "2026-05-18T09:00:00.000Z" });
+  const v2Out = dedupeRunRecords([v2a, v2b]);
+  assert.equal(v2Out.length, 1, "two v2 records with the same identity collapse to one");
+  assert.strictEqual(v2Out[0], v2a, "the first v2 record is kept");
+});
+
+test("readRunRecords de-duplicates a .jsonl file with duplicate lines", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "zero-autotune-"));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+
+  const file = join(dir, "zero-runs.jsonl");
+  // Three distinct runs, but two of them are written twice — exactly what a
+  // careless Cortex PULL re-appending records already present would produce.
+  const dupLine = JSON.stringify(makeRecord({ feature: "alpha", ts: "2026-05-17T01:00:00.000Z" }));
+  const lines = [
+    dupLine,
+    JSON.stringify(makeRecord({ feature: "beta", ts: "2026-05-17T02:00:00.000Z" })),
+    JSON.stringify(makeRecord({ feature: "gamma", ts: "2026-05-17T03:00:00.000Z" })),
+    JSON.stringify(makeRecord({ feature: "beta", ts: "2026-05-17T02:00:00.000Z" })), // dup of beta
+    dupLine, // dup of alpha
+  ];
+  writeFileSync(file, lines.join("\n"), "utf8");
+
+  const records = readRunRecords(file);
+  assert.equal(records.length, 3, "five lines, three distinct (feature, ts) identities");
+  assert.deepEqual(
+    records.map((r) => r.feature),
+    ["alpha", "beta", "gamma"],
+    "the first occurrence of each identity is kept, in input order",
+  );
 });
 
 // ---------------------------------------------------------------------------

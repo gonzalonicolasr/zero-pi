@@ -160,8 +160,31 @@ the iteration cap reached — save one run-trace memory with `memoria_save`:
 
 Use the project name Cortex derives from the working directory.
 
+**Pull run metrics — at run start, alongside recall.** When `/forge` starts,
+together with the recall above, pull the shared run-metrics log from Cortex into
+the local `~/.pi/zero-runs.jsonl` so the autotune sees runs from other machines:
+
+- Query Cortex with `memoria_search` / `memoria_recent` over the **fixed**
+  `zero-metrics` project namespace, filtering `type:"metric"`. Bound the result
+  to the **200 most-recent records** — if Cortex cannot apply an exact limit,
+  fetch the newest batch and truncate to 200.
+- For each record, extract the `what` field — the verbatim `RunRecord` JSON
+  line. Do not re-serialize or reformat it; use the string as-is.
+- **Naive append:** append each extracted line, followed by a single `\n`, to
+  `~/.pi/zero-runs.jsonl`. Create the file if absent. Never rewrite, reorder, or
+  delete existing lines, and do not compare against what is already in the file
+  — de-duplication is handled deterministically by the reader (`dedupeRunRecords`
+  in `autotune.ts`), so appending an already-present record is safe.
+- If the pull finds no records, leave the file unchanged and continue.
+
+**One-session lag (intended).** This pull runs at `/forge` start; the autotune
+extension reads `~/.pi/zero-runs.jsonl` at the *next* `session_start`. So a
+record pulled now influences tuning one session later — consistent with the
+autotune's existing one-run lag.
+
 If Cortex is unavailable — installed with `--no-mcp`, or the server is down —
-skip recall and persist silently. The memory loop must never block a run.
+skip recall, the metrics pull, and persist silently. The memory loop must never
+block a run.
 
 ## Run metrics
 
@@ -206,6 +229,27 @@ Rules:
 - **No record without a verdict.** If the run was aborted before `veredicto`
   ever produced a verdict, write nothing — only a `pasa` or `cap-reached` run
   is recorded.
+
+**Push to Cortex.** After appending the local line, also save the same
+`RunRecord` to Cortex so other machines' autotune can pull it. This is separate
+from — and additional to — the `session_summary` save in "## Run memory"; do
+both, and it does not rewrite the local line. Call `memoria_save` with:
+
+- `project`: `"zero-metrics"` — the fixed, dedicated namespace. NOT the
+  cwd-derived project.
+- `type`: `"metric"`.
+- `topic_key`: `zero-metric/<feature>/<ts>` — unique per run record, so two
+  distinct runs never upsert over each other.
+- `title`: `zero metric — <feature> @ <ts>`.
+- `what`: the `RunRecord` JSON line **verbatim** — the exact same one-line
+  string just written to `~/.pi/zero-runs.jsonl`, not reformatted or
+  pretty-printed.
+- `why`: `"zero run metrics — synced for cross-machine autotune"`.
+
+No verdict → no local line and no push (consistent with "No record without a
+verdict" above). If the push fails for any reason, or zero runs with `--no-mcp`
+or Cortex is down — emit a non-blocking warning and continue, never block the
+run. The local line already stands.
 
 ## Spec sync & archive
 

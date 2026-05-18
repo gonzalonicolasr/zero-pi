@@ -173,11 +173,49 @@ export function parseRunLine(line: string): RunRecord | null {
 }
 
 /**
+ * Drop duplicate run records by their `(feature, ts)` identity, keeping the
+ * FIRST occurrence in input order.
+ *
+ * The `~/.pi/zero-runs.jsonl` log is a local cache of a shared run log: a
+ * careless Cortex PULL can re-append a record already present (even a machine
+ * re-pulling its own push), so the same `(feature, ts)` may appear more than
+ * once. This pass collapses each identity to a single sample so `aggregate`
+ * never counts a run twice.
+ *
+ * The identity key is `` `${feature}\0${ts}` `` — a NUL separator, which can
+ * appear neither in a feature slug nor an ISO 8601 timestamp, so the two
+ * fields can never collide ambiguously (`feature:"a-b", ts:"c"` vs
+ * `feature:"a", ts:"b-c"` stay distinct). Identity is `(feature, ts)` alone,
+ * independent of `v`/`verdicts` — v1 and v2 records dedupe identically.
+ *
+ * Keeping the FIRST occurrence is deterministic and stable under append: the
+ * local PUSH writes a run's line before any later PULL can re-fetch it, so the
+ * first copy is the one closest to the origin; and appending more duplicates
+ * never changes which record survives. The kept set depends only on the
+ * identities present, not on the count or order of duplicates. Pure and never
+ * throws.
+ */
+export function dedupeRunRecords(records: RunRecord[]): RunRecord[] {
+  const seen = new Set<string>();
+  const out: RunRecord[] = [];
+  for (const record of records) {
+    const key = `${record.feature}\0${record.ts}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(record);
+  }
+  return out;
+}
+
+/**
  * Read `~/.pi/zero-runs.jsonl` (or any path) into a list of valid `RunRecord`s.
  *
  * A missing or unreadable file yields `[]`. The file is split on `\n`; empty
  * lines are skipped, and any line `parseRunLine` rejects (a malformed or
- * half-written record) is dropped. Never throws.
+ * half-written record) is dropped. The parsed records are then passed through
+ * `dedupeRunRecords`, so the returned array is already de-duplicated by
+ * `(feature, ts)` — the aggregation call site never sees a duplicate sample.
+ * Never throws.
  */
 export function readRunRecords(path: string): RunRecord[] {
   let contents: string;
@@ -193,7 +231,7 @@ export function readRunRecords(path: string): RunRecord[] {
     const record = parseRunLine(line);
     if (record !== null) records.push(record);
   }
-  return records;
+  return dedupeRunRecords(records);
 }
 
 // ---------------------------------------------------------------------------
