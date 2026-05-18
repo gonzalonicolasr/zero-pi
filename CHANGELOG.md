@@ -7,6 +7,25 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — hybrid working-phrase ticker and themed spinner
+
+- New `working-phrases` extension replaces pi's static `Working...` line with a
+  context-aware, rotating phrase: a tool-specific line while a tool runs
+  (`Leyendo archivos…`), an SDD-phase line while a zero sub-agent runs
+  (`Construyendo la implementación…`), and a rotation of playful verbs while the
+  model thinks (`Maquinando…`). The thinking pool biases toward SDD vocabulary
+  once a `/forge` run is detected.
+- Installs a theme-tinted braille spinner that gently breathes through the
+  palette's `dim`/`muted`/`accent` colours.
+- Built only on pi's public extension API; every handler is defensive so the
+  indicator can never break a session.
+
+### Added - ZERO SDD terminal theme and Tetris banner
+
+- Added the `zero-sdd` Pi theme as a package theme resource.
+- Reworked the startup banner from an ANSI Shadow shimmer into an ASCII-safe
+  Tetris-style ZERO assembler while preserving the `ZERO_BANNER` controls.
+
 ### autotune v2 — phase attribution (in progress)
 
 Spec-driven work under `.sdd/autotune-phase-attribution/`. The SDD verdict
@@ -14,6 +33,24 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 `plan` — so autotune will upgrade only the phase actually at fault instead of
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
+
+## [0.1.11] - 2026-05-18
+
+### Added — provider guard (pi-provider-guard)
+
+A new extension watches model switches and steps in when you move to a metered
+provider.
+
+- Detects switches to the metered `anthropic` provider and offers the
+  equivalent model on `pi-claude-cli` — the provider backed by your
+  subscription — through a confirmation dialog. Say "no" to stay on the metered
+  provider.
+- Skips the modal and shows a one-line warning instead on session `restore`
+  and when no equivalent model exists on `pi-claude-cli`.
+- Stays silent for subscription providers — no dialog, no notification.
+
+New files: `extensions/provider-guard.ts` (pure classification logic),
+`extensions/provider-guard-extension.ts` (`model_select` wiring).
 
 ## [0.1.5] - 2026-05-17
 

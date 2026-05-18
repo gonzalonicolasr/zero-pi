@@ -181,25 +181,69 @@ the most recent recommendation.
 `skill-loop.md` gives the agent a closed learning loop so solutions are reused
 instead of re-derived.
 
+### ZERO terminal theme (`themes/zero-sdd.json`)
+
+`zero-pi` ships a Pi theme named `zero-sdd`: a dark, high-contrast terminal
+palette with cyan, amber, mint, rose, and violet accents tuned for SDD work.
+Select it from `/settings`, or set `"theme": "zero-sdd"` in Pi settings.
+
 ### Startup banner (`extensions/startup-banner.ts`)
 
-Renders the `ZERO` wordmark in ANSI Shadow figlet style with a purple → amber
-shimmer sweep the moment a pi session starts, then settles into a static
-gradient glow. Pure ANSI 24-bit colour, no runtime dependencies.
+Renders the `ZERO` wordmark as ASCII-safe Tetris cells. In the default animated
+mode, the cells assemble from the bottom up when a pi session starts, then
+settle into the completed ZERO banner. Pure ANSI 24-bit colour, no runtime
+dependencies.
 
 The render runs synchronously before pi draws its UI, so the animation never
 fights pi's renderer.
+
+### Working-phrase ticker (`extensions/working-phrases.ts`)
+
+Pi shows a single static `Working...` line while the agent is busy. This
+extension replaces it with a context-aware, rotating phrase:
+
+- **While a tool runs** — a tool-specific line: `Leyendo archivos…`,
+  `Ejecutando comandos…`, `Buscando en el código…`. MCP tools are named by
+  server (`Consultando un MCP…`).
+- **While a zero sub-agent runs** — the SDD phase it owns:
+  `Explorando el código…`, `Planeando la solución…`,
+  `Construyendo la implementación…`, `Revisando el veredicto…`.
+- **While the model thinks** — a rotation of playful verbs (`Maquinando…`,
+  `Rumiando…`, `Cocinando…`). Once a `/forge` run is detected the rotation
+  biases toward SDD vocabulary.
+
+It also installs a theme-tinted braille spinner that gently breathes through
+the palette's `dim`/`muted`/`accent` colours. The extension uses only pi's
+public extension API, and every handler is defensive — the indicator can never
+break a session.
 
 Control it with the `ZERO_BANNER` environment variable:
 
 | `ZERO_BANNER` | Effect |
 | ------------- | ------ |
-| _(unset)_ / `shimmer` | Animated shimmer sweep, then settle (default) |
-| `static` | Settled gradient only, no animation |
+| _(unset)_ / `shimmer` | Animated Tetris assembly, then settle (default) |
+| `static` | Completed Tetris banner only, no animation |
 | `off` | Render nothing |
 
 Colour is skipped automatically when `NO_COLOR` is set or the output is not a
 TTY.
+
+### Provider guard (`extensions/provider-guard.ts`)
+
+zero-pi watches model switches and steps in when you move to a metered
+provider. When you switch to a model on the `anthropic` provider — which bills
+per token and draws down your metered extra-usage pool — the guard offers to
+redirect you to the equivalent model on `pi-claude-cli`, the provider backed by
+your subscription's limits.
+
+The redirect is offered through a confirmation dialog, and that dialog is your
+escape hatch: say "yes" and the guard switches you to the subscription-backed
+equivalent; say "no" (or cancel) and you stay on the metered `anthropic`
+provider with no further nagging. When there is no equivalent model on
+`pi-claude-cli`, and when a model is restored on session start rather than
+switched deliberately, the guard skips the modal and just shows a one-line
+warning. Switching to a subscription provider is a complete no-op — no dialog,
+no notification, no noise.
 
 ## Relationship to `zero`
 

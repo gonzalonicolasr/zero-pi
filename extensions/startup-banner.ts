@@ -1,107 +1,97 @@
-// zero-pi — animated startup banner.
+// zero-pi - animated startup banner.
 //
-// A pi extension that renders the "ZERO" wordmark in ANSI Shadow figlet style
-// — heavy block glyphs with box-drawing trim for a chunky pixel-art feel — the
-// instant a pi session starts. A purple -> amber shimmer sweeps left -> right
-// once, then the glyphs settle into a static gradient glow.
-//
-// The render runs synchronously inside the extension's register() call, before
-// pi draws its interactive UI, so the animation never fights pi's renderer and
-// no extra dependency is needed. A banner failure is swallowed: it must never
-// break a pi session.
-//
-// Behaviour is controlled by the ZERO_BANNER environment variable:
-//   ZERO_BANNER=off        render nothing
-//   ZERO_BANNER=static     render the settled gradient, no animation
-//   (unset) / shimmer      render the animated shimmer sweep (default)
-//
-// Pure ANSI 24-bit colour, zero runtime dependencies.
+// A pi extension that renders the ZERO wordmark as ASCII-safe Tetris cells.
+// The animated mode progressively assembles the wordmark from the bottom up,
+// then settles into the complete banner. The extension stays dependency-free
+// and keeps the historical ZERO_BANNER controls.
 
 type RGB = [number, number, number];
 
 const COLORS: Record<string, RGB> = {
-  purpleDim: [82, 70, 124],
-  purpleMid: [157, 124, 216],
-  amber: [255, 180, 84],
-  peak: [255, 240, 210],
+  cyan: [80, 210, 255],
+  blue: [116, 151, 255],
+  mint: [79, 221, 171],
+  amber: [238, 190, 92],
+  rose: [255, 106, 122],
+  violet: [175, 138, 255],
+  peak: [255, 245, 218],
 };
 
-/** Number of rows in every glyph of the ANSI Shadow font. */
+/** Number of rows in every glyph. */
 const ROWS = 6;
 
-// The ANSI Shadow font, one entry per supported character. Each glyph is six
-// rows tall; widths vary per letter and the layout adds one space between
-// glyphs for breathing room.
+// Five-cell-wide glyphs. Non-space characters become visible Tetris cells.
 const FONT: Record<string, string[]> = {
-  Z: [
-    "███████╗",
-    "╚══███╔╝",
-    "  ███╔╝ ",
-    " ███╔╝  ",
-    "███████╗",
-    "╚══════╝",
-  ],
-  E: [
-    "███████╗",
-    "██╔════╝",
-    "█████╗  ",
-    "██╔══╝  ",
-    "███████╗",
-    "╚══════╝",
-  ],
-  R: [
-    "██████╗ ",
-    "██╔══██╗",
-    "██████╔╝",
-    "██╔══██╗",
-    "██║  ██║",
-    "╚═╝  ╚═╝",
-  ],
-  O: [
-    " ██████╗ ",
-    "██╔═══██╗",
-    "██║   ██║",
-    "██║   ██║",
-    "╚██████╔╝",
-    " ╚═════╝ ",
-  ],
-  P: [
-    "██████╗ ",
-    "██╔══██╗",
-    "██████╔╝",
-    "██╔═══╝ ",
-    "██║     ",
-    "╚═╝     ",
-  ],
-  I: [
-    "██╗",
-    "██║",
-    "██║",
-    "██║",
-    "██║",
-    "╚═╝",
-  ],
-  "-": [
-    "        ",
-    "        ",
-    " █████╗ ",
-    " ╚════╝ ",
-    "        ",
-    "        ",
-  ],
-  " ": ["  ", "  ", "  ", "  ", "  ", "  "],
+  Z: ["ZZZZZ", "   ZZ", "  ZZ ", " ZZ  ", "ZZ   ", "ZZZZZ"],
+  E: ["EEEEE", "EE   ", "EEEE ", "EE   ", "EE   ", "EEEEE"],
+  R: ["RRRR ", "RR RR", "RRRR ", "RR RR", "RR  R", "RR  R"],
+  O: [" OOO ", "OO OO", "OO OO", "OO OO", "OO OO", " OOO "],
+  P: ["PPPP ", "PP PP", "PP PP", "PPPP ", "PP   ", "PP   "],
+  I: ["IIIII", "  II ", "  II ", "  II ", "  II ", "IIIII"],
+  "-": ["     ", "     ", "-----", "     ", "     ", "     "],
+  " ": ["     ", "     ", "     ", "     ", "     ", "     "],
 };
 
-/** Lay a word out as six text rows of ANSI Shadow glyphs. */
-export function bannerLines(text = "ZERO"): string[] {
-  const lines: string[] = Array.from({ length: ROWS }, () => "");
-  for (const ch of text) {
-    const glyph = FONT[ch.toUpperCase()] ?? FONT[" "];
+const PIECE_COLORS: Record<string, RGB> = {
+  Z: COLORS.cyan,
+  E: COLORS.amber,
+  R: COLORS.mint,
+  O: COLORS.rose,
+  P: COLORS.violet,
+  I: COLORS.blue,
+  "-": COLORS.amber,
+};
+
+interface Matrix {
+  rows: string[];
+  width: number;
+  totalCells: number;
+  ranks: Map<string, number>;
+}
+
+function glyphFor(ch: string): string[] {
+  return FONT[ch.toUpperCase()] ?? FONT[" "];
+}
+
+function matrixForText(text: string): Matrix {
+  const rows = Array.from({ length: ROWS }, () => "");
+  for (const [index, raw] of Array.from(text).entries()) {
+    const glyph = glyphFor(raw);
     for (let r = 0; r < ROWS; r++) {
-      lines[r] += glyph[r] + " ";
+      rows[r] += (index === 0 ? "" : " ") + glyph[r];
     }
   }
-  return lines;
+
+  const cells: Array<{ row: number; col: number }> = [];
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < rows[row].length; col++) {
+      if (rows[row][col] !== " ") cells.push({ row, col });
+    }
+  }
+
+  // Tetris reads as a pile building upward: bottom rows settle first.
+  cells.sort((a, b) => b.row - a.row || a.col - b.col);
+
+  const ranks = new Map<string, number>();
+  for (const [rank, cell] of cells.entries()) {
+    ranks.set(`${cell.row}:${cell.col}`, rank);
+  }
+
+  return {
+    rows,
+    width: rows[0]?.length ?? 0,
+    totalCells: cells.length,
+    ranks,
+  };
+}
+
+/** Lay a word out as six rows of ASCII-safe Tetris cells. */
+export function bannerLines(text = "ZERO"): string[] {
+  return matrixForText(text).rows.map((row) =>
+    Array.from(row)
+      .map((cell) => (cell === " " ? "  " : "[]"))
+      .join(""),
+  );
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -117,48 +107,34 @@ function lerpColor(c1: RGB, c2: RGB, t: number): RGB {
   ];
 }
 
-/**
- * The colour of one glyph cell.
- *
- * When `spotlight` is null the banner is in its settled state: a subtle
- * horizontal purple -> amber gradient with a top-to-bottom warmth bias so the
- * lower rows glow like embers. Otherwise the cell's colour depends on its
- * distance from the moving spotlight column.
- */
-function colorAt(col: number, row: number, spotlight: number | null, width: number): RGB {
-  if (spotlight === null) {
-    const horizontal = col / Math.max(1, width - 1);
-    const vertical = row / (ROWS - 1);
-    const base = lerpColor(COLORS.purpleMid, COLORS.amber, horizontal * 0.55);
-    return lerpColor(base, COLORS.amber, vertical * 0.25);
-  }
-  const dx = Math.abs(col - spotlight);
-  if (dx < 1.5) return COLORS.peak;
-  if (dx < 4) return lerpColor(COLORS.peak, COLORS.amber, (dx - 1.5) / 2.5);
-  if (dx < 9) return lerpColor(COLORS.amber, COLORS.purpleMid, (dx - 4) / 5);
-  if (dx < 16) return lerpColor(COLORS.purpleMid, COLORS.purpleDim, (dx - 9) / 7);
-  return COLORS.purpleDim;
+function ansiFg([r, g, b]: RGB, text: string): string {
+  return `\x1b[38;2;${r};${g};${b}m${text}\x1b[0m`;
 }
 
-/** Paint one banner row with 24-bit ANSI colour, leaving spaces uncoloured. */
-function paintLine(line: string, row: number, spotlight: number | null, width: number): string {
+function colorForPiece(piece: string, row: number, rank: number, active: boolean): RGB {
+  if (active) return COLORS.peak;
+  const base = PIECE_COLORS[piece] ?? COLORS.blue;
+  const heightWarmth = (ROWS - 1 - row) / Math.max(1, ROWS - 1);
+  const rankPulse = (rank % 7) / 18;
+  return lerpColor(base, COLORS.peak, heightWarmth * 0.18 + rankPulse);
+}
+
+function paintMatrixLine(matrix: Matrix, row: number, visibleCells: number): string {
   let out = "";
-  let colored = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === " ") {
-      if (colored) {
-        out += "\x1b[0m";
-        colored = false;
-      }
-      out += " ";
+  const line = matrix.rows[row] ?? "";
+  for (let col = 0; col < matrix.width; col++) {
+    const piece = line[col] ?? " ";
+    if (piece === " ") {
+      out += "  ";
       continue;
     }
-    const [r, g, b] = colorAt(i, row, spotlight, width);
-    out += `\x1b[38;2;${r};${g};${b}m${ch}`;
-    colored = true;
+    const rank = matrix.ranks.get(`${row}:${col}`) ?? Number.POSITIVE_INFINITY;
+    if (rank >= visibleCells) {
+      out += "  ";
+      continue;
+    }
+    out += ansiFg(colorForPiece(piece, row, rank, rank === visibleCells - 1), "[]");
   }
-  if (colored) out += "\x1b[0m";
   return out;
 }
 
@@ -185,13 +161,15 @@ export function resolveBannerMode(raw: string | undefined): BannerMode {
   return "shimmer";
 }
 
-// A synchronous millisecond sleep — Atomics.wait blocks the thread until the
-// timeout elapses (the value never changes). Used to pace animation frames
-// without making register() async, so the whole banner is drawn before pi's
-// UI takes over.
+// Atomics.wait gives us a synchronous sleep without adding a dependency. The
+// banner renders before Pi's TUI takes over, so blocking briefly is intentional.
 const SLEEP_SLOT = new Int32Array(new SharedArrayBuffer(4));
 function sleepSync(ms: number): void {
   if (ms > 0) Atomics.wait(SLEEP_SLOT, 0, 0, ms);
+}
+
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
 }
 
 /** Options for {@link renderBanner}. */
@@ -206,48 +184,40 @@ export interface RenderOptions {
 /**
  * Render the ZERO banner synchronously.
  *
- * On a non-colour stream the banner is printed plain. Otherwise the shimmer
- * sweep is animated frame by frame (mode `shimmer`) or skipped (mode `static`),
- * settling on the static gradient either way.
+ * On a non-colour stream the banner is printed plain. Otherwise the animated
+ * mode assembles cells frame by frame, then settles on the completed wordmark.
  */
 export function renderBanner(options: RenderOptions = {}): void {
   const mode = options.mode ?? resolveBannerMode(process.env.ZERO_BANNER);
   if (mode === "off") return;
 
   const stream: OutStream = options.stream ?? process.stdout;
-  const lines = bannerLines(options.text ?? "ZERO");
-  const width = lines[0].length;
+  const matrix = matrixForText(options.text ?? "ZERO");
 
   if (!shouldColor(stream)) {
-    stream.write("\n" + lines.join("\n") + "\n\n");
+    stream.write("\n" + bannerLines(options.text ?? "ZERO").join("\n") + "\n\n");
     return;
   }
 
-  // Reserve the vertical space the banner will occupy, then redraw in place.
-  stream.write("\n" + lines.map(() => "").join("\n") + "\n");
+  stream.write("\n" + Array.from({ length: ROWS }, () => "").join("\n") + "\n");
 
   if (mode === "shimmer") {
-    const frames = Math.max(2, options.frames ?? 28);
-    const frameMs = Math.max(1, options.frameMs ?? 24);
-    const startCol = -10;
-    const endCol = width + 10;
+    const frames = Math.max(2, options.frames ?? 42);
+    const frameMs = Math.max(1, options.frameMs ?? 18);
     for (let f = 0; f < frames; f++) {
-      const t = f / (frames - 1);
-      // ease-in-out so the sweep slows at the edges
-      const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-      const spotlight = startCol + (endCol - startCol) * eased;
+      const t = easeOutCubic(f / (frames - 1));
+      const visibleCells = Math.max(1, Math.ceil(matrix.totalCells * t));
       stream.write(`\x1b[${ROWS}A\r`);
       for (let r = 0; r < ROWS; r++) {
-        stream.write("\x1b[2K" + paintLine(lines[r], r, spotlight, width) + "\n");
+        stream.write("\x1b[2K" + paintMatrixLine(matrix, r, visibleCells) + "\n");
       }
       sleepSync(frameMs);
     }
   }
 
-  // Settle on the static gradient.
   stream.write(`\x1b[${ROWS}A\r`);
   for (let r = 0; r < ROWS; r++) {
-    stream.write("\x1b[2K" + paintLine(lines[r], r, null, width) + "\n");
+    stream.write("\x1b[2K" + paintMatrixLine(matrix, r, matrix.totalCells) + "\n");
   }
   stream.write("\n");
 }
@@ -255,9 +225,8 @@ export function renderBanner(options: RenderOptions = {}): void {
 /**
  * The pi extension entry point.
  *
- * pi calls this once when the extension loads, before the interactive UI
- * starts — exactly when the banner should be drawn. The `pi` argument is
- * accepted for API compatibility but not needed: the banner is self-contained.
+ * The pi argument is accepted for API compatibility. The banner is rendered
+ * defensively: visual sugar should never break an interactive session.
  */
 export default function register(_pi?: unknown): void {
   try {

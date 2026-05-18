@@ -1,6 +1,6 @@
 {
   "name": "@gonrocca/zero-pi",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow, skill auto-learning, and an animated ZERO startup banner. Adds capability to pi without modifying pi.",
   "type": "module",
   "keywords": [
@@ -19,22 +19,33 @@
     "skills": [
       "./skills"
     ],
+    "themes": [
+      "./themes"
+    ],
     "extensions": [
       "./extensions/startup-banner.ts",
+      "./extensions/working-phrases.ts",
+      "./extensions/conversation-resume.ts",
       "./extensions/zero-models.ts",
       "./extensions/autotune-extension.ts",
-      "./extensions/spec-merge-extension.ts"
+      "./extensions/spec-merge-extension.ts",
+      "./extensions/provider-guard-extension.ts"
     ]
   },
   "files": [
     "prompts",
     "skills",
+    "themes",
     "extensions/startup-banner.ts",
+    "extensions/working-phrases.ts",
+    "extensions/conversation-resume.ts",
     "extensions/zero-models.ts",
     "extensions/autotune.ts",
     "extensions/autotune-extension.ts",
     "extensions/spec-merge.ts",
     "extensions/spec-merge-extension.ts",
+    "extensions/provider-guard.ts",
+    "extensions/provider-guard-extension.ts",
     "README.md",
     "LICENSE"
   ],

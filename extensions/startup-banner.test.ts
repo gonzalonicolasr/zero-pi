@@ -25,13 +25,13 @@ test("bannerLines lays the word out as six glyph rows", () => {
   const lines = bannerLines("ZERO");
   assert.equal(lines.length, 6);
   assert.ok(lines.every((line) => line.length === lines[0].length), "rows are equal width");
-  assert.ok(lines[0].includes("█"), "rows carry block glyphs");
+  assert.ok(lines[0].includes("[]"), "rows carry Tetris cells");
 });
 
 test("bannerLines falls back to a blank glyph for unknown characters", () => {
   const lines = bannerLines("Z?");
   assert.equal(lines.length, 6);
-  // The '?' is unmapped; it must not throw and must still produce six rows.
+  assert.ok(lines.every((line) => line.length === lines[0].length), "rows stay equal width");
 });
 
 test("resolveBannerMode reads the ZERO_BANNER values", () => {
@@ -78,17 +78,18 @@ test("renderBanner on a non-tty stream prints the banner plain", () => {
     const out = collector(false);
     renderBanner({ mode: "static", stream: out });
     const text = out.text();
-    assert.ok(text.includes("█"), "the plain banner carries the glyphs");
+    assert.ok(text.includes("[]"), "the plain banner carries the Tetris cells");
     assert.ok(!text.includes("\x1b["), "the plain banner carries no ANSI escapes");
   });
 });
 
-test("renderBanner shimmer on a tty stream emits coloured frames", () => {
+test("renderBanner shimmer on a tty stream assembles coloured frames", () => {
   withColorEnv(null, "1", () => {
     const out = collector(true);
     renderBanner({ mode: "shimmer", stream: out, frames: 3, frameMs: 1 });
     const text = out.text();
     assert.ok(text.includes("\x1b[38;2;"), "frames carry 24-bit colour escapes");
     assert.ok(text.includes("\x1b[6A"), "frames reposition the cursor to redraw in place");
+    assert.ok(text.includes("[]"), "the settled frame carries the completed cells");
   });
 });
