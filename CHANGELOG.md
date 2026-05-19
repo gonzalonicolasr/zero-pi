@@ -15,6 +15,29 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.21] - 2026-05-19
+
+### Changed — Spanish, low-noise SDD output
+
+Builds on 0.1.20's quieting. The `/forge` orchestrator prompt gains two
+sections, modelled on `gentle-pi`:
+
+- **Language Boundary** — every user-facing message of a zero SDD run is in
+  Spanish (Rioplatense voseo); sub-agent briefs stay English; identifiers
+  (`pasa`/`corregir`/…, slugs, paths, model ids, commands) are kept verbatim.
+- **Output Contract** — the per-phase summary is a bounded envelope
+  (`Estado`/`Resumen`/`Artefactos`/`Siguiente`) instead of free-form prose;
+  no raw tool output, file dumps, or `subagent` listings reach the chat; the
+  approval question is Spanish-only (`¿Continuamos?`); the run ends stating
+  `verificado` / `no verificado`. The phase-start line now names the model and
+  provider the phase runs on plus a brief gloss of what the phase does, so a
+  slow phase reads as working rather than frozen.
+
+The four phase sub-agents now carry a concise return contract (a result
+envelope to the orchestrator, no chat narration). User-facing chat strings in
+the `conversation-resume`, `autotune`, `zero-models`, and `spec-merge`
+extensions are translated to Spanish.
+
 ## [0.1.20] - 2026-05-19
 
 ### Changed — quieter SDD runs
