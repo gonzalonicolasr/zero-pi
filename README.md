@@ -7,290 +7,297 @@
 ╚══════╝ ╚══════╝ ╚═╝  ╚═╝  ╚═════╝           ╚═╝      ╚═╝
 ```
 
+<div align="center">
+
 # @gonrocca/zero-pi
 
-An installable layer for **[pi](https://pi.dev)** — it adds the zero
-spec-driven development workflow, skill auto-learning, and an animated `ZERO`
-startup banner **without modifying pi itself**.
+**The zero spec-driven development workflow, packaged for [pi](https://pi.dev).**
 
-Same idea as `gentle-pi`: pi stays untouched; zero-pi is a package pi loads.
+[![npm](https://img.shields.io/npm/v/@gonrocca/zero-pi?color=af8aff&label=npm)](https://www.npmjs.com/package/@gonrocca/zero-pi)
+[![license](https://img.shields.io/npm/l/@gonrocca/zero-pi?color=eebe5c)](./LICENSE)
+[![node](https://img.shields.io/node/v/@gonrocca/zero-pi?color=4fddab&label=node)](https://nodejs.org)
 
-## Install
+</div>
 
-```bash
+---
+
+zero-pi adds the **`/forge`** SDD pipeline, skill auto-learning, adaptive
+per-phase models, a metered-billing guard, and an animated `ZERO` banner —
+**without modifying pi itself**. Same idea as `gentle-pi`: pi stays untouched;
+zero-pi is a package pi loads. Every prompt, skill, extension and theme below
+ships inside this one package.
+
+## Contents
+
+- [Install](#-install)
+- [The SDD workflow](#-the-sdd-workflow)
+- [Quality-of-life extensions](#-quality-of-life-extensions)
+- [Commands](#-commands)
+- [Environment variables](#-environment-variables)
+- [Files it reads & writes](#-files-it-reads--writes)
+- [Relationship to `zero`](#-relationship-to-zero)
+- [Development](#-development)
+
+---
+
+## 📦 Install
+
+```
 pi install npm:@gonrocca/zero-pi
 ```
 
 That registers zero-pi in `~/.pi/agent/settings.json` and makes its prompts,
-skills, and the startup-banner extension available in every pi session.
+skills, theme, and extensions available in every pi session.
 
-To remove it:
+| Requirement | Detail |
+| ----------- | ------ |
+| `pi-subagents` | **Required** — the SDD pipeline delegates each phase to a sub-agent. Install with `pi install npm:pi-subagents`. |
+| Node | ≥ 20.6 — pi loads the TypeScript extensions directly. |
+| After upgrade | Restart pi for the new version to take effect. |
 
-```bash
-pi remove npm:@gonrocca/zero-pi
-```
+Remove it with `pi remove npm:@gonrocca/zero-pi`.
 
-## What it adds
+---
 
-### SDD workflow (`prompts/`)
+## 🛠 The SDD workflow
 
-A spec-driven development pipeline driven through four phases, in order:
+### `/forge` — the four-phase pipeline
 
-1. **explore** — investigate the codebase read-only; produce findings.
-2. **plan** — write requirements, design, and an ordered task list.
-3. **build** — implement the plan.
-4. **veredicto** — review the build adversarially and record a verdict
-   (`pasa`, `corregir`, or `replantear`).
+A spec-driven development run, driven through four phases in order:
 
-Run it with the `/forge <feature>` prompt. The orchestrator drives phase order
-and enforces a hard build/veredicto iteration cap. Each phase has its own prompt
-under `prompts/phases/` so it can be delegated to a dedicated sub-agent.
+| Phase | Does |
+| ----- | ---- |
+| **explore** | Investigate the codebase read-only; produce findings. |
+| **plan** | Write requirements, design, and an ordered task list. |
+| **build** | Implement the plan. |
+| **veredicto** | Review the build adversarially and record a verdict. |
 
-Besides the explicit `/forge` command, an SDD run can also be started from
-natural language: describe the work and signal SDD intent — e.g. "hacelo con
-sdd" or "usá el pipeline" — and the `sdd-routing` skill routes the request into
-`/forge` for you. It triggers only on a clear signal phrase and stays out of the
-way for ordinary requests; `/forge` remains the primary, explicit entry point.
+Start it with `/forge <feature>`. The orchestrator drives phase order and
+enforces a hard build/veredicto iteration cap — a `corregir` verdict re-runs
+`build`, a `replantear` re-runs `plan`, and when the cap is reached without a
+`pasa` the run stops and reports the result as **not verified**.
+`/forge --continue [slug]` resumes an interrupted run from its `.sdd/<slug>/`
+artifacts.
 
-**Review Workload Forecast** — the plan phase keeps tasks reviewable. Every
-planned task carries a `review: ~N changed lines` estimate, and `tasks.md` gains
-a `## Review Workload` section with the per-task estimates and a bold run total.
-Tasks are sized against a fixed budget of **400 changed lines per task** — an
-internal, non-configurable default (borrowed from gentle-ai), so "small task"
-means the same number on every run. A task whose estimate exceeds the budget is
-split into smaller, individually verifiable tasks; one that genuinely cannot be
-split stays whole and is recorded as an over-budget exception with a reason. The
-orchestrator's plan-phase summary reports the run total and any exceptions.
+A run can also start from natural language: describe the work and signal SDD
+intent — "hacelo con sdd", "usá el pipeline" — and the `sdd-routing` skill
+routes it into `/forge`. It triggers only on a clear signal phrase; `/forge`
+stays the primary, explicit entry point.
 
-### Per-phase models (`/zero-models`)
+### Language & output
 
-`/zero-models` is a real pi command — a code handler, not an LLM prompt — for
-the SDD models. Run it with no argument for the interactive picker, or set one
+A `/forge` run reads as a short, calm progress stream, in Spanish:
+
+- **Language Boundary** — every user-facing message is in Spanish (Rioplatense
+  voseo); sub-agent briefs stay in English for token efficiency; identifiers
+  (verdicts, slugs, paths, model ids, commands) are kept verbatim.
+- **Output Contract** — each phase reports a bounded summary
+  (`Estado` / `Resumen` / `Artefactos` / `Siguiente`), never free-form prose.
+  No raw tool output, file dumps, sub-agent listings, or triple-backtick code
+  fences reach the chat. The phase-start line names the model and provider the
+  phase runs on plus a brief gloss of what it does — so a slow phase reads as
+  working, not frozen. The run ends stating `verificado` or `no verificado`.
+
+### Review Workload Forecast
+
+The `plan` phase keeps tasks reviewable. Every planned task carries a
+`review: ~N changed lines` estimate, and `tasks.md` gains a `## Review Workload`
+section with a bold run total. Tasks are sized against a fixed budget of
+**400 changed lines per task** (borrowed from gentle-ai). A task over budget is
+split; one that genuinely cannot be split stays whole and is recorded as an
+over-budget exception with a reason.
+
+### SDD sub-agents — `sdd-agents.ts`
+
+`pi-subagents` discovers agents from `~/.pi/agent/agents/**/*.md`, but a
+`pi install` ships only the phase *prompts*. This extension closes the gap: on
+every load it generates the four `zero-<phase>` agent files under
+`~/.pi/agent/agents/zero/` from the package's phase prompts and the per-phase
+models in `~/.pi/zero.json`, so they stay in sync with the prompts and with
+`/zero-models`.
+
+### Per-phase models — `/zero-models`
+
+A real pi command — a code handler, not an LLM prompt — for the SDD models. Run
+it with no argument for the **provider-aware** interactive picker
+(**phase → provider → model**, sourced from pi's model registry), or set one
 directly:
 
 ```
-/zero-models                          # interactive picker
-/zero-models build=claude-opus-4-7     # set one phase
-/zero-models build=codex/gpt-5-codex   # set one phase with an explicit provider
+/zero-models                          interactive picker
+/zero-models build=claude-opus-4-7     set one phase
+/zero-models build=codex/gpt-5-codex   set one phase with an explicit provider
 ```
 
-The interactive picker is **provider-aware**: it reads pi's model registry, so
-the flow is **phase → provider → model** and every provider you have configured
-(anthropic, codex, opencode, …) and its models are offered — not a hardcoded
-list. An `— otro provider —` / `— otro modelo —` entry still lets you type
-anything by hand.
+It reads and writes `~/.pi/zero.json` — a `models` map and a parallel
+`providers` map. The orchestrator picks the change up on the next `/forge` run.
 
-It reads and writes `~/.pi/zero.json` — `models` (the per-phase model id) plus a
-parallel `providers` map. The orchestrator picks the change up on the next
-`/forge` run. The `zero` CLI also writes this file when it installs the layer.
+### Run memory — Cortex
 
-**Run memory** — every SDD run reads from and writes to Cortex (the memory MCP
-server). Before exploring, the orchestrator recalls prior `zero-run/*` traces
-for the feature; when the run ends it saves a run-trace — the final verdict, the
-correction rounds, and the gotchas — under `topic_key: zero-run/<slug>`. The
-next run on related work starts from what the last one learned. With `--no-mcp`
-the loop degrades silently.
+Every run reads from and writes to Cortex, the persistent-memory MCP server.
+Before exploring, the orchestrator recalls prior `zero-run/*` traces; when the
+run ends it saves a run-trace — verdict, correction rounds, gotchas — under
+`topic_key: zero-run/<slug>`. The next run starts from what the last one
+learned. With `--no-mcp`, or when Cortex is unreachable, the loop degrades
+silently and never blocks a run.
 
 ### Canonical specs & `/zero-sync`
 
 zero keeps a **canonical, project-wide spec store** that accumulates accepted
-requirements across runs, so each `/forge` run builds on the last instead of
-starting from a blank spec.
+requirements across runs, so each `/forge` run builds on the last.
 
-**The canonical store — `.sdd/specs/requirements.md`.** A single flat markdown
-file: a `# ` title followed by `### REQ: <stable-unique-name>` requirement
-blocks. It is the project's source of truth. The `plan` phase reads it as the
-baseline; a fresh project has no store yet, and that absence simply means an
-empty store.
+- **The store** — `.sdd/specs/requirements.md`: a `# ` title followed by
+  `### REQ: <name>` blocks. The `plan` phase reads it as the baseline.
+- **The plan artifacts** — every run's `plan` phase writes `proposal.md`,
+  `spec.md` (the **delta**: `## ADDED` / `## MODIFIED` / `## REMOVED`),
+  `design.md`, and `tasks.md` into `.sdd/<slug>/`.
+- **`/zero-sync <slug>`** — a deterministic, unit-tested merge that folds the
+  delta into the store atomically. Guardrails reject a bad delta before
+  anything is written. The orchestrator invokes it automatically after a `pasa`
+  verdict — never on `corregir`, `replantear`, or a cap-reached run.
+- **The archive** — `.sdd/archive/<YYYY-MM-DD>-<slug>/`: an append-only audit
+  trail of every sync.
 
-**The granular plan artifacts.** Every run's `plan` phase writes four files
-into `.sdd/<slug>/`:
+### Adaptive model profiles — autotune
 
-- `proposal.md` — the change intent: scope and rationale, in prose.
-- `spec.md` — the **delta** against the canonical store, never a full spec. Up
-  to three `H2` sections — `## ADDED`, `## MODIFIED`, `## REMOVED` — each
-  holding `### REQ:` blocks. `## MODIFIED` carries the complete updated text of
-  an existing block (not a diff); `## REMOVED` needs only the name line.
-- `design.md` — how it is built.
-- `tasks.md` — the ordered task list with its `## Review Workload` section.
+zero learns which model fits each SDD phase from your own run history.
 
-**`/zero-sync` — folding the delta into the store.** `/zero-sync <slug>` is a
-real pi command — a deterministic, unit-tested merge, not an LLM prompt — that
-reads the store and the run's delta `spec.md`, applies the ADDED/MODIFIED/REMOVED
-changes, and writes the store atomically. Guardrails reject a bad delta before
-anything is written: a duplicate name, an ADDED collision with an existing
-block, a MODIFIED or REMOVED of a missing block, or malformed input. On a
-guardrail failure it writes nothing and reports the offending requirement; the
-store is never left half-merged. After a `pasa` verdict the SDD orchestrator
-invokes `/zero-sync <slug>` automatically — a `corregir`, `replantear`, or
-cap-reached run never syncs.
+- **The metrics log** — `~/.pi/zero-runs.jsonl`: every completed run appends one
+  JSON line (slug, per-phase models, verdict, round count, per-round verdict
+  sequence). Append-only.
+- **Phase attribution** — a `corregir` round blames `build`, a `replantear`
+  blames `plan`. Autotune upgrades **only the phase at fault**, one tier at a
+  time. `explore` and `veredicto` are never tuned.
+- **Cross-machine sync** — each run pushes its metrics to Cortex; `/forge`
+  pulls the shared log back, so autotune sees runs from other machines too.
 
-**The archive — `.sdd/archive/`.** Each successful sync appends a dated,
-slug-named entry `.sdd/archive/<YYYY-MM-DD>-<slug>/` containing a copy of the
-run's `proposal.md` and `spec.md` plus a `sync.md` report listing every added,
-modified, and removed requirement. The archive is append-only — a new entry
-never rewrites a prior one — so it is a full audit trail of how the canonical
-store evolved.
-
-### Adaptive model profiles
-
-zero learns which model fits each SDD phase from your own run history and can
-re-tune `~/.pi/zero.json` for you.
-
-**The metrics log — `~/.pi/zero-runs.jsonl`.** Every completed SDD run appends
-one JSON line to this file: the feature slug, the per-phase models the run used,
-the final verdict, the build/veredicto round count, and the ordered per-round
-verdict sequence. It is append-only and never rewritten. This local log is the
-only thing zero learns from — a run abandoned before it reaches a verdict adds
-no line.
-
-**Phase attribution (v2).** The per-round verdict sequence makes blame precise:
-a `corregir` round re-runs — and so blames — the `build` phase, and a
-`replantear` round blames the `plan` phase. Autotune aggregates that sequence
-per phase and upgrades **only the phase at fault**, one tier at a time — a
-`build` problem no longer drags `plan` up with it. The `explore` and `veredicto`
-phases are never tuned.
-
-**Autotune modes.** At each pi session start zero aggregates the log and, once a
-phase has accumulated enough run data to cross a confidence threshold, decides
-whether that phase's model should change. Until a phase has accumulated enough
-v2 runs of its own, autotune deliberately stays quiet — a one-time, silent
-cold-start after upgrading, not a regression. The `autotune` mode in
-`~/.pi/zero.json` controls what happens next:
+The `autotune` mode in `~/.pi/zero.json` controls what happens:
 
 | Mode | Behaviour |
 | ---- | --------- |
-| `auto` _(default)_ | zero applies the adjustment to `~/.pi/zero.json` and notifies you exactly what changed. |
-| `ask` | zero records the recommendation but changes nothing — you apply it from `/zero-models`. |
-| `off` | zero still records run metrics, but never changes or recommends anything. |
+| `auto` _(default)_ | Applies the adjustment to `~/.pi/zero.json` and notifies you what changed. |
+| `ask` | Records the recommendation; you apply it from `/zero-models`. |
+| `off` | Records run metrics, but never changes or recommends anything. |
 
-A change always takes effect on the *next* `/forge` run, and every applied
-change is announced — autotune is never silent.
+Set it with `/zero-models autotune=<auto\|ask\|off>`. In `ask` mode a waiting
+recommendation shows as a leading `★ aplicar sugerencia` entry in `/zero-models`.
 
-**Setting the mode.** Set it directly, or pick it from the interactive
-`/zero-models` menu (which shows the current mode as its own entry):
+### Skill auto-learning — `skill-loop`
 
-```
-/zero-models autotune=ask   # auto | ask | off
-```
+Gives the agent a closed learning loop — distill a reusable skill from a
+substantial task, store it, surface relevant skills on a new task, refine an
+existing skill instead of duplicating it — so solutions are reused, not
+re-derived.
 
-**Applying a pending suggestion.** In `ask` mode, when a recommendation is
-waiting, running `/zero-models` shows a leading `★ aplicar sugerencia` entry;
-selecting it applies the change and clears the pending suggestion. Note that a
-pending suggestion is *refreshed* — an unactioned suggestion is overwritten by
-the next `ask`-mode session with fresher data, so `/zero-models` always reflects
-the most recent recommendation.
+---
 
-### Skill auto-learning (`skills/`)
+## ✨ Quality-of-life extensions
 
-`skill-loop.md` gives the agent a closed learning loop so solutions are reused
-instead of re-derived.
+### Provider guard — `provider-guard.ts`
 
-### ZERO terminal theme (`themes/zero-sdd.json`)
+pi reaches the same Claude models through two providers: `pi-claude-cli` (billed
+against your subscription's plan limits) and `anthropic` (the direct API, billed
+per token from your metered extra-usage pool). The guard watches model switches:
+on a deliberate switch to a metered provider it offers — via a confirmation
+dialog — to redirect you to the equivalent model on `pi-claude-cli`. Say no and
+you stay put, no nagging. Switching to a subscription provider is a no-op.
 
-`zero-pi` ships a Pi theme named `zero-sdd`: a dark, high-contrast terminal
-palette with cyan, amber, mint, rose, and violet accents tuned for SDD work.
-Select it from `/settings`, or set `"theme": "zero-sdd"` in Pi settings.
+### Startup banner — `startup-banner.ts`
 
-### Startup banner (`extensions/startup-banner.ts`)
-
-Renders the `ZERO` wordmark as ASCII-safe Tetris cells. In the default animated
-mode, the cells assemble from the bottom up when a pi session starts, then
-settle into the completed ZERO banner. Pure ANSI 24-bit colour, no runtime
-dependencies.
-
-The render runs synchronously before pi draws its UI, so the animation never
-fights pi's renderer.
-
-### Working-phrase ticker (`extensions/working-phrases.ts`)
-
-Pi shows a single static `Working...` line while the agent is busy. This
-extension replaces it with a context-aware, rotating phrase:
-
-- **While a tool runs** — a tool-specific line: `Leyendo archivos…`,
-  `Ejecutando comandos…`, `Buscando en el código…`. MCP tools are named by
-  server (`Consultando un MCP…`).
-- **While a zero sub-agent runs** — the SDD phase it owns:
-  `Explorando el código…`, `Planeando la solución…`,
-  `Construyendo la implementación…`, `Revisando el veredicto…`.
-- **While the model thinks** — a rotation of playful verbs (`Maquinando…`,
-  `Rumiando…`, `Cocinando…`). Once a `/forge` run is detected the rotation
-  biases toward SDD vocabulary.
-
-It also installs a theme-tinted braille spinner that gently breathes through
-the palette's `dim`/`muted`/`accent` colours. The extension uses only pi's
-public extension API, and every handler is defensive — the indicator can never
-break a session.
-
-Control it with the `ZERO_BANNER` environment variable:
+Renders the `ZERO` wordmark as ASCII-safe Tetris cells in pure ANSI 24-bit
+colour, no runtime dependencies. The cells assemble from the bottom up, settle,
+then run a short **sparkle pass** — a few cells glint bright for about a second.
+The render runs synchronously before pi draws its UI.
 
 | `ZERO_BANNER` | Effect |
 | ------------- | ------ |
-| _(unset)_ / `shimmer` | Animated Tetris assembly, then settle (default) |
-| `static` | Completed Tetris banner only, no animation |
+| _(unset)_ / `shimmer` | Animated assembly + sparkle, then settle (default) |
+| `static` | Completed banner only, no animation |
 | `off` | Render nothing |
 
-Colour is skipped automatically when `NO_COLOR` is set or the output is not a
-TTY.
+Colour is skipped automatically when `NO_COLOR` is set or output is not a TTY.
 
-### Provider guard (`extensions/provider-guard.ts`)
+### Working-phrase ticker — `working-phrases.ts`
 
-zero-pi watches model switches and steps in when you move to a metered
-provider. When you switch to a model on the `anthropic` provider — which bills
-per token and draws down your metered extra-usage pool — the guard offers to
-redirect you to the equivalent model on `pi-claude-cli`, the provider backed by
-your subscription's limits.
+Replaces pi's static `Working...` line with a context-aware, rotating Spanish
+phrase — tool-specific while a tool runs (`Leyendo archivos…`), the SDD phase
+while a sub-agent runs (`Planeando la solución…`), playful verbs while the model
+thinks (`Maquinando…`) — plus a theme-tinted braille spinner.
 
-The redirect is offered through a confirmation dialog, and that dialog is your
-escape hatch: say "yes" and the guard switches you to the subscription-backed
-equivalent; say "no" (or cancel) and you stay on the metered `anthropic`
-provider with no further nagging. When there is no equivalent model on
-`pi-claude-cli`, and when a model is restored on session start rather than
-switched deliberately, the guard skips the modal and just shows a one-line
-warning. Switching to a subscription provider is a complete no-op — no dialog,
-no notification, no noise.
+### Conversation resume — `conversation-resume.ts`
 
-### Conversation resume (`extensions/conversation-resume.ts`)
+When pi exits normally, writes a local handoff note at `.pi/zero-resume.md` —
+the exact restore command for the persisted session plus a concise conversation
+tail. Generate it any time with `/zero-resume`. zero-pi creates `.pi/.gitignore`
+so conversation context is never committed. Set `ZERO_RESUME=off` to disable the
+automatic write.
 
-When pi exits normally, zero-pi writes a local handoff note:
+### Windows process-tree kill — `win-tree-kill.ts`
+
+On Windows, `kill()` terminates only the target process — so aborting a turn can
+leave an orphaned `claude` process streaming (Esc appears to do nothing). This
+extension patches `child_process.spawn` so every later subprocess tree-kills via
+`taskkill /T /F`. No-op on non-Windows. **Keep it enabled on Windows.**
+
+### ZERO terminal theme — `themes/zero-sdd.json`
+
+A dark, high-contrast pi theme with cyan, amber, mint, rose, and violet accents
+tuned for SDD work. Select it from `/settings`, or set `"theme": "zero-sdd"`.
+
+---
+
+## ⌨️ Commands
+
+| Command | What it does |
+| ------- | ------------ |
+| `/forge <feature>` | Run the four-phase SDD pipeline for a feature. |
+| `/forge --continue [slug]` | Resume an interrupted SDD run. |
+| `/zero-models [<phase>=[<provider>/]<model>]` | Show or set the per-phase SDD models. |
+| `/zero-models autotune=<auto\|ask\|off>` | Set the autotune mode. |
+| `/zero-sync <slug>` | Fold a run's delta `spec.md` into the canonical store. |
+| `/zero-resume` | Write `.pi/zero-resume.md` now. |
+
+## 🔧 Environment variables
+
+| Variable | Effect |
+| -------- | ------ |
+| `ZERO_BANNER` | `shimmer` (default) · `static` · `off` — startup-banner mode. |
+| `ZERO_RESUME` | `off` / `0` disables the automatic conversation-resume write. |
+| `NO_COLOR` | Standard — disables banner colour. |
+
+## 📂 Files it reads & writes
+
+| Path | Role |
+| ---- | ---- |
+| `~/.pi/zero.json` | Per-phase `models` / `providers` and the `autotune` mode. |
+| `~/.pi/zero-runs.jsonl` | Append-only run-metrics log autotune learns from. |
+| `~/.pi/agent/agents/zero/` | Generated `zero-<phase>` sub-agent files. |
+| `.sdd/<slug>/` | Per-run plan artifacts. |
+| `.sdd/specs/requirements.md` | The canonical, project-wide spec store. |
+| `.sdd/archive/` | Append-only audit trail of every `/zero-sync`. |
+| `.pi/zero-resume.md` | Local session handoff note. |
+
+## 🔗 Relationship to `zero`
+
+`zero-pi` is the pi-specific layer of the
+**[zero](https://github.com/gonzalonicolasr/zero)** integrator. The `zero` CLI
+installs this layer onto pi (bootstrapping pi.dev itself when missing) and
+writes the per-phase model configuration. You can also install `zero-pi`
+directly if you only want the pi layer.
+
+## 🧪 Development
+
+Dependency-free, no build step — pi loads the TypeScript extensions directly.
+Run the test suite with:
 
 ```
-.pi/zero-resume.md
+npm test
 ```
 
-The note includes the exact restore command for the persisted pi session:
+---
 
-```bash
-pi --session '<session-file>'
-```
-
-When a session id is available it also writes the shorter form:
-
-```bash
-pi --session <session-id>
-```
-
-`pi --resume` is listed too for the interactive session picker. The file also
-keeps a concise conversation tail, enough to remember the last user intent and
-assistant progress without replacing pi's real session history.
-
-Generate it manually at any time:
-
-```text
-/zero-resume
-```
-
-The resume lives under `.pi/`, and zero-pi creates `.pi/.gitignore` so local
-conversation context is not accidentally committed.
-
-## Relationship to `zero`
-
-`zero-pi` is the pi-specific layer of the **[zero](https://github.com/gonzalonicolasr/zero)**
-integrator. The `zero` CLI installs this layer onto pi (bootstrapping pi.dev
-itself when it is missing) and writes the per-phase model configuration. You
-can also install `zero-pi` directly with `pi install npm:@gonrocca/zero-pi` if
-you only want the pi layer.
-
-## License
+<div align="center">
 
 MIT © Gonzalo Rocca
+
+</div>
