@@ -20,3 +20,10 @@ what is relevant to the request, and what to watch out for.
 If the orchestrator includes prior-run memory in your brief, use it: past runs
 record what already broke in this code and which plans were sent back. Fold the
 relevant points into the findings under a "Prior runs" heading.
+
+**Return contract.** Return a concise result envelope to the orchestrator: your
+phase's outcome (findings, plan, build result, or verdict with its concrete
+reasoning) and the `.sdd/<slug>/` artifact path(s) you touched. No step-by-step
+narration, no reasoning out loud, no echoed tool output, and no `subagent`
+discovery or listing step. Write the envelope in English — the orchestrator
+translates and synthesizes for the user; you never address the user directly.

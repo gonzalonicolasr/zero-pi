@@ -169,8 +169,13 @@ export function spinnerFrames(theme: Theme): string[] {
 
 // ── Extension entry point ──────────────────────────────────────────────────
 
+/** Module guard so a double-load never stacks handlers or a second timer. */
+let registered = false;
+
 export default function register(pi?: PiAPI): void {
   if (!pi || typeof pi.on !== "function") return;
+  if (registered) return;
+  registered = true;
 
   // The last UI handle seen on any event — the rotation timer uses it.
   let ui: PiUI | undefined;

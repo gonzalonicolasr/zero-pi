@@ -91,9 +91,10 @@ interface PiAPI {
   ): void;
 }
 
-/** Convert a shell argument into a single-quoted literal for PowerShell/sh. */
+/** Convert a shell argument into a single-quoted literal for the host shell. */
 export function quoteShellArg(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
+  if (process.platform === "win32") return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 /** The project-local resume path. */
@@ -367,21 +368,21 @@ export default function register(pi?: PiAPI): void {
 
       try {
         const path = writeFromContext(ctx, reason);
-        if (path) notify(ctx, `zero resume written: ${path}`, "info");
+        if (path) notify(ctx, `zero: resumen guardado en ${path}`, "info");
       } catch (err) {
-        notify(ctx, `zero resume failed: ${err instanceof Error ? err.message : String(err)}`, "warning");
+        notify(ctx, `zero: falló el resumen — ${err instanceof Error ? err.message : String(err)}`, "warning");
       }
     });
   }
 
   if (typeof pi.registerCommand === "function") {
     pi.registerCommand("zero-resume", {
-      description: "Write .pi/zero-resume.md with restore command and conversation tail",
+      description: "Escribe .pi/zero-resume.md con el comando de restauración y el final de la conversación",
       handler: async (_args, ctx) => {
         try {
           const path = writeFromContext(ctx, "manual");
           if (!path) {
-            notify(ctx, "zero-resume: no persisted session context found", "warning");
+            notify(ctx, "zero-resume: no hay contexto de sesión persistido", "warning");
             return;
           }
           const command = sessionFile(ctx)
@@ -389,7 +390,7 @@ export default function register(pi?: PiAPI): void {
             : sessionId(ctx)
               ? `pi --session ${sessionId(ctx)}`
               : "pi --resume";
-          notify(ctx, `zero-resume: wrote ${path}\nrestore: ${command}`, "info");
+          notify(ctx, `zero-resume: escrito ${path}\nrestaurar: ${command}`, "info");
         } catch (err) {
           notify(ctx, `zero-resume: ${err instanceof Error ? err.message : String(err)}`, "error");
         }

@@ -65,19 +65,24 @@ orchestrator's plan-phase summary reports the run total and any exceptions.
 ### Per-phase models (`/zero-models`)
 
 `/zero-models` is a real pi command — a code handler, not an LLM prompt — for
-the SDD models. Run it with no argument to pick a phase and a model
-interactively, or set one directly:
+the SDD models. Run it with no argument for the interactive picker, or set one
+directly:
 
 ```
-/zero-models                        # interactive picker
-/zero-models build=claude-opus-4-7  # set one phase
+/zero-models                          # interactive picker
+/zero-models build=claude-opus-4-7     # set one phase
+/zero-models build=codex/gpt-5-codex   # set one phase with an explicit provider
 ```
 
-It reads and writes `~/.pi/zero.json`; the orchestrator picks the change up on
-the next `/forge` run.
+The interactive picker is **provider-aware**: it reads pi's model registry, so
+the flow is **phase → provider → model** and every provider you have configured
+(anthropic, codex, opencode, …) and its models are offered — not a hardcoded
+list. An `— otro provider —` / `— otro modelo —` entry still lets you type
+anything by hand.
 
-Per-phase model assignments are read from `~/.pi/zero.json`, which the `zero`
-CLI writes when it installs this layer.
+It reads and writes `~/.pi/zero.json` — `models` (the per-phase model id) plus a
+parallel `providers` map. The orchestrator picks the change up on the next
+`/forge` run. The `zero` CLI also writes this file when it installs the layer.
 
 **Run memory** — every SDD run reads from and writes to Cortex (the memory MCP
 server). Before exploring, the orchestrator recalls prior `zero-run/*` traces
@@ -244,6 +249,39 @@ provider with no further nagging. When there is no equivalent model on
 switched deliberately, the guard skips the modal and just shows a one-line
 warning. Switching to a subscription provider is a complete no-op — no dialog,
 no notification, no noise.
+
+### Conversation resume (`extensions/conversation-resume.ts`)
+
+When pi exits normally, zero-pi writes a local handoff note:
+
+```
+.pi/zero-resume.md
+```
+
+The note includes the exact restore command for the persisted pi session:
+
+```bash
+pi --session '<session-file>'
+```
+
+When a session id is available it also writes the shorter form:
+
+```bash
+pi --session <session-id>
+```
+
+`pi --resume` is listed too for the interactive session picker. The file also
+keeps a concise conversation tail, enough to remember the last user intent and
+assistant progress without replacing pi's real session history.
+
+Generate it manually at any time:
+
+```text
+/zero-resume
+```
+
+The resume lives under `.pi/`, and zero-pi creates `.pi/.gitignore` so local
+conversation context is not accidentally committed.
 
 ## Relationship to `zero`
 

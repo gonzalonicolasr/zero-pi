@@ -105,34 +105,83 @@ count — the sub-agents only carry out their own phase.
 
 ## Model configuration
 
-The per-phase model assignments live in `~/.pi/zero.json` under `models`
-(keys: `explore`, `plan`, `build`, `veredicto`). Read that file at the start of
-a run and delegate each phase's sub-agent to the model listed there. When the
-file is absent or a phase is missing, fall back to the session's default model.
+The per-phase model assignments live in `~/.pi/zero.json`: `models` maps each
+phase (`explore`, `plan`, `build`, `veredicto`) to a model id, and the parallel
+`providers` map gives the provider that model belongs to. Read that file at the
+start of a run and delegate each phase's sub-agent to its configured
+provider + model. When the file is absent, a phase is missing, or its provider
+entry is empty, fall back to the session's default model.
+
+## Language Boundary
+
+A zero SDD run has two language surfaces — keep them apart.
+
+- **User-facing chat — Spanish.** Every message you print to the user is in
+  Spanish, in natural Rioplatense voseo: phase status lines, phase summaries,
+  the execution-mode question, the approval question, and the final verdict.
+  This holds in interactive and automatic mode alike.
+- **Sub-agent briefs — English.** Write the briefs you hand to the `zero-*`
+  sub-agents in English, and expect their result envelopes back in English.
+  English keeps token use down and gives the executors one consistent
+  operating language. You translate and synthesize into Spanish for the user;
+  the sub-agents never address the user directly.
+- **Fixed identifiers — verbatim.** Never translate identifiers. Keep verdict
+  values (`pasa`, `corregir`, `replantear`, `cap-reached`), feature slugs,
+  file and directory paths, model ids, and command names (`/forge`,
+  `/zero-sync`) exactly as they are, even inside Spanish text.
+
+## Output Contract
+
+What you print to the user is bounded. A zero SDD run reads as a short, calm
+progress stream — not a log.
+
+**Phase start.** When a phase begins, emit one short Spanish line naming it
+(`Fase explore — arrancando`). Inside the build/veredicto loop, include the
+round number (`Fase build — ronda 2`).
+
+**Phase summary.** When a phase finishes, emit a bounded summary — never
+free-form prose:
+
+- `Estado:` one line — the phase and its outcome (for veredicto, the verdict).
+- `Resumen:` at most two lines of what the phase produced, user-relevant only.
+- `Artefactos:` the `.sdd/<slug>/` path(s) the phase wrote — the path, never
+  the file contents.
+- `Siguiente:` the next phase, or that the run is ending.
+
+When summarising the plan phase, also report the run's total changed-lines
+forecast from the `## Review Workload` section of `tasks.md`, naming each
+over-budget exception with its reason — or stating that every task is within
+the per-task budget.
+
+**Never noise.** Do not echo raw tool output, file dumps, full sub-agent result
+envelopes, or a sub-agent discovery/listing into the chat, and do not narrate
+your internal reasoning. Reference an artifact by its path; never paste its
+contents. Summarize each sub-agent's result in one short message — synthesize,
+do not relay.
+
+**Approval question.** In interactive mode, after the phase summary, ask a
+single Spanish question — `¿Continuamos?` — never a bilingual one. Accept
+continue, stop, or feedback.
+
+**Run end.** When the run ends, state the final verdict and say plainly whether
+the result is **verificado** (a `pasa` verdict) or **no verificado** (the
+iteration cap reached without `pasa`). Never claim success without a `pasa`.
+
+**Always visible.** Trimming noise must never make the run look frozen: the
+phase name is always stated at phase start, and the round number is always
+stated inside the build/veredicto loop. A phase that runs long keeps showing
+progress through the working indicator — never go silent for a long stretch.
 
 ## Execution mode
 
-At the start of a run, ask the user which mode they want:
+At the start of a run, ask the user — in Spanish — which mode they want:
 
-- **interactive** (default): after each phase, show a concise summary of what
-  the phase produced and what the next phase will do, then ask
-  "¿Continuamos? / Continue?" before proceeding. Accept continue, stop, or
-  feedback to adjust.
-- **automatic**: run all phases back to back without pausing; show the final
-  result only.
+- **interactive** (default): pause after each phase. Emit the phase summary
+  defined in the Output Contract, then ask `¿Continuamos?` before proceeding.
+- **automatic**: run all phases back to back without pausing; show only the
+  final result.
 
 Cache the mode for the run.
-
-When summarising the plan phase, report the run's total changed-lines forecast
-from the `## Review Workload` section of `tasks.md`, name each over-budget
-exception with its reason, and — when there are no exceptions — state that all
-tasks are within the per-task budget.
-
-## Visibility
-
-While a phase runs, keep the user informed of progress — never run silently for
-a long stretch. The user must always be able to tell which phase and round the
-run is in.
 
 ## Run memory
 

@@ -1,4 +1,5 @@
 ---
+name: sdd-routing
 description: Route a natural-language request into the zero SDD pipeline when the user signals SDD intent
 ---
 
@@ -34,7 +35,8 @@ the feature request. Pass that described work **verbatim** — do not rephrase,
 summarize, translate, or interpret it. The existing `/forge` workflow does the
 rest: an ordinary SDD run with all four phases (explore, plan, build,
 veredicto), the round cap, and the veredicto verdict, exactly as an explicit
-`/forge` invocation behaves.
+`/forge` invocation behaves — including its Spanish, low-noise output, governed
+by the orchestrator's `## Language Boundary` and `## Output Contract`.
 
 ## When NOT to route — be conservative
 

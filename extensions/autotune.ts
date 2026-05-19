@@ -526,7 +526,7 @@ export function decideAdjustments(
     if (to === null) continue; // already at top tier, or untierable
 
     const blame = phase === "build" ? "corregir" : "replantear";
-    const reason = `avg ${measure.toFixed(1)} ${blame}/run over ${stat.v2Samples} v2 runs`;
+    const reason = `prom ${measure.toFixed(1)} ${blame}/run en ${stat.v2Samples} runs v2`;
 
     adjustments.push({ phase, from: currentModel, to, reason });
   }

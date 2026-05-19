@@ -121,12 +121,12 @@ function renderSyncReport(slug: string, date: string, summary: MergeSummary): st
 /** Render the human-facing one-shot report of a `MergeSummary`. */
 function describeSummary(summary: MergeSummary): string {
   const lines: string[] = [];
-  if (summary.added.length > 0) lines.push(`  added:    ${summary.added.join(", ")}`);
+  if (summary.added.length > 0) lines.push(`  agregados:    ${summary.added.join(", ")}`);
   if (summary.modified.length > 0) {
-    lines.push(`  modified: ${summary.modified.join(", ")}  (replaces existing spec text)`);
+    lines.push(`  modificados:  ${summary.modified.join(", ")}  (reemplaza el texto de spec existente)`);
   }
   if (summary.removed.length > 0) {
-    lines.push(`  removed:  ${summary.removed.join(", ")}  (deletes from the store)`);
+    lines.push(`  eliminados:   ${summary.removed.join(", ")}  (borra del store)`);
   }
   return lines.join("\n");
 }
@@ -168,8 +168,8 @@ function runSync(args: string, ctx: PiCommandContext): void {
   const slug = resolveSlug(args);
   if (slug === null) {
     notify(
-      "zero-sync: no run slug given and no single sync candidate found — " +
-        "run /zero-sync <slug> (the slug of the run's .sdd/<slug>/ directory)",
+      "zero-sync: no se dio slug de run y no hay un único candidato — " +
+        "corré /zero-sync <slug> (el slug del directorio .sdd/<slug>/ del run)",
       "warning",
     );
     return;
@@ -181,7 +181,7 @@ function runSync(args: string, ctx: PiCommandContext): void {
     // A legacy run produced no delta `spec.md` — nothing to sync. This is not
     // an error: legacy runs finish in legacy mode (additive design).
     notify(
-      `zero-sync: ${deltaPath} not found — this run produced no delta spec.md, nothing to sync`,
+      `zero-sync: ${deltaPath} no existe — este run no produjo un spec.md delta, nada para sincronizar`,
       "warning",
     );
     return;
@@ -190,7 +190,7 @@ function runSync(args: string, ctx: PiCommandContext): void {
   // An empty delta (no blocks in any section) is valid — report and stop
   // before touching the store.
   if (isEmptyDelta(parseDelta(deltaText))) {
-    notify(`zero-sync: empty delta in ${deltaPath} — nothing to sync, store left untouched`, "info");
+    notify(`zero-sync: delta vacío en ${deltaPath} — nada para sincronizar, store sin cambios`, "info");
     return;
   }
 
@@ -204,7 +204,7 @@ function runSync(args: string, ctx: PiCommandContext): void {
     // the store is flagged out of sync for a manual fix.
     const detail = result.errors.map((e) => `  - [${e.kind}] ${e.message}`).join("\n");
     notify(
-      `zero-sync: store NOT updated — the delta has guardrail errors:\n${detail}`,
+      `zero-sync: store NO actualizado — el delta tiene errores de guardrail:\n${detail}`,
       "error",
     );
     return;
@@ -219,7 +219,7 @@ function runSync(args: string, ctx: PiCommandContext): void {
     renameSync(tmp, STORE_FILE);
   } catch (err) {
     notify(
-      `zero-sync: failed to write the store at ${STORE_FILE}: ${
+      `zero-sync: no se pudo escribir el store en ${STORE_FILE}: ${
         err instanceof Error ? err.message : String(err)
       }`,
       "error",
@@ -240,16 +240,16 @@ function runSync(args: string, ctx: PiCommandContext): void {
       if (existsSync(src)) copyFileSync(src, join(archiveDir, name));
     }
     writeFileSync(join(archiveDir, "sync.md"), renderSyncReport(slug, date, result.summary), "utf8");
-    archiveNote = `archived to ${archiveDir}`;
+    archiveNote = `archivado en ${archiveDir}`;
   } catch (err) {
-    archiveNote = `WARNING: store updated but archive step failed: ${
+    archiveNote = `ATENCIÓN: store actualizado pero falló el archivado: ${
       err instanceof Error ? err.message : String(err)
     }`;
   }
 
   const detail = describeSummary(result.summary);
   notify(
-    `zero-sync: canonical store updated (${STORE_FILE})\n${detail}\n${archiveNote}`,
+    `zero-sync: store canónico actualizado (${STORE_FILE})\n${detail}\n${archiveNote}`,
     "info",
   );
 }
@@ -266,7 +266,7 @@ export default function register(pi?: PiExtensionAPI): void {
 
   pi.registerCommand("zero-sync", {
     description:
-      "Fold a /forge run's delta spec.md into the canonical .sdd/specs/ store — /zero-sync <slug>",
+      "Integra el spec.md delta de un run /forge al store canónico .sdd/specs/ — /zero-sync <slug>",
     handler: (args: string, ctx: PiCommandContext): void => {
       try {
         if (!ctx || !ctx.ui || typeof ctx.ui.notify !== "function") return;

@@ -51,7 +51,11 @@ test("contentToText extracts text, tool calls, and image markers", () => {
 
 test("quoteShellArg produces a single-quoted restore argument", () => {
   assert.equal(quoteShellArg("C:\\Users\\me\\session.jsonl"), "'C:\\Users\\me\\session.jsonl'");
-  assert.equal(quoteShellArg("C:\\it isn't\\session.jsonl"), "'C:\\it isn''t\\session.jsonl'");
+  const quotedApostrophe =
+    process.platform === "win32"
+      ? "'C:\\it isn''t\\session.jsonl'"
+      : "'C:\\it isn'\\''t\\session.jsonl'";
+  assert.equal(quoteShellArg("C:\\it isn't\\session.jsonl"), quotedApostrophe);
 });
 
 test("buildConversationResume includes restore commands and conversation tail", () => {
@@ -127,7 +131,7 @@ test("register writes on quit and exposes /zero-resume", async () => {
 
     assert.ok(command);
     await command?.handler("", ctx);
-    assert.ok(notifications.some((n) => n.includes("restore: pi --session")));
+    assert.ok(notifications.some((n) => n.includes("restaurar: pi --session")));
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }

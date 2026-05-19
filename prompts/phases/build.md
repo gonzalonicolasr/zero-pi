@@ -18,3 +18,10 @@ change within the plan's scope — do not expand it on your own initiative.
 
 Run the test suite and make it pass before reporting the phase complete. Report
 what you changed so the veredicto phase has something concrete to review.
+
+**Return contract.** Return a concise result envelope to the orchestrator: your
+phase's outcome (findings, plan, build result, or verdict with its concrete
+reasoning) and the `.sdd/<slug>/` artifact path(s) you touched. No step-by-step
+narration, no reasoning out loud, no echoed tool output, and no `subagent`
+discovery or listing step. Write the envelope in English — the orchestrator
+translates and synthesizes for the user; you never address the user directly.

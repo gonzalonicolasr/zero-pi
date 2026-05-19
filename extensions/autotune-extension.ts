@@ -157,7 +157,7 @@ function evaluateAndTune(ctx: PiSessionContext): void {
   if (data === null) {
     // Absent or unparseable `zero.json` — no profile to safely tune. Skip with
     // a single non-blocking warning; never synthesize a `models` map (AC 6.4).
-    notify("zero autotune: ~/.pi/zero.json missing or unreadable — skipping", "warning");
+    notify("zero autotune: ~/.pi/zero.json falta o no se puede leer — se omite", "warning");
     return;
   }
 
@@ -213,7 +213,7 @@ function evaluateAndTune(ctx: PiSessionContext): void {
   );
   for (const adj of pending) {
     notify(
-      `zero autotune suggests: ${adj.phase} → ${adj.to} — run /zero-models to apply`,
+      `zero autotune sugiere: ${adj.phase} → ${adj.to} — corré /zero-models para aplicar`,
       "info",
     );
   }

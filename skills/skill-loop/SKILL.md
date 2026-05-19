@@ -1,4 +1,5 @@
 ---
+name: skill-loop
 description: zero's skill auto-learning loop — distill, store, surface, and refine reusable skills
 ---
 

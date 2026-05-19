@@ -647,7 +647,7 @@ test("decideAdjustments steps up the build phase when corregir blame is high", (
   assert.equal(out[0].from, "claude-sonnet-4-6");
   assert.equal(tierOf(out[0].to), 2, "stepped exactly one tier up to opus");
   assert.ok(out[0].reason.includes("corregir/run"));
-  assert.ok(out[0].reason.includes("9 v2 runs"));
+  assert.ok(out[0].reason.includes("9 runs v2"));
 });
 
 test("decideAdjustments steps up the plan phase when replantear blame is high", () => {

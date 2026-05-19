@@ -80,3 +80,10 @@ means the same number on every run.
   the tasks above it), the **bold total** computed as the literal sum of the
   per-task estimates, and the over-budget exceptions list — state "none" when
   there are no exceptions.
+
+**Return contract.** Return a concise result envelope to the orchestrator: your
+phase's outcome (findings, plan, build result, or verdict with its concrete
+reasoning) and the `.sdd/<slug>/` artifact path(s) you touched. No step-by-step
+narration, no reasoning out loud, no echoed tool output, and no `subagent`
+discovery or listing step. Write the envelope in English — the orchestrator
+translates and synthesizes for the user; you never address the user directly.
