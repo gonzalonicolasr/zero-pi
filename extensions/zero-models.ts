@@ -19,8 +19,28 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+// `@earendil-works/pi-tui` is provided by the pi runtime as an ambient bare
+// specifier — it is NOT a `package.json` dependency. It is loaded lazily, via
+// a dynamic `import()` inside the no-arg handler branch, NOT a top-level value
+// import: a static `import { Box } from "@earendil-works/pi-tui"` would be
+// evaluated whenever any consumer imports this module — including
+// `zero-models.test.ts`, which imports the deterministic helpers — and would
+// crash `node --test` with `ERR_MODULE_NOT_FOUND`. `import type` below is
+// fully erased by `--experimental-strip-types`, so it never triggers
+// resolution. The runtime classes are reached only from inside pi.
+import type { Component } from "@earendil-works/pi-tui";
+
 import { readAutotuneMode, type AutotuneMode } from "./autotune.ts";
 import type { AutotunePending } from "./autotune-extension.ts";
+import {
+  back,
+  createPickerState,
+  enter,
+  navigate,
+  submitText,
+  type EnterResult,
+  type PickerState,
+} from "./zero-models-picker.ts";
 
 /** The SDD phases, in pipeline order. */
 export const PHASES = ["explore", "plan", "build", "veredicto"] as const;
@@ -181,11 +201,41 @@ export function groupByProvider(models: readonly PiModel[]): Map<string, string[
   return map;
 }
 
+/** The pi-TUI host handed to a `ctx.ui.custom()` factory — only the one
+ *  method the picker shell uses. */
+interface PiTui {
+  requestRender(): void;
+}
+/** A pi-TUI component that groups children vertically and renders a frame. */
+interface PiBox extends Component {
+  addChild(child: Component): void;
+}
+/** The slice of `@earendil-works/pi-tui` the boxed picker constructs at
+ *  runtime — `Box`/`Text`/`Spacer` constructors, captured from the lazy
+ *  dynamic `import()` so this module never statically resolves the specifier. */
+interface PiTuiModule {
+  Box: new (paddingX?: number, paddingY?: number) => PiBox;
+  Text: new (content: string, paddingX?: number, paddingY?: number) => Component;
+  Spacer: new (lines: number) => Component;
+}
+/** A pi theme — only the foreground-color helper the picker uses. */
+interface PiTheme {
+  fg(color: string, text: string): string;
+}
+/** The factory `ctx.ui.custom()` invokes to build the boxed component. */
+type PiCustomFactory<T> = (
+  tui: PiTui,
+  theme: PiTheme,
+  keybindings: unknown,
+  done: (result: T) => void,
+) => Component;
+
 /** The slice of pi's extension API this command uses. */
 interface PiUI {
   select(prompt: string, options: string[]): Promise<string | undefined>;
   input(prompt: string, placeholder?: string): Promise<string | undefined>;
   notify(message: string, type?: "info" | "warning" | "error"): void;
+  custom<T>(factory: PiCustomFactory<T>): Promise<T>;
 }
 /** pi's model registry — the source of every provider's model list. */
 interface PiModelRegistry {
@@ -205,10 +255,6 @@ interface PiExtensionAPI {
     },
   ): void;
 }
-
-const SAVE_AND_EXIT = "— guardar y salir —";
-const CUSTOM_MODEL = "— otro modelo (escribir) —";
-const CUSTOM_PROVIDER = "— otro provider (escribir) —";
 
 /**
  * Group models by provider for the picker.
@@ -247,6 +293,192 @@ function resolveProvider(
     }
   }
   return undefined;
+}
+
+/** The boxed-panel title row. */
+const PICKER_TITLE = "zero · modelos SDD";
+/** The dim help line shown at the foot of the boxed panel. */
+const PICKER_HELP = "↑↓ navegar · enter elegir · esc volver";
+
+/** ANSI arrow-key escape sequences. */
+const KEY_UP = "\x1b[A";
+const KEY_DOWN = "\x1b[B";
+const KEY_ESC = "\x1b";
+/** Enter — CR or LF, depending on the terminal. */
+const KEY_ENTER = new Set(["\r", "\n", "\r\n"]);
+/** Backspace — DEL or BS. */
+const KEY_BACKSPACE = new Set(["\x7f", "\x08"]);
+
+/**
+ * Clamp a rendered line to `width` columns so it never overflows the box
+ * frame (tui.md "Line Width" is a hard rule). A plain slice is enough here —
+ * the picker emits no ANSI inside its row strings except whole-line theming,
+ * and `theme.fg` is applied *after* truncation by the caller where it matters.
+ */
+function clampLine(line: string, width: number): string {
+  if (width <= 0) return "";
+  return line.length > width ? line.slice(0, width) : line;
+}
+
+/**
+ * Build the inline pi-TUI component for the no-arg picker.
+ *
+ * The component owns no navigation logic — it holds one mutable `PickerState`,
+ * forwards keystrokes to the pure transition functions of
+ * `zero-models-picker.ts`, and re-renders. A `save`/`quit` `EnterResult` ends
+ * the component via `done(result)`.
+ *
+ * Custom typed provider/model values use an inline character buffer handled
+ * directly in `handleInput` (the design's documented fallback for the embedded
+ * `Input`): pi-tui's `Input` is not shipped with type definitions in this pi
+ * build and an embedded-input + `Focusable` wiring is the design's named
+ * highest-risk path — the inline buffer is self-contained, needs no ambient
+ * class beyond `Box`/`Text`/`Spacer`, and keeps the pure module's `submitText`
+ * contract untouched.
+ *
+ * The whole `handleInput` body is wrapped in a `try/catch` that closes the
+ * component cleanly via `done({ type: "quit" })` on any error (Req 9).
+ */
+function createPickerComponent(
+  initial: PickerState,
+  pitui: PiTuiModule,
+  theme: PiTheme,
+  tui: PiTui,
+  done: (result: EnterResult) => void,
+): Component {
+  const { Box, Text, Spacer } = pitui;
+  // The single mutable state reference; reassigned from the pure functions.
+  let state = initial;
+  // Inline text buffer — non-null only while `state.textPrompt` is open.
+  let buffer: string | null = null;
+
+  /** Render the boxed panel for the current state. */
+  function render(width: number): string[] {
+    const box = new Box(1, 1);
+    const inner = Math.max(1, width - 4); // account for the box's paddingX
+
+    box.addChild(new Text(clampLine(PICKER_TITLE, inner), 0, 0));
+    box.addChild(new Spacer(1));
+
+    if (state.textPrompt) {
+      // Inline text-entry mode: show the prompt label and the typed buffer.
+      box.addChild(
+        new Text(clampLine(state.textPrompt.label, inner), 0, 0),
+      );
+      const typed = `> ${buffer ?? ""}`;
+      box.addChild(
+        new Text(theme.fg("accent", clampLine(typed, inner)), 0, 0),
+      );
+      box.addChild(new Spacer(1));
+      box.addChild(
+        new Text(
+          theme.fg("dim", clampLine("enter confirmar · esc volver", inner)),
+          0,
+          0,
+        ),
+      );
+      return box.render(width);
+    }
+
+    state.entries.forEach((entry, index) => {
+      if (index === state.cursor) {
+        const row = clampLine(`> ${entry.label}`, inner);
+        box.addChild(new Text(theme.fg("accent", row), 0, 0));
+      } else {
+        const row = clampLine(`  ${entry.label}`, inner);
+        box.addChild(new Text(theme.fg("dim", row), 0, 0));
+      }
+    });
+
+    box.addChild(new Spacer(1));
+    box.addChild(
+      new Text(theme.fg("dim", clampLine(PICKER_HELP, inner)), 0, 0),
+    );
+    return box.render(width);
+  }
+
+  /** Apply an `EnterResult` — re-render on `state`, close on `save`/`quit`. */
+  function applyResult(result: EnterResult): void {
+    if (result.type === "state") {
+      state = result.state;
+      tui.requestRender();
+    } else {
+      done(result);
+    }
+  }
+
+  /** Route a keystroke while the inline text buffer is open. */
+  function handleTextInput(data: string): void {
+    if (data === KEY_ESC) {
+      // Esc abandons the typed value and returns to the current list screen
+      // unchanged. `submitText` with an empty string is exactly that no-op:
+      // it clears `textPrompt` and rebuilds the list without committing.
+      state = submitText(state, "");
+      buffer = null;
+      tui.requestRender();
+      return;
+    }
+    if (KEY_ENTER.has(data)) {
+      state = submitText(state, buffer ?? "");
+      buffer = null;
+      tui.requestRender();
+      return;
+    }
+    if (KEY_BACKSPACE.has(data)) {
+      buffer = (buffer ?? "").slice(0, -1);
+      tui.requestRender();
+      return;
+    }
+    // Append printable characters only (skip control sequences).
+    if (data.length >= 1 && data.charCodeAt(0) >= 32 && !data.startsWith("\x1b")) {
+      buffer = (buffer ?? "") + data;
+      tui.requestRender();
+    }
+  }
+
+  /** Receive a keystroke; never throws out — a failure closes the picker. */
+  function handleInput(data: string): void {
+    try {
+      // Inline text-entry mode takes input until it submits or escapes.
+      if (state.textPrompt) {
+        handleTextInput(data);
+        return;
+      }
+
+      if (data === KEY_UP) {
+        state = navigate(state, -1);
+        tui.requestRender();
+        return;
+      }
+      if (data === KEY_DOWN) {
+        state = navigate(state, 1);
+        tui.requestRender();
+        return;
+      }
+      if (KEY_ENTER.has(data)) {
+        const result = enter(state);
+        // `enter` on a custom-* row opens `textPrompt`; arm the buffer.
+        if (result.type === "state" && result.state.textPrompt) buffer = "";
+        applyResult(result);
+        return;
+      }
+      if (data === KEY_ESC) {
+        applyResult(back(state));
+        return;
+      }
+    } catch {
+      // A render/transition bug must never wedge the pi session — close.
+      done({ type: "quit" });
+    }
+  }
+
+  return {
+    render,
+    invalidate(): void {
+      /* stateless render — nothing cached to clear */
+    },
+    handleInput,
+  };
 }
 
 /**
@@ -315,115 +547,68 @@ export default function register(pi?: PiExtensionAPI): void {
           return;
         }
 
-        // Interactive form: pick a phase, a provider, a model — until saved.
-        let changed = false;
-        let autotuneMode = readAutotuneMode(data);
-        let autotuneChanged = false;
-        let pending = readAutotunePending(data);
-        let pendingApplied = false;
-        for (;;) {
-          const applyEntry =
-            pending.length > 0
-              ? `★ aplicar sugerencia: ${pending
-                  .map((p) => `${p.phase} → ${p.to}`)
-                  .join(", ")}`
-              : null;
-          const autotuneEntry = `autotune   →   ${autotuneMode}`;
+        // Interactive form: open the boxed picker, then persist on save.
+        const autotuneMode = readAutotuneMode(data);
+        const pending = readAutotunePending(data);
 
-          const phasePick = await ctx.ui.select("zero · modelos SDD — elegí una fase", [
-            ...(applyEntry ? [applyEntry] : []),
-            ...PHASES.map(
-              (p) => `${p}   →   ${providers[p] ? `${providers[p]}/` : ""}${models[p]}`,
-            ),
-            autotuneEntry,
-            SAVE_AND_EXIT,
-          ]);
-          if (!phasePick || phasePick === SAVE_AND_EXIT) break;
+        const initialState = createPickerState({
+          models,
+          providers,
+          autotuneMode,
+          pending,
+          groups,
+          fallbackModels: FALLBACK_MODELS,
+        });
 
-          // Apply the pending autotune suggestion.
-          if (applyEntry && phasePick === applyEntry) {
-            for (const adj of pending) models[adj.phase] = adj.to;
-            changed = true;
-            pendingApplied = true;
-            pending = [];
-            continue;
-          }
+        // Load pi-tui lazily — the bare specifier resolves only inside pi.
+        // This `import()` lives in the handler (already inside the swallowing
+        // `try/catch`), so a resolution failure becomes an error notification
+        // and never escapes (Req 9).
+        const pitui = (await import(
+          "@earendil-works/pi-tui"
+        )) as unknown as PiTuiModule;
 
-          // Change the autotune mode.
-          if (phasePick === autotuneEntry) {
-            const modePick = await ctx.ui.select(
-              "Modo de autotune",
-              AUTOTUNE_MODES.map((m) => formatAutotune(m)),
-            );
-            if (!modePick) continue;
-            const picked = parseAutotuneArg(modePick.split(/\s/)[0]);
-            if (picked && picked !== autotuneMode) {
-              autotuneMode = picked;
-              autotuneChanged = true;
-            }
-            continue;
-          }
+        const result = await ctx.ui.custom<EnterResult>((tui, theme, _kb, done) =>
+          createPickerComponent(initialState, pitui, theme, tui, done),
+        );
 
-          const phase = phasePick.split(/\s/)[0];
-          if (!isPhase(phase)) break;
-
-          // Pick a provider — from the registry, or typed when unknown.
-          let provider = providers[phase];
-          let modelChoices = FALLBACK_MODELS;
-          if (groups.size > 0) {
-            const providerPick = await ctx.ui.select(`Provider para «${phase}»`, [
-              ...[...groups.keys()].sort(),
-              CUSTOM_PROVIDER,
-            ]);
-            if (!providerPick) continue;
-            if (providerPick === CUSTOM_PROVIDER) {
-              const typed = await ctx.ui.input(
-                `Provider para «${phase}»`,
-                providers[phase] || "",
-              );
-              if (!typed || typed.trim() === "") continue;
-              provider = typed.trim();
-              modelChoices = groups.get(provider) ?? [];
-            } else {
-              provider = providerPick;
-              modelChoices = groups.get(providerPick) ?? [];
-            }
-          }
-
-          // Pick a model within that provider — or type one.
-          const label = provider ? `Modelo para «${phase}» (${provider})` : `Modelo para «${phase}»`;
-          const modelPick = await ctx.ui.select(label, [...modelChoices, CUSTOM_MODEL]);
-          if (!modelPick) continue;
-
-          let model = modelPick;
-          if (modelPick === CUSTOM_MODEL) {
-            const typed = await ctx.ui.input(label, models[phase]);
-            if (!typed || typed.trim() === "") continue;
-            model = typed.trim();
-          }
-          models[phase] = model;
-          providers[phase] = provider || resolveProvider(ctx.modelRegistry, model) || "";
-          changed = true;
-        }
-
-        if (changed || autotuneChanged) {
-          // Build the patch, preserving every other key via the spread. When
-          // the pending suggestion was applied, clear the `autotunePending` key.
-          const patch: Record<string, unknown> = { models, providers };
-          if (autotuneChanged) patch.autotune = autotuneMode;
-
-          const merged = { ...data, ...patch };
-          if (pendingApplied) delete merged.autotunePending;
-          writeFileSync(zeroJsonPath(), `${JSON.stringify(merged, null, 2)}\n`, "utf8");
-
-          const summary = [`zero · modelos SDD guardados:\n${formatPhases(models, providers)}`];
-          summary.push(`  autotune   ${autotuneMode}`);
-          if (pendingApplied) summary.push("sugerencia aplicada");
-          ctx.ui.notify(summary.join("\n"), "info");
-        } else {
+        if (result.type !== "save") {
+          // Esc / quit (or a contained UI failure): write nothing, leaving
+          // `zero.json` byte-for-byte unchanged, and report the leave-as-is
+          // state — the existing "sin cambios" notification text.
           ctx.ui.notify(
             `zero · modelos SDD (sin cambios):\n${formatPhases(models, providers)}\n` +
               `  autotune   ${autotuneMode}`,
+            "info",
+          );
+          return;
+        }
+
+        // Save: pull the accumulated edits off the final picker state.
+        const edits = result.state.edits;
+        if (edits.changed || edits.autotuneChanged) {
+          // Build the patch, preserving every other key via the spread. When
+          // the pending suggestion was applied, clear the `autotunePending` key.
+          const patch: Record<string, unknown> = {
+            models: edits.models,
+            providers: edits.providers,
+          };
+          if (edits.autotuneChanged) patch.autotune = edits.autotuneMode;
+
+          const merged = { ...data, ...patch };
+          if (edits.pendingApplied) delete merged.autotunePending;
+          writeFileSync(zeroJsonPath(), `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+
+          const summary = [
+            `zero · modelos SDD guardados:\n${formatPhases(edits.models, edits.providers)}`,
+          ];
+          summary.push(`  autotune   ${edits.autotuneMode}`);
+          if (edits.pendingApplied) summary.push("sugerencia aplicada");
+          ctx.ui.notify(summary.join("\n"), "info");
+        } else {
+          ctx.ui.notify(
+            `zero · modelos SDD (sin cambios):\n${formatPhases(edits.models, edits.providers)}\n` +
+              `  autotune   ${edits.autotuneMode}`,
             "info",
           );
         }

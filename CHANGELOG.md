@@ -15,6 +15,21 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.30] - 2026-05-19
+
+### Changed — `/zero-models` interactive picker is now a boxed-window TUI
+
+The no-arg `/zero-models` interactive flow was a chain of pi's flat
+`ui.select`/`ui.input` prompts. It is now a single bordered panel rendered via
+pi's `ctx.ui.custom()` + `@earendil-works/pi-tui` (`Box`/`Text`): a
+"zero · modelos SDD" window with the four phases, the autotune entry, and
+save/exit, navigated with the arrow keys, drilling phase → provider → model.
+The picker's menu/navigation logic is a new pure, fully unit-tested module
+(`zero-models-picker.ts`). The direct command forms
+(`/zero-models <phase>=[<provider>/]<model>`, `/zero-models autotune=<mode>`)
+are unchanged. Built via the SDD loop — spec/design/tasks under
+`.sdd/zero-models-boxed-tui/`.
+
 ## [0.1.29] - 2026-05-19
 
 ### Added — the ZERO startup banner ships with zero-pi

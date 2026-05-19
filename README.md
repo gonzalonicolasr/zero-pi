@@ -59,7 +59,7 @@ into `/forge` for you.
 
 | Feature | What it does |
 | ------- | ------------ |
-| **`/zero-models`** | Pick the model + provider for each SDD phase — interactive or direct. |
+| **`/zero-models`** | Pick the model + provider for each SDD phase — a boxed-window picker, or set one directly. |
 | **Autotune** | Learns which model fits each phase from your run history and re-tunes itself. |
 | **`/zero-sync`** | Folds each run's spec delta into a canonical, project-wide spec store. |
 | **Run memory** | Every run recalls and saves traces to Cortex, so runs learn from each other. |
