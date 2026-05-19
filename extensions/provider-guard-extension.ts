@@ -1,79 +1,62 @@
-// zero-pi — metered-provider guard, pi wiring.
+// zero-pi — Anthropic metered-billing guard, pi wiring.
 //
 // A thin pi extension that wires the pure decision logic in `provider-guard.ts`
-// to the `model_select` hook. Whenever pi reports a model switch, this handler
-// classifies it (in the pure module) and executes the resulting `GuardAction`:
-// a silent no-op for subscription providers, a non-blocking `warning` for a
-// metered provider with no equivalent (or a session `restore`), or — for a
-// deliberate switch to a metered provider that has an equivalent — a `confirm`
-// dialog offering to redirect to the subscription provider.
+// to the `model_select` hook. On every model switch it reads the auth mode from
+// `ctx.modelRegistry.isUsingOAuth` and, when the `anthropic` provider runs on an
+// API key (metered extra usage) rather than a Claude Pro/Max subscription OAuth
+// login, emits a single non-blocking `warning`.
 //
-// All decisions live in `provider-guard.ts`; this file only declares the
-// minimal pi-API surface it uses, hooks `model_select`, and performs the I/O
-// (`confirm`/`notify`/`setModel`). Both `register` and the handler are wrapped
-// in a swallowing `try/catch` — exactly like `autotune-extension.ts`, a failure
-// must never break a pi session. The package stays dependency-free: only
-// `provider-guard.ts` is imported (no `node:*` is needed here, no third party).
+// All decisions live in `provider-guard.ts`; this file declares the minimal
+// pi-API surface it uses, hooks `model_select`, and performs the I/O (`notify`).
+// Both `register` and the handler are wrapped in a swallowing `try/catch` — a
+// failure must never break a pi session. Dependency-free: only
+// `provider-guard.ts` is imported (no `node:*`, no third party).
 
-import {
-  classifyModelSwitch,
-  redirectFailedMessage,
-  type ModelLike,
-} from "./provider-guard.ts";
+import { classifyModelSwitch } from "./provider-guard.ts";
 
 // ---------------------------------------------------------------------------
 // Minimal local pi-API interfaces
 // ---------------------------------------------------------------------------
-//
-// `provider-guard-extension.ts` declares only the slice of pi's API it uses,
-// exactly like `autotune-extension.ts` and `zero-models.ts`. The guard never
-// depends on pi's full type surface — just the shapes below.
 
-/** The minimum a `Model` of pi must expose for the guard. Mirrors `ModelLike`
- *  of the pure module — `setModel`/the registry both speak this shape. */
+/** The minimum a `Model` of pi must expose for the guard. */
 interface PiModel {
   provider: string;
   id: string;
 }
 
-/** The model registry slice the guard uses: a `find` that resolves a model by
- *  `(provider, id)` or returns `undefined` when no such model exists. */
+/**
+ * The model-registry slice the guard uses. `isUsingOAuth` reports whether a
+ * model authenticates through a Claude subscription OAuth login rather than an
+ * API key. It is optional — older pi builds may not expose it (see
+ * `resolveOAuth`).
+ */
 interface PiModelRegistry {
-  find(provider: string, modelId: string): PiModel | undefined;
+  isUsingOAuth?(model: PiModel): boolean;
 }
 
-/** The slice of pi's UI surface the guard uses. `confirm` may be sync or async
- *  (pi versions differ); both are handled uniformly with `await`. */
+/** The slice of pi's UI surface the guard uses. */
 interface PiUI {
-  confirm(title: string, message: string): Promise<boolean> | boolean;
   notify(message: string, type?: "info" | "warning" | "error"): void;
 }
 
-/** The context pi passes to a `model_select` handler. `modelRegistry` is
- *  optional — if absent the guard degrades to warn-only (it can no longer
- *  resolve equivalents) rather than breaking. */
+/** The context pi passes to a `model_select` handler. */
 interface PiModelSelectContext {
   ui: PiUI;
   modelRegistry?: PiModelRegistry;
 }
 
-/** The `model_select` event pi emits on a model change. The guard only reads
- *  `model` and `source`; `source` is `set`/`cycle`/`restore` or, defensively,
- *  any other string a future pi version might report. */
+/** The `model_select` event pi emits on a model change. */
 interface PiModelSelectEvent {
   type: "model_select";
   model?: PiModel;
-  source?: "set" | "cycle" | "restore" | string;
 }
 
-/** The slice of pi's extension API the guard uses: `on` to hook events and
- *  `setModel` to apply a redirection. */
+/** The slice of pi's extension API the guard uses. */
 interface PiExtensionAPI {
   on(
     event: string,
-    handler: (event: PiModelSelectEvent, ctx: PiModelSelectContext) => void | Promise<void>,
+    handler: (event: PiModelSelectEvent, ctx: PiModelSelectContext) => void,
   ): void;
-  setModel(model: PiModel): Promise<boolean>;
 }
 
 // ---------------------------------------------------------------------------
@@ -81,86 +64,42 @@ interface PiExtensionAPI {
 // ---------------------------------------------------------------------------
 
 /**
+ * Resolve whether `model` authenticates through subscription OAuth.
+ *
+ * Calls `modelRegistry.isUsingOAuth` when available. When the method is absent
+ * (older pi) or throws, it returns `true` — an unknown auth mode must never
+ * produce a false metered warning.
+ */
+function resolveOAuth(registry: PiModelRegistry | undefined, model: PiModel): boolean {
+  if (!registry || typeof registry.isUsingOAuth !== "function") return true;
+  try {
+    return registry.isUsingOAuth(model) !== false;
+  } catch {
+    // A registry failure degrades to "assume OAuth" — never a false warning.
+    return true;
+  }
+}
+
+/**
  * The `model_select` guard handler.
  *
- * Runs entirely inside `register`'s swallowing `try/catch`, but is also wrapped
- * again here so no failure of `find`/`confirm`/`notify`/`setModel` can ever
- * propagate out of a pi session. The flow:
+ * Wrapped in a swallowing `try/catch` so no failure can propagate out of a pi
+ * session. The flow:
  *
- *   1. Validate `event`/`event.model` — a malformed event returns cleanly.
- *   2. Build the injected `lookup` over `ctx.modelRegistry.find`, wrapped in a
- *      `try/catch` that returns `undefined`. If `modelRegistry` is absent,
- *      degrade to an always-`undefined` lookup (warn-only).
- *   3. `classifyModelSwitch(model, source, lookup)` → a `GuardAction`.
- *   4. Execute the action: `ignore` → no-op; `warn` → `notify(..., "warning")`;
- *      `offer-redirect` → `confirm`, and on a truthy answer `setModel` +
- *      `notify(..., "info")` (or the failure notice if `setModel` returns
- *      `false`). A falsy `confirm` leaves the user on the metered provider.
+ *   1. Validate `event`/`event.model`/`ctx.ui` — a malformed event bails out.
+ *   2. Resolve the auth mode via `resolveOAuth`.
+ *   3. `classifyModelSwitch(model, isOAuth)` → a `GuardAction`.
+ *   4. `warn` → `notify(..., "warning")`; `ignore` → no-op.
  */
-async function handleModelSelect(
-  event: PiModelSelectEvent,
-  ctx: PiModelSelectContext,
-  pi: PiExtensionAPI,
-): Promise<void> {
+function handleModelSelect(event: PiModelSelectEvent, ctx: PiModelSelectContext): void {
   try {
-    // 1. Malformed event — no event, no model, or no UI to talk to: bail out.
     if (!event || !event.model || !ctx || !ctx.ui || typeof ctx.ui.notify !== "function") {
       return;
     }
-
-    // 2. Build the injected lookup. `classifyModelSwitch` assumes a total
-    //    lookup, so `find` is wrapped in a `try/catch` returning `undefined`.
-    //    If `modelRegistry` is absent the guard cannot resolve equivalents —
-    //    degrade to an always-`undefined` lookup so a metered provider still
-    //    produces a warning rather than breaking.
-    const registry = ctx.modelRegistry;
-    const lookup = (provider: string, id: string): ModelLike | undefined => {
-      if (!registry || typeof registry.find !== "function") return undefined;
-      try {
-        return registry.find(provider, id);
-      } catch {
-        // A registry lookup failure degrades to "no equivalent", never throws.
-        return undefined;
-      }
-    };
-
-    // 3. Classify the switch in the pure module.
-    const action = classifyModelSwitch(event.model, event.source, lookup);
-
-    // 4. Execute the action.
-    if (action.kind === "ignore") {
-      // Non-metered provider or malformed event — nothing to do.
-      return;
-    }
-
+    const isOAuth = resolveOAuth(ctx.modelRegistry, event.model);
+    const action = classifyModelSwitch(event.model, isOAuth);
     if (action.kind === "warn") {
-      // Metered provider with no equivalent, or a session `restore` — a single
-      // non-blocking warning, no modal, no `setModel`.
       ctx.ui.notify(action.message, "warning");
-      return;
-    }
-
-    // action.kind === "offer-redirect" — deliberate switch to a metered
-    // provider that has a subscription equivalent. Offer the redirect; the
-    // `confirm` dialog itself is the user's escape (AC 1.5).
-    const accepted = await ctx.ui.confirm(action.confirmTitle, action.confirmMessage);
-    if (!accepted) {
-      // User declined or cancelled — leave them on the metered provider, no
-      // second warning, no `setModel`.
-      return;
-    }
-
-    const applied = await pi.setModel(action.safeModel);
-    if (applied) {
-      // Redirection took effect — confirm it with an `info` notification.
-      ctx.ui.notify(action.redirectMessage, "info");
-    } else {
-      // `setModel` returned `false`: the switch did not apply. Do not claim
-      // "redirected" — emit the optional failure notice instead.
-      ctx.ui.notify(
-        redirectFailedMessage(action.safeModel.id, action.safeModel.provider),
-        "warning",
-      );
     }
   } catch {
     // Any failure of the guard must never break a pi session.
@@ -175,20 +114,16 @@ async function handleModelSelect(
  * The pi extension entry point.
  *
  * pi calls this once when the extension loads. It wires the guard handler to
- * the `model_select` event. The whole body is wrapped in a swallowing
- * `try/catch`, and the handler is wrapped again, so neither registration nor a
- * later failure can ever break a pi session. Called with no or an invalid
- * `pi` (missing, or no `.on` function), it no-ops cleanly.
+ * the `model_select` event. The body is wrapped in a swallowing `try/catch`,
+ * and the handler is wrapped again, so neither registration nor a later failure
+ * can break a pi session. Called with no or an invalid `pi`, it no-ops cleanly.
  */
 export default function register(pi?: unknown): void {
   try {
     if (!pi || typeof (pi as PiExtensionAPI).on !== "function") {
       return;
     }
-    const api = pi as PiExtensionAPI;
-    api.on("model_select", (event: PiModelSelectEvent, ctx: PiModelSelectContext): Promise<void> => {
-      return handleModelSelect(event, ctx, api);
-    });
+    (pi as PiExtensionAPI).on("model_select", handleModelSelect);
   } catch {
     // Registration itself must never break a pi session.
   }

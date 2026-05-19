@@ -1,6 +1,6 @@
 {
   "name": "@gonrocca/zero-pi",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow, skill auto-learning, and an animated ZERO startup banner. Adds capability to pi without modifying pi.",
   "type": "module",
   "keywords": [

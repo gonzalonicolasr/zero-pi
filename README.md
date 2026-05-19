@@ -195,12 +195,13 @@ re-derived.
 
 ### Provider guard — `provider-guard.ts`
 
-pi reaches the same Claude models through two providers: `pi-claude-cli` (billed
-against your subscription's plan limits) and `anthropic` (the direct API, billed
-per token from your metered extra-usage pool). The guard watches model switches:
-on a deliberate switch to a metered provider it offers — via a confirmation
-dialog — to redirect you to the equivalent model on `pi-claude-cli`. Say no and
-you stay put, no nagging. Switching to a subscription provider is a no-op.
+The `anthropic` provider runs two ways: a Claude Pro/Max **subscription** login
+(OAuth, via `/login` — `pi-claude-oauth-adapter` smooths this path) or an **API
+key**, which bills per token from your metered extra-usage pool. Same provider
+id, different billing. The guard watches model switches and reads pi's auth mode
+(`modelRegistry.isUsingOAuth`): when a model runs on `anthropic` with an API key
+it emits a single non-blocking warning suggesting `/login`. On OAuth, or on any
+other provider, it stays silent.
 
 ### Startup banner — `startup-banner.ts`
 

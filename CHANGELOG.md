@@ -15,6 +15,18 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.25] - 2026-05-19
+
+### Changed — provider guard reworked for Anthropic OAuth
+
+The provider guard no longer redirects `anthropic` → `pi-claude-cli` (that
+provider is no longer used). It now keys off pi's **auth mode** rather than the
+provider name: it reads `modelRegistry.isUsingOAuth` and warns only when the
+`anthropic` provider runs on an **API key** (metered extra usage) instead of a
+Claude Pro/Max subscription OAuth login. The redirect, the confirmation dialog,
+and the `METERED_TO_SUBSCRIPTION` map are removed — the guard is now warn-only.
+An unknown auth mode (older pi without `isUsingOAuth`) never warns.
+
 ## [0.1.24] - 2026-05-19
 
 ### Fixed — repository metadata
