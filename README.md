@@ -279,11 +279,10 @@ tuned for SDD work. Select it from `/settings`, or set `"theme": "zero-sdd"`.
 
 ## 🔗 Relationship to `zero`
 
-`zero-pi` is the pi-specific layer of the
-**[zero](https://github.com/gonzalonicolasr/zero)** integrator. The `zero` CLI
+`zero-pi` is the pi-specific layer of the **zero** integrator. The `zero` CLI
 installs this layer onto pi (bootstrapping pi.dev itself when missing) and
 writes the per-phase model configuration. You can also install `zero-pi`
-directly if you only want the pi layer.
+directly with `pi install npm:@gonrocca/zero-pi` if you only want the pi layer.
 
 ## 🧪 Development
 

@@ -15,6 +15,15 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.24] - 2026-05-19
+
+### Fixed — repository metadata
+
+`repository`, `homepage`, and `bugs` now point at the standalone
+`github.com/gonzalonicolasr/zero-pi` repo; the previous URLs referenced a
+repository that does not exist, so the links on npm were broken. The README's
+`zero` reference no longer links to a non-existent repo.
+
 ## [0.1.23] - 2026-05-19
 
 ### Documentation
