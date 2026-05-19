@@ -14,8 +14,11 @@
 **The zero spec-driven development workflow, packaged for [pi](https://pi.dev).**
 
 [![npm](https://img.shields.io/npm/v/@gonrocca/zero-pi?color=af8aff&label=npm)](https://www.npmjs.com/package/@gonrocca/zero-pi)
+[![repo](https://img.shields.io/badge/repo-github-7497ff?logo=github&logoColor=white)](https://github.com/gonzalonicolasr/zero-pi)
 [![license](https://img.shields.io/npm/l/@gonrocca/zero-pi?color=eebe5c)](./LICENSE)
 [![node](https://img.shields.io/node/v/@gonrocca/zero-pi?color=4fddab&label=node)](https://nodejs.org)
+
+**Repositorio:** [github.com/gonzalonicolasr/zero-pi](https://github.com/gonzalonicolasr/zero-pi)
 
 </div>
 

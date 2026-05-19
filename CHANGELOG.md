@@ -15,6 +15,13 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.26] - 2026-05-19
+
+### Documentation
+
+Added a GitHub badge and a repository link to the README header, pointing at
+the standalone `github.com/gonzalonicolasr/zero-pi` repo.
+
 ## [0.1.25] - 2026-05-19
 
 ### Changed — provider guard reworked for Anthropic OAuth
