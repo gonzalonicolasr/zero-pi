@@ -15,6 +15,16 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.31] - 2026-05-19
+
+### Fixed — 0.1.30 shipped without `zero-models-picker.ts`
+
+0.1.30 added `zero-models-picker.ts` (the picker's pure module, imported by
+`zero-models.ts`) but the `package.json` `files` allowlist — which enumerates
+extension files one by one — was not updated, so the file was omitted from the
+published tarball. pi failed to load the `zero-models` extension with
+`Cannot find module './zero-models-picker.ts'`. The file is now in `files`.
+
 ## [0.1.30] - 2026-05-19
 
 ### Changed — `/zero-models` interactive picker is now a boxed-window TUI
