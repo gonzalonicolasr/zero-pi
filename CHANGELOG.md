@@ -15,6 +15,16 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.29] - 2026-05-19
+
+### Added — the ZERO startup banner ships with zero-pi
+
+The violet "ZERO SDD" ANSI-Shadow banner (`zero-banner.ts`) is now a zero-pi
+package extension, so `pi install npm:@gonrocca/zero-pi` brings it — it was
+previously a hand-placed standalone global extension. Static by design: drawn
+once at load, no animation timer (an animated header spammed/crashed pi
+0.75.x). Disable with `ZERO_HEADER=off`.
+
 ## [0.1.28] - 2026-05-19
 
 ### Removed — the startup banner

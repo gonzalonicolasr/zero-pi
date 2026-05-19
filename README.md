@@ -64,6 +64,7 @@ into `/forge` for you.
 | **`/zero-sync`** | Folds each run's spec delta into a canonical, project-wide spec store. |
 | **Run memory** | Every run recalls and saves traces to Cortex, so runs learn from each other. |
 | **Provider guard** | Warns when the `anthropic` provider runs on a metered API key instead of your subscription. |
+| **Startup banner** | The violet ANSI-Shadow `ZERO` wordmark, drawn once at pi startup — `ZERO_HEADER=off` to disable. |
 | **Working-phrase ticker** | Swaps pi's `Working...` for a context-aware Spanish phrase + spinner. |
 | **Conversation resume** | Writes `.pi/zero-resume.md` on exit — the restore command + a conversation tail. |
 | **Windows tree-kill** | Aborting a turn kills the whole process tree — no orphaned `claude`. |
