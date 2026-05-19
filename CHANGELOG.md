@@ -15,6 +15,17 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.28] - 2026-05-19
+
+### Removed — the startup banner
+
+zero-pi no longer ships the `startup-banner.ts` extension (the Tetris-cell
+`ZERO` banner). It collided with the standalone `zero-banner.ts` global pi
+extension (`~/.pi/agent/extensions/`), rendering two banners at pi startup.
+zero-pi now ships no banner of its own — `zero-banner.ts` is the single
+banner — so the double banner cannot recur. The `ZERO_BANNER` environment
+variable is removed with it.
+
 ## [0.1.27] - 2026-05-19
 
 ### Documentation

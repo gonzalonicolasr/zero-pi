@@ -15,8 +15,8 @@
 //
 // All decisions live in `autotune.ts`; this file only reads files, calls those
 // functions, and applies/notifies. The whole handler is wrapped in a swallowing
-// `try/catch` — exactly like `startup-banner.ts`, a failure must never break a
-// pi session. The package stays dependency-free: `node:fs`/`node:os`/`node:path`
+// `try/catch` — a failure must never break a pi session. The package stays
+// dependency-free: `node:fs`/`node:os`/`node:path`
 // only, plus minimal local interfaces for the pi API.
 
 import { readFileSync, writeFileSync } from "node:fs";
