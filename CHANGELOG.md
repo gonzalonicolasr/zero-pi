@@ -15,6 +15,17 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.32] - 2026-05-19
+
+### Changed — the `/zero-models` picker draws a real bordered box
+
+0.1.30's boxed picker used pi-tui's `Box`, which only pads (background +
+padding) — no visible frame, so the panel rendered borderless. The picker now
+draws a true 4-sided Unicode box (`┌─┐ │ └─┘`) around the panel, themed. As a
+side effect `@earendil-works/pi-tui` is no longer imported at all — the
+component renders its own lines — which removes the lazy dynamic-`import()`
+workaround `zero-models.ts` carried for it.
+
 ## [0.1.31] - 2026-05-19
 
 ### Fixed — 0.1.30 shipped without `zero-models-picker.ts`

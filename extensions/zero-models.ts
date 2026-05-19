@@ -19,16 +19,25 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-// `@earendil-works/pi-tui` is provided by the pi runtime as an ambient bare
-// specifier — it is NOT a `package.json` dependency. It is loaded lazily, via
-// a dynamic `import()` inside the no-arg handler branch, NOT a top-level value
-// import: a static `import { Box } from "@earendil-works/pi-tui"` would be
-// evaluated whenever any consumer imports this module — including
-// `zero-models.test.ts`, which imports the deterministic helpers — and would
-// crash `node --test` with `ERR_MODULE_NOT_FOUND`. `import type` below is
-// fully erased by `--experimental-strip-types`, so it never triggers
-// resolution. The runtime classes are reached only from inside pi.
-import type { Component } from "@earendil-works/pi-tui";
+// This module has NO `@earendil-works/pi-tui` import at all — not a value
+// import, not an `import type`. The no-arg picker is a `ctx.ui.custom()`
+// component, and `ctx.ui.custom`'s factory only needs an object that exposes
+// `render(width): string[]` (plus optional `handleInput`/`invalidate`) — pi's
+// own docs example returns exactly such a plain object literal. So the picker
+// builds its framed layout by hand with Unicode box-drawing characters and
+// satisfies the contract via the small local `Component` interface below. Not
+// importing the ambient `@earendil-works/pi-tui` specifier at all means even a
+// stray static reference can never crash `node --test` with
+// `ERR_MODULE_NOT_FOUND` when `zero-models.test.ts` imports the deterministic
+// helpers.
+
+/** The shape `ctx.ui.custom()`'s factory must return — a renderable component.
+ *  Declared locally so this module pulls in no ambient TUI specifier. */
+interface Component {
+  render(width: number): string[];
+  handleInput?(data: string): void;
+  invalidate?(): void;
+}
 
 import { readAutotuneMode, type AutotuneMode } from "./autotune.ts";
 import type { AutotunePending } from "./autotune-extension.ts";
@@ -206,18 +215,6 @@ export function groupByProvider(models: readonly PiModel[]): Map<string, string[
 interface PiTui {
   requestRender(): void;
 }
-/** A pi-TUI component that groups children vertically and renders a frame. */
-interface PiBox extends Component {
-  addChild(child: Component): void;
-}
-/** The slice of `@earendil-works/pi-tui` the boxed picker constructs at
- *  runtime — `Box`/`Text`/`Spacer` constructors, captured from the lazy
- *  dynamic `import()` so this module never statically resolves the specifier. */
-interface PiTuiModule {
-  Box: new (paddingX?: number, paddingY?: number) => PiBox;
-  Text: new (content: string, paddingX?: number, paddingY?: number) => Component;
-  Spacer: new (lines: number) => Component;
-}
 /** A pi theme — only the foreground-color helper the picker uses. */
 interface PiTheme {
   fg(color: string, text: string): string;
@@ -320,6 +317,60 @@ function clampLine(line: string, width: number): string {
   return line.length > width ? line.slice(0, width) : line;
 }
 
+/** Unicode box-drawing characters for the picker's 4-sided frame. */
+const BOX = {
+  topLeft: "┌",
+  topRight: "┐",
+  bottomLeft: "└",
+  bottomRight: "┘",
+  horizontal: "─",
+  vertical: "│",
+} as const;
+/** The theme color used for the picker's box frame. */
+const FRAME_COLOR = "accent";
+/** Below this `width` a real frame cannot be drawn — render unframed instead. */
+const MIN_BOX_WIDTH = 10;
+
+/**
+ * One content row of the boxed panel, given as *plain* text plus an optional
+ * theme color. {@link frameBox} measures the plain `text`, then sizes and
+ * colorizes it — so an ANSI escape is never fed to `clampLine`/`padEnd`.
+ */
+interface BoxRow {
+  text: string;
+  color?: string;
+}
+
+/**
+ * Wrap content rows in a true 4-sided Unicode box.
+ *
+ * `width` is the full outer box width. Each row's *plain* text is truncated
+ * and space-padded to the inner width (`width - 4`: two `│` columns plus one
+ * space of padding on each side) — measured *before* `theme.fg` runs, so an
+ * ANSI escape is never measured. The frame chars and the row content are
+ * themed separately. When `width` is too small to frame, the plain rows are
+ * returned unframed (defensive — never produce garbage).
+ */
+function frameBox(rows: readonly BoxRow[], width: number, theme: PiTheme): string[] {
+  if (width < MIN_BOX_WIDTH) {
+    return rows.map((row) => clampLine(row.text, Math.max(0, width)));
+  }
+  const inner = width - 4;
+  const frame = (s: string): string => theme.fg(FRAME_COLOR, s);
+  const horizontal = BOX.horizontal.repeat(width - 2);
+  const top = frame(`${BOX.topLeft}${horizontal}${BOX.topRight}`);
+  const bottom = frame(`${BOX.bottomLeft}${horizontal}${BOX.bottomRight}`);
+  const side = frame(BOX.vertical);
+
+  const body = rows.map((row) => {
+    // Size on plain text, then colorize — never measure an ANSI string.
+    const sized = clampLine(row.text, inner).padEnd(inner, " ");
+    const content = row.color ? theme.fg(row.color, sized) : sized;
+    return `${side} ${content} ${side}`;
+  });
+  return [top, ...body, bottom];
+}
+
 /**
  * Build the inline pi-TUI component for the no-arg picker.
  *
@@ -333,68 +384,62 @@ function clampLine(line: string, width: number): string {
  * `Input`): pi-tui's `Input` is not shipped with type definitions in this pi
  * build and an embedded-input + `Focusable` wiring is the design's named
  * highest-risk path — the inline buffer is self-contained, needs no ambient
- * class beyond `Box`/`Text`/`Spacer`, and keeps the pure module's `submitText`
- * contract untouched.
+ * TUI class at all, and keeps the pure module's `submitText` contract
+ * untouched.
  *
  * The whole `handleInput` body is wrapped in a `try/catch` that closes the
  * component cleanly via `done({ type: "quit" })` on any error (Req 9).
+ *
+ * `render(width)` builds the framed layout by hand with Unicode box-drawing
+ * characters ({@link frameBox}) — no pi-tui components are involved — so the
+ * picker draws as a real closed rectangle.
  */
 function createPickerComponent(
   initial: PickerState,
-  pitui: PiTuiModule,
   theme: PiTheme,
   tui: PiTui,
   done: (result: EnterResult) => void,
 ): Component {
-  const { Box, Text, Spacer } = pitui;
   // The single mutable state reference; reassigned from the pure functions.
   let state = initial;
   // Inline text buffer — non-null only while `state.textPrompt` is open.
   let buffer: string | null = null;
 
-  /** Render the boxed panel for the current state. */
+  /**
+   * Render the boxed panel for the current state.
+   *
+   * Builds plain-text content rows with an optional theme color each, then
+   * hands them to {@link frameBox} which sizes (on plain text) and colorizes
+   * last. Defensive — it must never throw: rows carry plain text, theming is
+   * deferred to `frameBox`, and `frameBox` degrades gracefully on a tiny
+   * `width`.
+   */
   function render(width: number): string[] {
-    const box = new Box(1, 1);
-    const inner = Math.max(1, width - 4); // account for the box's paddingX
+    const rows: BoxRow[] = [];
 
-    box.addChild(new Text(clampLine(PICKER_TITLE, inner), 0, 0));
-    box.addChild(new Spacer(1));
+    rows.push({ text: PICKER_TITLE });
+    rows.push({ text: "" });
 
     if (state.textPrompt) {
       // Inline text-entry mode: show the prompt label and the typed buffer.
-      box.addChild(
-        new Text(clampLine(state.textPrompt.label, inner), 0, 0),
-      );
-      const typed = `> ${buffer ?? ""}`;
-      box.addChild(
-        new Text(theme.fg("accent", clampLine(typed, inner)), 0, 0),
-      );
-      box.addChild(new Spacer(1));
-      box.addChild(
-        new Text(
-          theme.fg("dim", clampLine("enter confirmar · esc volver", inner)),
-          0,
-          0,
-        ),
-      );
-      return box.render(width);
+      rows.push({ text: state.textPrompt.label });
+      rows.push({ text: `> ${buffer ?? ""}`, color: "accent" });
+      rows.push({ text: "" });
+      rows.push({ text: "enter confirmar · esc volver", color: "dim" });
+      return frameBox(rows, width, theme);
     }
 
     state.entries.forEach((entry, index) => {
       if (index === state.cursor) {
-        const row = clampLine(`> ${entry.label}`, inner);
-        box.addChild(new Text(theme.fg("accent", row), 0, 0));
+        rows.push({ text: `> ${entry.label}`, color: "accent" });
       } else {
-        const row = clampLine(`  ${entry.label}`, inner);
-        box.addChild(new Text(theme.fg("dim", row), 0, 0));
+        rows.push({ text: `  ${entry.label}`, color: "dim" });
       }
     });
 
-    box.addChild(new Spacer(1));
-    box.addChild(
-      new Text(theme.fg("dim", clampLine(PICKER_HELP, inner)), 0, 0),
-    );
-    return box.render(width);
+    rows.push({ text: "" });
+    rows.push({ text: PICKER_HELP, color: "dim" });
+    return frameBox(rows, width, theme);
   }
 
   /** Apply an `EnterResult` — re-render on `state`, close on `save`/`quit`. */
@@ -560,16 +605,11 @@ export default function register(pi?: PiExtensionAPI): void {
           fallbackModels: FALLBACK_MODELS,
         });
 
-        // Load pi-tui lazily — the bare specifier resolves only inside pi.
-        // This `import()` lives in the handler (already inside the swallowing
-        // `try/catch`), so a resolution failure becomes an error notification
-        // and never escapes (Req 9).
-        const pitui = (await import(
-          "@earendil-works/pi-tui"
-        )) as unknown as PiTuiModule;
-
+        // The picker is a self-contained `ctx.ui.custom()` component — it
+        // renders its own framed layout with box-drawing characters, so no
+        // pi-tui module is loaded here.
         const result = await ctx.ui.custom<EnterResult>((tui, theme, _kb, done) =>
-          createPickerComponent(initialState, pitui, theme, tui, done),
+          createPickerComponent(initialState, theme, tui, done),
         );
 
         if (result.type !== "save") {
