@@ -15,6 +15,16 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.34] - 2026-05-19
+
+### Fixed — banner widget no longer truncated
+
+0.1.33's banner is 12 lines but pi's `setWidget` caps managed widgets at
+`MAX_WIDGET_LINES = 10` — so the bottom ornament + the tagline were replaced
+with `... (widget truncated)`. The wide layout is now exactly 10 lines (top
+ornament + 7 logo rows + tag + bottom ornament) by dropping the two internal
+blank-line paddings. Everything visible inside the cap.
+
 ## [0.1.33] - 2026-05-19
 
 ### Changed — banner survives resize (managed widget)

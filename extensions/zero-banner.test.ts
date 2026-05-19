@@ -15,8 +15,9 @@ test("visibleWidth ignores ANSI colour escapes", () => {
 
 test("bannerBlock renders the full wide layout at a wide width", () => {
   const lines = bannerBlock(100);
-  // ornament + blank + 7 logo rows (6 + cast shadow) + blank + tag + ornament.
-  assert.equal(lines.length, 12);
+  // ornament + 7 logo rows (6 + cast shadow) + tag + ornament — 10 lines max,
+  // matching pi's MAX_WIDGET_LINES cap so setWidget never truncates.
+  assert.equal(lines.length, 10);
   assert.ok(
     lines.every((line) => typeof line === "string"),
     "every line is a string",

@@ -125,13 +125,21 @@ function ornament(width: number): string {
   return center(line, width);
 }
 
-/** The full banner block, centered to the given width. */
+/**
+ * The full banner block, centered to the given width.
+ *
+ * Wide layout = exactly **10 lines**: top ornament + 7 logo rows (6 + cast
+ * shadow) + tag + bottom ornament. Pi's `setWidget` caps managed widgets at
+ * `MAX_WIDGET_LINES = 10` (hardcoded in interactive-mode.js); anything taller
+ * is rendered with a `... (widget truncated)` line. Inner blank-line padding
+ * was removed to fit that cap exactly — adding blanks back would re-truncate.
+ */
 export function bannerBlock(width: number): string[] {
   if (width < 64) {
     return [center(fg(VIOLET, "ZERO SDD"), width), center(fg(MUTED, "pi.dev · spec-driven work"), width)];
   }
   const tag = fg(VIOLET, "ZERO SDD") + fg(MUTED, "   explore → plan → build → veredicto");
-  return [ornament(width), "", ...renderLogo(width), "", center(tag, width), ornament(width)];
+  return [ornament(width), ...renderLogo(width), center(tag, width), ornament(width)];
 }
 
 /** The slice of pi's UI surface this extension uses. */
