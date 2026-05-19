@@ -135,9 +135,16 @@ A zero SDD run has two language surfaces — keep them apart.
 What you print to the user is bounded. A zero SDD run reads as a short, calm
 progress stream — not a log.
 
-**Phase start.** When a phase begins, emit one short Spanish line naming it
-(`Fase explore — arrancando`). Inside the build/veredicto loop, include the
-round number (`Fase build — ronda 2`).
+**Phase start.** When a phase begins, emit one short Spanish line with: the
+phase name, the model and provider it runs on — read from `~/.pi/zero.json` as
+`<modelo> (<provider>)`, or the session's default model when the file has no
+entry for that phase — and a brief gloss of what the phase does. Inside the
+build/veredicto loop, also include the round number. One line per phase:
+
+- `Fase explore · <modelo> (<provider>) — exploro el código y junto hallazgos`
+- `Fase plan · <modelo> (<provider>) — escribo requisitos, diseño y tareas`
+- `Fase build · ronda <n> · <modelo> (<provider>) — implemento las tareas y corro los tests`
+- `Fase veredicto · ronda <n> · <modelo> (<provider>) — reviso la build y doy el veredicto`
 
 **Phase summary.** When a phase finishes, emit a bounded summary — never
 free-form prose:
