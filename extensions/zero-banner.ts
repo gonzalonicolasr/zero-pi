@@ -134,18 +134,58 @@ export function bannerBlock(width: number): string[] {
   return [ornament(width), "", ...renderLogo(width), "", center(tag, width), ornament(width)];
 }
 
+/** The slice of pi's UI surface this extension uses. */
+interface PiUI {
+  setWidget(id: string, lines: string[]): void;
+}
+interface PiSessionContext {
+  ui?: PiUI;
+}
+interface PiAPI {
+  on(event: string, handler: (event: unknown, ctx: PiSessionContext) => void): void;
+}
+
+/** Stable widget id — re-installing with the same id replaces the previous lines. */
+const WIDGET_ID = "zero-banner";
+
 /**
- * The pi extension entry point. Renders the banner exactly once, synchronously,
- * at load time. Any failure is swallowed — a banner must never break a session.
+ * Install (or refresh) the banner as a pi-managed widget above the editor.
+ *
+ * Using `ctx.ui.setWidget` instead of a one-shot `stdout.write` means pi owns
+ * the lines and redraws them on every resize, every reload, every session
+ * restart — so the banner survives maximize/minimize instead of vanishing into
+ * scrollback. The crash this file's earlier comment warned about was the
+ * animated 140 ms re-render loop; a static widget set once per `session_start`
+ * has no timer and re-uses the same id, so it never spams.
  */
-export default function register(_pi?: unknown): void {
+function installWidget(ctx: PiSessionContext): void {
+  if (!ctx?.ui || typeof ctx.ui.setWidget !== "function") return;
+  if (process.env.NO_COLOR) return;
+  const cols = process.stdout?.columns && process.stdout.columns > 0 ? process.stdout.columns : 80;
+  ctx.ui.setWidget(WIDGET_ID, bannerBlock(cols));
+}
+
+/**
+ * The pi extension entry point.
+ *
+ * Hooks `session_start` (fires on startup, reload, new, resume, fork) and
+ * installs the banner as a pi-managed widget above the editor — so pi keeps it
+ * rendered and redraws it on resize. Disabled with `ZERO_HEADER=off`.
+ * Defensive: any failure of registration or the widget install is swallowed —
+ * a banner must never break a pi session.
+ */
+export default function register(pi?: unknown): void {
   try {
     if ((process.env.ZERO_HEADER ?? "").trim().toLowerCase() === "off") return;
-    const stream = process.stdout;
-    if (!stream || !stream.isTTY || process.env.NO_COLOR) return;
-    const width = stream.columns && stream.columns > 0 ? stream.columns : 80;
-    stream.write("\n" + bannerBlock(width).join("\n") + "\n\n");
+    if (!pi || typeof (pi as PiAPI).on !== "function") return;
+    (pi as PiAPI).on("session_start", (_event, ctx) => {
+      try {
+        installWidget(ctx);
+      } catch {
+        // A widget install failure must never break a pi session.
+      }
+    });
   } catch {
-    // A banner failure must never break a pi session.
+    // Registration itself must never break a pi session.
   }
 }

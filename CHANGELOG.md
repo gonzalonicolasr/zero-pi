@@ -15,6 +15,20 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.33] - 2026-05-19
+
+### Changed — banner survives resize (managed widget)
+
+The ZERO banner used to be a one-shot `stdout.write` at extension load — it
+sat in scrollback, so when the terminal resized (maximize/minimize) it
+disappeared. It is now installed as a pi-managed widget above the editor via
+`ctx.ui.setWidget`, hooked on `session_start` (fires on startup, reload, new,
+resume, fork). pi owns the lines and redraws them on every resize, so the
+banner stays put. Stays static (no animation timer), so the historical
+re-render loop crash on pi 0.75.x cannot recur. Tradeoff: the banner is now
+pinned above the editor for the whole session — it occupies ~12 rows
+permanently instead of scrolling away. `ZERO_HEADER=off` still disables it.
+
 ## [0.1.32] - 2026-05-19
 
 ### Changed — the `/zero-models` picker draws a real bordered box
