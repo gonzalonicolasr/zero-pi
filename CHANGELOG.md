@@ -15,6 +15,24 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.36] - 2026-05-19
+
+### Changed — your input messages are violet
+
+The `zero-sdd` theme's `userMessageText` was `""` (default terminal white).
+Set to `"violet"` (`#af8aff`) — the same brand color the banner uses — so
+your typed messages stand out from the assistant's responses with a
+consistent visual identity. Hot-reload picks it up automatically on a running
+pi session; otherwise restart pi.
+
+## [0.1.35] - 2026-05-19
+
+### Note — accidental release without the theme change
+
+Published by mistake during the 0.1.36 release flow: the version + this
+changelog entry made it out, but the actual `themes/zero-sdd.json` edit did
+not. Superseded by 0.1.36 — install that instead.
+
 ## [0.1.34] - 2026-05-19
 
 ### Fixed — banner widget no longer truncated
