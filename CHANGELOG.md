@@ -15,6 +15,19 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.23] - 2026-05-19
+
+### Documentation
+
+Full README rewrite — accurate, complete, and organized. Centered header with
+npm/license/node badges, a table of contents, and the sections grouped into
+**The SDD workflow** and **Quality-of-life extensions**. The previously
+undocumented `sdd-agents` and `win-tree-kill` extensions are now covered, along
+with the Spanish Language Boundary / Output Contract, the banner sparkle pass,
+and the `ZERO_RESUME` variable. Added Commands, Environment-variable, and Files
+reference tables; fixed the `ZERO_BANNER` table that was under the wrong
+section.
+
 ## [0.1.22] - 2026-05-19
 
 ### Added — banner sparkle pass

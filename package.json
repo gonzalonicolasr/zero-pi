@@ -1,6 +1,6 @@
 {
   "name": "@gonrocca/zero-pi",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow, skill auto-learning, and an animated ZERO startup banner. Adds capability to pi without modifying pi.",
   "type": "module",
   "keywords": [
@@ -67,11 +67,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/gonzalonicolasr/zero.git",
-    "directory": "packages/zero-pi"
+    "url": "git+https://github.com/gonzalonicolasr/zero-pi.git"
   },
-  "homepage": "https://github.com/gonzalonicolasr/zero/tree/main/packages/zero-pi#readme",
+  "homepage": "https://github.com/gonzalonicolasr/zero-pi#readme",
   "bugs": {
-    "url": "https://github.com/gonzalonicolasr/zero/issues"
+    "url": "https://github.com/gonzalonicolasr/zero-pi/issues"
   }
 }
