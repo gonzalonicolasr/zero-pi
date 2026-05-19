@@ -15,6 +15,14 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.27] - 2026-05-19
+
+### Documentation
+
+Condensed the README — `/forge` and the four-phase pipeline are now the clear
+headline; the per-feature reference paragraphs collapse into a single
+scannable table. Roughly a third of the previous length.
+
 ## [0.1.26] - 2026-05-19
 
 ### Documentation
