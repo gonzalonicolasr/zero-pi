@@ -119,7 +119,12 @@ function colorForPiece(piece: string, row: number, rank: number, active: boolean
   return lerpColor(base, COLORS.peak, heightWarmth * 0.18 + rankPulse);
 }
 
-function paintMatrixLine(matrix: Matrix, row: number, visibleCells: number): string {
+function paintMatrixLine(
+  matrix: Matrix,
+  row: number,
+  visibleCells: number,
+  sparkles?: ReadonlySet<string>,
+): string {
   let out = "";
   const line = matrix.rows[row] ?? "";
   for (let col = 0; col < matrix.width; col++) {
@@ -128,14 +133,29 @@ function paintMatrixLine(matrix: Matrix, row: number, visibleCells: number): str
       out += "  ";
       continue;
     }
-    const rank = matrix.ranks.get(`${row}:${col}`) ?? Number.POSITIVE_INFINITY;
+    const key = `${row}:${col}`;
+    const rank = matrix.ranks.get(key) ?? Number.POSITIVE_INFINITY;
     if (rank >= visibleCells) {
       out += "  ";
       continue;
     }
-    out += ansiFg(colorForPiece(piece, row, rank, rank === visibleCells - 1), "[]");
+    // A cell glints when it is the assembly's leading cell or when this
+    // sparkle frame picked it.
+    const glint = rank === visibleCells - 1 || (sparkles?.has(key) ?? false);
+    out += ansiFg(colorForPiece(piece, row, rank, glint), "[]");
   }
   return out;
+}
+
+/** Pick a handful of distinct settled cells to glint for one sparkle frame. */
+function pickSparkles(matrix: Matrix, count: number, rand: () => number): Set<string> {
+  const keys = Array.from(matrix.ranks.keys());
+  const chosen = new Set<string>();
+  const target = Math.min(Math.max(0, count), keys.length);
+  for (let guard = 0; chosen.size < target && guard < target * 8; guard++) {
+    chosen.add(keys[Math.floor(rand() * keys.length)]);
+  }
+  return chosen;
 }
 
 interface OutStream {
@@ -178,6 +198,10 @@ export interface RenderOptions {
   text?: string;
   frames?: number;
   frameMs?: number;
+  /** Number of post-settle sparkle frames (shimmer mode). `0` disables it. */
+  sparkleFrames?: number;
+  /** Delay between sparkle frames, in milliseconds. */
+  sparkleMs?: number;
   stream?: OutStream;
 }
 
@@ -201,6 +225,14 @@ export function renderBanner(options: RenderOptions = {}): void {
 
   stream.write("\n" + Array.from({ length: ROWS }, () => "").join("\n") + "\n");
 
+  // Repaint the six rows in place; optionally with this frame's sparkle set.
+  const paintRows = (sparkles?: ReadonlySet<string>): void => {
+    stream.write(`\x1b[${ROWS}A\r`);
+    for (let r = 0; r < ROWS; r++) {
+      stream.write("\x1b[2K" + paintMatrixLine(matrix, r, matrix.totalCells, sparkles) + "\n");
+    }
+  };
+
   if (mode === "shimmer") {
     const frames = Math.max(2, options.frames ?? 42);
     const frameMs = Math.max(1, options.frameMs ?? 18);
@@ -215,10 +247,21 @@ export function renderBanner(options: RenderOptions = {}): void {
     }
   }
 
-  stream.write(`\x1b[${ROWS}A\r`);
-  for (let r = 0; r < ROWS; r++) {
-    stream.write("\x1b[2K" + paintMatrixLine(matrix, r, matrix.totalCells) + "\n");
+  // Settle on the completed wordmark.
+  paintRows();
+
+  // Sparkle pass — a few settled cells glint bright each frame, then a clean
+  // final settle. Shimmer only; `sparkleFrames: 0` disables it.
+  if (mode === "shimmer") {
+    const sparkleFrames = Math.max(0, options.sparkleFrames ?? 22);
+    const sparkleMs = Math.max(1, options.sparkleMs ?? 36);
+    for (let f = 0; f < sparkleFrames; f++) {
+      paintRows(pickSparkles(matrix, 3 + (f % 4), Math.random));
+      sleepSync(sparkleMs);
+    }
+    if (sparkleFrames > 0) paintRows();
   }
+
   stream.write("\n");
 }
 

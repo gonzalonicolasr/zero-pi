@@ -86,10 +86,34 @@ test("renderBanner on a non-tty stream prints the banner plain", () => {
 test("renderBanner shimmer on a tty stream assembles coloured frames", () => {
   withColorEnv(null, "1", () => {
     const out = collector(true);
-    renderBanner({ mode: "shimmer", stream: out, frames: 3, frameMs: 1 });
+    renderBanner({ mode: "shimmer", stream: out, frames: 3, frameMs: 1, sparkleFrames: 0 });
     const text = out.text();
     assert.ok(text.includes("\x1b[38;2;"), "frames carry 24-bit colour escapes");
     assert.ok(text.includes("\x1b[6A"), "frames reposition the cursor to redraw in place");
     assert.ok(text.includes("[]"), "the settled frame carries the completed cells");
+  });
+});
+
+test("renderBanner shimmer runs a sparkle pass after settling", () => {
+  withColorEnv(null, "1", () => {
+    const countRepaints = (text: string): number => text.split("\x1b[6A").length - 1;
+
+    const noSparkle = collector(true);
+    renderBanner({ mode: "shimmer", stream: noSparkle, frames: 3, frameMs: 1, sparkleFrames: 0 });
+
+    const withSparkle = collector(true);
+    renderBanner({
+      mode: "shimmer",
+      stream: withSparkle,
+      frames: 3,
+      frameMs: 1,
+      sparkleFrames: 5,
+      sparkleMs: 1,
+    });
+
+    assert.ok(
+      countRepaints(withSparkle.text()) > countRepaints(noSparkle.text()),
+      "the sparkle pass adds extra in-place repaint frames",
+    );
   });
 });

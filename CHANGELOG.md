@@ -15,6 +15,22 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.22] - 2026-05-19
+
+### Added — banner sparkle pass
+
+After the ZERO wordmark assembles and settles, a short sparkle pass runs in
+shimmer mode: a few cells glint bright each frame for ~0.8s, then a clean
+final settle. Controlled by the new `sparkleFrames` / `sparkleMs` render
+options; `ZERO_BANNER=static` or `off` skip it as before.
+
+### Changed — no fenced code blocks in chat output
+
+pi's chat renders a triple-backtick fenced code block with the backticks
+showing literally. The Output Contract now tells the orchestrator to avoid
+fenced blocks entirely — commands and snippets go as two-space-indented plain
+lines or single-backtick inline code, which pi renders cleanly.
+
 ## [0.1.21] - 2026-05-19
 
 ### Changed — Spanish, low-noise SDD output

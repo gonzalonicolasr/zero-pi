@@ -166,6 +166,11 @@ your internal reasoning. Reference an artifact by its path; never paste its
 contents. Summarize each sub-agent's result in one short message — synthesize,
 do not relay.
 
+**Formatting.** pi's chat shows a triple-backtick fenced code block with the
+backticks rendered literally — never use one. Present commands, paths, and
+snippets as plain lines indented two spaces, or inline with single backticks.
+Keep the rest plain text; bold and single-backtick inline code render fine.
+
 **Approval question.** In interactive mode, after the phase summary, ask a
 single Spanish question — `¿Continuamos?` — never a bilingual one. Accept
 continue, stop, or feedback.
