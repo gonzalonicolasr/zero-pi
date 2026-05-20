@@ -15,6 +15,14 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.41] - 2026-05-19
+
+### Changed — brand (www.ceroclawd.com) is violet
+
+The `www.ceroclawd.com` brand in the statusline was amber; set to violet to
+match the user's reference statusline. (Diff parsing unchanged — `+`/`-` from
+`git diff --shortstat`, tracked-modified lines only.)
+
 ## [0.1.40] - 2026-05-19
 
 ### Fixed — statusline tokens were stuck at 0

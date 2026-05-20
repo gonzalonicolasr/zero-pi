@@ -98,7 +98,7 @@ export function composeStatusline(p: StatuslineParts): string {
 
   if (p.branch) parts.push(fg(STEEL, p.branch));
 
-  if (p.brand) parts.push(fg(AMBER, p.brand));
+  if (p.brand) parts.push(fg(VIOLET, p.brand));
 
   return parts.join(SEP);
 }
