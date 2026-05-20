@@ -142,58 +142,27 @@ export function bannerBlock(width: number): string[] {
   return [ornament(width), ...renderLogo(width), center(tag, width), ornament(width)];
 }
 
-/** The slice of pi's UI surface this extension uses. */
-interface PiUI {
-  setWidget(id: string, lines: string[]): void;
-}
-interface PiSessionContext {
-  ui?: PiUI;
-}
-interface PiAPI {
-  on(event: string, handler: (event: unknown, ctx: PiSessionContext) => void): void;
-}
-
-/** Stable widget id — re-installing with the same id replaces the previous lines. */
-const WIDGET_ID = "zero-banner";
-
-/**
- * Install (or refresh) the banner as a pi-managed widget above the editor.
- *
- * Using `ctx.ui.setWidget` instead of a one-shot `stdout.write` means pi owns
- * the lines and redraws them on every resize, every reload, every session
- * restart — so the banner survives maximize/minimize instead of vanishing into
- * scrollback. The crash this file's earlier comment warned about was the
- * animated 140 ms re-render loop; a static widget set once per `session_start`
- * has no timer and re-uses the same id, so it never spams.
- */
-function installWidget(ctx: PiSessionContext): void {
-  if (!ctx?.ui || typeof ctx.ui.setWidget !== "function") return;
-  if (process.env.NO_COLOR) return;
-  const cols = process.stdout?.columns && process.stdout.columns > 0 ? process.stdout.columns : 80;
-  ctx.ui.setWidget(WIDGET_ID, bannerBlock(cols));
-}
-
 /**
  * The pi extension entry point.
  *
- * Hooks `session_start` (fires on startup, reload, new, resume, fork) and
- * installs the banner as a pi-managed widget above the editor — so pi keeps it
- * rendered and redraws it on resize. Disabled with `ZERO_HEADER=off`.
- * Defensive: any failure of registration or the widget install is swallowed —
- * a banner must never break a pi session.
+ * Writes the banner ONCE to stdout at extension load — pi loads extensions
+ * before its TUI takes over the screen, so the banner ends up at the very top
+ * of the terminal scrollback, above everything else. `setWidget` was tried
+ * (0.1.33–0.1.37) but pi positions widgets above the editor, not at the top
+ * of the viewport — short chats showed the banner in the middle.
+ *
+ * Known tradeoff: resizing the terminal lets pi clear/reflow its TUI area, and
+ * the one-shot banner in scrollback can scroll out of view. That is normal
+ * CLI startup-banner behavior. `ZERO_HEADER=off` disables it.
  */
-export default function register(pi?: unknown): void {
+export default function register(_pi?: unknown): void {
   try {
     if ((process.env.ZERO_HEADER ?? "").trim().toLowerCase() === "off") return;
-    if (!pi || typeof (pi as PiAPI).on !== "function") return;
-    (pi as PiAPI).on("session_start", (_event, ctx) => {
-      try {
-        installWidget(ctx);
-      } catch {
-        // A widget install failure must never break a pi session.
-      }
-    });
+    const stream = process.stdout;
+    if (!stream || !stream.isTTY || process.env.NO_COLOR) return;
+    const width = stream.columns && stream.columns > 0 ? stream.columns : 80;
+    stream.write("\n" + bannerBlock(width).join("\n") + "\n\n");
   } catch {
-    // Registration itself must never break a pi session.
+    // A banner failure must never break a pi session.
   }
 }

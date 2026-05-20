@@ -15,6 +15,20 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.38] - 2026-05-19
+
+### Reverted — banner is a one-shot stdout write again
+
+0.1.33–0.1.37 installed the banner as a pi-managed widget via
+`ctx.ui.setWidget` so it would survive terminal resize. But pi positions
+widgets **above the editor**, not at the top of the viewport — with a short
+chat the banner ended up centered in the empty space between the chat and
+the editor, not at the top. Reverted to a one-shot `process.stdout.write`
+at extension load, so the banner sits at the top of the terminal scrollback
+where a CLI startup banner belongs. Tradeoff: a terminal resize can scroll
+it out of view (normal CLI behavior). pi has no `setHeader` / top-anchored
+widget API, so this is the only way to put it at the top.
+
 ## [0.1.37] - 2026-05-19
 
 ### Changed — accent color is now violet
