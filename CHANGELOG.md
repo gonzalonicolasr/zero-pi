@@ -15,6 +15,21 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.39] - 2026-05-19
+
+### Added — colored statusline footer (`zero-statusline.ts`)
+
+New pi-managed footer status that shows, with the theme's colors:
+
+  `claude-opus-4-7 · tok ↑12.3K ↓4.1K · diff +50/-12 · ctx 45% · master · www.ceroclawd.com`
+
+Model in violet, tokens cyan/blue (cumulative for the session), git diff
+mint/rose, context % mint→amber→rose by load, branch steel,
+`www.ceroclawd.com` brand in amber. No timer — refreshes on `session_start`,
+`model_select`, `message_update` (token usage), and `tool_execution_end`
+(re-reads `git diff --shortstat`). Pure formatters (`formatTokenCount`,
+`ctxColor`, `shortModel`, `composeStatusline`) exported and unit-tested.
+
 ## [0.1.38] - 2026-05-19
 
 ### Reverted — banner is a one-shot stdout write again

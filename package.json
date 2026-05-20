@@ -1,6 +1,6 @@
 {
   "name": "@gonrocca/zero-pi",
-  "version": "0.1.38",
+  "version": "0.1.39",
   "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow, per-phase model autotune, and skill auto-learning. Adds capability to pi without modifying pi.",
   "type": "module",
   "keywords": [
@@ -24,6 +24,7 @@
     ],
     "extensions": [
       "./extensions/zero-banner.ts",
+      "./extensions/zero-statusline.ts",
       "./extensions/working-phrases.ts",
       "./extensions/win-tree-kill.ts",
       "./extensions/sdd-agents.ts",
@@ -39,6 +40,7 @@
     "skills",
     "themes",
     "extensions/zero-banner.ts",
+    "extensions/zero-statusline.ts",
     "extensions/working-phrases.ts",
     "extensions/win-tree-kill.ts",
     "extensions/sdd-agents.ts",
