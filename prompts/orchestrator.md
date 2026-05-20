@@ -103,6 +103,55 @@ and the adversarial veredicto. Delegate each phase to its sub-agent and wait
 for its result. The orchestrator keeps control of phase order and the round
 count — the sub-agents only carry out their own phase.
 
+**Thin briefs — reference, never re-paste.** A sub-agent reads the
+`.sdd/<slug>/` artifacts itself, so its brief carries only what it needs to
+start: the feature slug, the artifact directory, and — for a build batch — the
+batch's task numbers (plus, on a `corregir` re-run, the veredicto's defect
+list). Never paste artifact contents — requirements, design, task text, prior
+findings, file dumps — into a brief; reference them by path. Re-passing context
+the sub-agent can read for itself is wasted tokens on every invocation, and a
+batched build issues many briefs.
+
+## Build batching
+
+The **build** phase is not one monolithic sub-agent that implements every
+remaining task in a single growing context — that is what drove a real run to
+463k tokens, 39 minutes, and a dropped connection. Run build as a loop of
+bounded batches, each a fresh `zero-build` sub-agent.
+
+Before delegating build — a fresh build phase, or a `corregir`/`replantear`
+re-run — drive this loop:
+
+1. Read the unchecked (`[ ]`) tasks from `tasks.md` in listed order and their
+   `review: ~N changed lines` estimates from the `## Review Workload` section.
+2. Group the unchecked tasks into ordered batches with this exact, deterministic
+   rule:
+   - Walk the unchecked tasks in order, accumulating into the current batch.
+   - Start a new batch when adding the next task would push the batch's summed
+     estimate over **800 changed lines**, or when the current batch already
+     holds **4 tasks** — whichever comes first.
+   - A single task whose own estimate exceeds 800 is its own batch.
+   - If estimates are missing or unparseable, group by the 4-task cap alone.
+3. Invoke `zero-build` once per batch, in listed order. Each brief is a fresh
+   sub-agent (no carried conversation) and names the batch's task numbers
+   explicitly (for example, "implement tasks 4–6 only, then return"). Emit the
+   build phase-start line for each batch, noting the batch as `lote <i>/<n>`, so
+   the loop stays visible. Wait for each batch to return before starting the
+   next.
+4. Repeat until `tasks.md` has no `[ ]` task left, then run **veredicto** once.
+   Never run veredicto between batches.
+
+**Single-batch features behave exactly like before:** when every unchecked task
+fits one batch, build is invoked exactly once.
+
+**Batches are not rounds.** An entire batched build — however many batches it
+took — is one build phase and counts as one build/veredicto round. Batch count
+never touches the iteration cap. A `corregir` verdict re-runs the whole build
+phase (re-batching whatever tasks its defects reopened) as the next round.
+
+**Resume is unaffected.** Each batch marks its tasks `[x]` as they land, so an
+interrupted batched build resumes from the first `[ ]` task with no new state.
+
 ## Model configuration
 
 The per-phase model assignments live in `~/.pi/zero.json`: `models` maps each

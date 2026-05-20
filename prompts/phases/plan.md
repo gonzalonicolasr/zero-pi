@@ -54,9 +54,13 @@ Write all four into `.sdd/<slug>/`:
   `### REQ:` name line. Any section may be empty or absent; a block name must be
   unique within and across the delta's sections and not collide with an existing
   store name unless it is the target of MODIFIED/REMOVED.
-- **`design.md`** — how it is built (unchanged from before).
+- **`design.md`** — how it is built. It must carry forward the `## Code roots`
+  section from the explore findings — the absolute paths of the code directories
+  this feature touches — so the build phase never has to search for the code.
 - **`tasks.md`** — the ordered task list, keeping its `## Review Workload`
-  section (see below).
+  section (see below). Every task entry must carry a `files:` bullet naming the
+  absolute (or code-root-relative) paths it creates or edits, marking new files
+  `(new)`, so the build phase edits them directly instead of rediscovering them.
 
 Honour the prior-run lessons carried in the explore findings: when a past run
 was sent back with `replantear`, do not repeat the plan mistake it recorded.
