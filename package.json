@@ -1,7 +1,7 @@
 {
   "name": "@gonrocca/zero-pi",
-  "version": "0.1.44",
-  "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow, per-phase model autotune, and skill auto-learning. Adds capability to pi without modifying pi.",
+  "version": "0.1.45",
+  "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow (explore → plan → build → veredicto) with per-phase model autotune and token-efficient batched builds. Adds capability to pi without modifying pi.",
   "type": "module",
   "keywords": [
     "pi",
@@ -22,6 +22,7 @@
     "themes": [
       "./themes"
     ],
+    "image": "https://raw.githubusercontent.com/gonzalonicolasr/zero-pi/main/assets/preview.png",
     "extensions": [
       "./extensions/zero-banner.ts",
       "./extensions/zero-statusline.ts",
@@ -39,6 +40,7 @@
     "prompts",
     "skills",
     "themes",
+    "assets/preview.png",
     "extensions/zero-banner.ts",
     "extensions/zero-statusline.ts",
     "extensions/working-phrases.ts",
