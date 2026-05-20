@@ -7,10 +7,44 @@ import assert from "node:assert/strict";
 
 import {
   composeStatusline,
+  computeSessionTokens,
   ctxColor,
   formatTokenCount,
   shortModel,
 } from "./zero-statusline.ts";
+
+// ─── computeSessionTokens ──────────────────────────────────────────────────
+
+test("computeSessionTokens: sums assistant input/output across entries", () => {
+  const sm = {
+    getEntries: () => [
+      { type: "message", message: { role: "user", usage: { input: 999, output: 999 } } },
+      { type: "message", message: { role: "assistant", usage: { input: 1000, output: 200 } } },
+      { type: "tool_call", message: { role: "assistant", usage: { input: 9999, output: 9999 } } },
+      { type: "message", message: { role: "assistant", usage: { input: 500, output: 50 } } },
+    ],
+  };
+  assert.deepEqual(computeSessionTokens(sm), { input: 1500, output: 250 });
+});
+
+test("computeSessionTokens: missing sessionManager / entries returns zeros", () => {
+  assert.deepEqual(computeSessionTokens(undefined), { input: 0, output: 0 });
+  assert.deepEqual(computeSessionTokens({}), { input: 0, output: 0 });
+  assert.deepEqual(computeSessionTokens({ getEntries: () => [] }), { input: 0, output: 0 });
+});
+
+test("computeSessionTokens: malformed entries / usage fields are ignored", () => {
+  const sm = {
+    getEntries: () => [
+      { type: "message" }, // no message field
+      { type: "message", message: { role: "assistant" } }, // no usage
+      { type: "message", message: { role: "assistant", usage: {} } }, // empty usage
+      { type: "message", message: { role: "assistant", usage: { input: "x", output: null } } as any },
+      { type: "message", message: { role: "assistant", usage: { input: -5, output: 10 } } },
+    ],
+  };
+  assert.deepEqual(computeSessionTokens(sm), { input: 0, output: 10 });
+});
 
 // ─── formatTokenCount ──────────────────────────────────────────────────────
 

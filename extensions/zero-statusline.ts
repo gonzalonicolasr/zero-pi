@@ -113,10 +113,21 @@ interface PiModel {
   name?: string;
   contextWindow?: number;
 }
+interface PiSessionEntry {
+  type?: string;
+  message?: {
+    role?: string;
+    usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number };
+  };
+}
+interface PiSessionManager {
+  getEntries?(): PiSessionEntry[];
+}
 interface PiCtx {
   ui?: PiUI;
   model?: PiModel;
   cwd?: string;
+  sessionManager?: PiSessionManager;
   getContextUsage?(): { tokens?: number } | null | undefined;
 }
 interface PiAPI {
@@ -127,9 +138,11 @@ const STATUS_ID = "zero-statusline";
 const BRAND = "www.ceroclawd.com";
 
 // ─── Session-scoped state ──────────────────────────────────────────────────
+// Only git stays in state (it's expensive to re-shell on every render);
+// tokens are computed fresh from sessionManager.getEntries() per render —
+// the same pattern pi's native footer uses, so it can never double-count a
+// streamed message_update.
 
-let tokensIn = 0;
-let tokensOut = 0;
 let branch: string | undefined;
 let added = 0;
 let removed = 0;
@@ -137,16 +150,42 @@ let lastCtx: PiCtx | undefined;
 let gitInFlight = false;
 
 function resetSessionState(): void {
-  tokensIn = 0;
-  tokensOut = 0;
   branch = undefined;
   added = 0;
   removed = 0;
 }
 
+/**
+ * Sum assistant input/output tokens across the full session, matching pi's
+ * own footer logic. Defensive: a missing sessionManager or entries iteration
+ * failure yields zero, never throws.
+ */
+export function computeSessionTokens(
+  sessionManager: PiSessionManager | undefined,
+): { input: number; output: number } {
+  if (!sessionManager || typeof sessionManager.getEntries !== "function") {
+    return { input: 0, output: 0 };
+  }
+  let input = 0;
+  let output = 0;
+  try {
+    for (const entry of sessionManager.getEntries()) {
+      if (entry?.type !== "message") continue;
+      if (entry.message?.role !== "assistant") continue;
+      const u = entry.message.usage;
+      if (typeof u?.input === "number" && u.input > 0) input += u.input;
+      if (typeof u?.output === "number" && u.output > 0) output += u.output;
+    }
+  } catch {
+    // session iteration failure — return what we summed so far.
+  }
+  return { input, output };
+}
+
 // ─── Git read (best-effort, async, deduped) ────────────────────────────────
 
-async function readGit(cwd: string | undefined): Promise<void> {
+async function readGit(cwdHint: string | undefined): Promise<void> {
+  const cwd = cwdHint || process.cwd();
   if (!cwd || gitInFlight) return;
   gitInFlight = true;
   try {
@@ -187,10 +226,11 @@ function render(ctx: PiCtx): void {
     const window = ctx.model?.contextWindow && ctx.model.contextWindow > 0 ? ctx.model.contextWindow : 200_000;
     const used = ctx.getContextUsage?.()?.tokens;
     const ctxPercent = typeof used === "number" && used >= 0 ? Math.min(100, (used / window) * 100) : undefined;
+    const tokens = computeSessionTokens(ctx.sessionManager);
     const text = composeStatusline({
       model: shortModel(ctx.model?.id ?? ctx.model?.name),
-      tokensIn,
-      tokensOut,
+      tokensIn: tokens.input,
+      tokensOut: tokens.output,
       diffAdded: added,
       diffRemoved: removed,
       ctxPercent,
@@ -237,19 +277,12 @@ export default function register(pi?: unknown): void {
       }
     });
 
-    api.on("message_update", (event, ctx) => {
+    api.on("message_update", (_event, ctx) => {
       try {
         lastCtx = ctx;
-        const usage = (event as { message?: { usage?: { inputTokens?: unknown; outputTokens?: unknown } } })?.message
-          ?.usage;
-        if (usage) {
-          if (typeof usage.inputTokens === "number" && usage.inputTokens > 0) {
-            tokensIn += usage.inputTokens;
-          }
-          if (typeof usage.outputTokens === "number" && usage.outputTokens > 0) {
-            tokensOut += usage.outputTokens;
-          }
-        }
+        // Tokens are computed from sessionManager.getEntries() in render() —
+        // no event-side accumulation, so a streamed message_update repeat
+        // can never double-count.
         render(ctx);
       } catch {
         // never break a session

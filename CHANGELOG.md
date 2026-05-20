@@ -15,6 +15,21 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.40] - 2026-05-19
+
+### Fixed — statusline tokens were stuck at 0
+
+`zero-statusline.ts` accumulated tokens from `message_update` events using
+`usage.inputTokens` / `usage.outputTokens` — but pi names those fields
+`usage.input` / `usage.output`, so the accumulator never added anything.
+Replaced with `computeSessionTokens(sessionManager)` that sums assistant
+input/output across `sessionManager.getEntries()` on every render — exactly
+how pi's own footer computes the same numbers, and immune to streamed
+`message_update` repeats double-counting. `readGit` also gained a
+`process.cwd()` fallback so the branch shows even when `ctx.cwd` is absent.
+New unit test covers the session-token sum (assistant-only, malformed
+entries ignored, missing sessionManager → zeros).
+
 ## [0.1.39] - 2026-05-19
 
 ### Added — colored statusline footer (`zero-statusline.ts`)
