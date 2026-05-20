@@ -15,6 +15,16 @@ already names the culprit — a `corregir` blames `build`, a `replantear` blames
 every phase with tier headroom (v1's blunt behaviour). Requirements written;
 design pending.
 
+## [0.1.37] - 2026-05-19
+
+### Changed — accent color is now violet
+
+The `zero-sdd` theme's `accent` token was `cyan`. Set to `violet` (`#af8aff`)
+so cursor, picker frame, highlighted rows and every other accent-tinted UI
+element matches the banner — the "active typing zone" reads as violet without
+having to recolor default text. `mdLink` / `toolTitle` / `syntaxFunction` etc.
+still point at `cyan` directly so they keep their cyan tint.
+
 ## [0.1.36] - 2026-05-19
 
 ### Changed — your input messages are violet
