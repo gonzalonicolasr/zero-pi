@@ -13,6 +13,17 @@ orchestrator's existing run-trace machinery — the Cortex `zero-run/<slug>` sav
 and the `~/.pi/zero-runs.jsonl` append. Do not write a separate verdict file;
 `.sdd/` artifacts stay plan state only.
 
+**Locating the code — read, do not search.** To check the build against the
+plan, read the `## Code roots` section in `design.md` (or the explore findings)
+for the absolute paths this feature touches, and read the build result for the
+files it changed — go straight to those paths to inspect the changes and run the
+tests. Do **not** run a filesystem-wide `find`/`grep` to rediscover where the
+code lives, and do **not** re-read a file you have already read this review
+unless it changed since; repeated re-reading is the main avoidable token cost on
+the review's model, which is often the most expensive in the pipeline. A single
+targeted search to fill a genuine gap is fine; a full-tree scan is not. This
+bounds cost only — it never lowers the bar for the verdict.
+
 Review the build adversarially, with a fresh perspective. Check it against the
 plan's requirements, run the tests yourself, and look for gaps, regressions,
 and unmet acceptance criteria.
