@@ -14,6 +14,16 @@ Investigate the codebase and the feature request read-only. Do not modify any
 files. Map the relevant modules, the existing patterns and conventions, the
 integration points, and the constraints. Identify the risks and the unknowns.
 
+**Size exploration to the request.** Match breadth to what the change actually
+needs. A localized change — copy/text, one component, a config value, a single
+endpoint — needs only the files that render or define it plus their immediate
+wiring; do not map the full permission/billing model or unrelated subsystems
+unless the request touches them. A cross-cutting or architectural change earns
+full breadth. Stop once you can name the exact files to change and their
+constraints — reading past that point burns tokens without improving the plan.
+As a rough gauge, a localized change rarely needs more than ~20 tool calls; if
+you blow past that on a small request, you are over-exploring.
+
 Produce a concise findings report the **plan** phase can build on: what exists,
 what is relevant to the request, and what to watch out for.
 
