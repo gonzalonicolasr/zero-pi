@@ -1,0 +1,18 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+
+import { runZeroIssue } from "./zero-issue-extension.ts";
+
+function fake(responses: Array<{ code?: number; out?: string; err?: string; error?: Error }>) { const calls: string[][] = []; const bodies: string[] = []; const spawn = (_: string, args: string[]) => { calls.push(args); const bodyFile = args[args.indexOf("--body-file") + 1]; if (args.includes("--body-file") && bodyFile) bodies.push(readFileSync(bodyFile, "utf8")); const r = responses.shift() ?? { out: "" }; if (r.error) throw r.error; const child = new EventEmitter() as any; child.stdout = new Readable({ read() {} }); child.stderr = new Readable({ read() {} }); queueMicrotask(() => { if (r.out) child.stdout.emit("data", r.out); if (r.err) child.stderr.emit("data", r.err); child.emit("close", r.code ?? 0); }); return child; }; return { spawn, calls, bodies }; }
+function ctx() { const notes: any[] = []; return { notes, ctx: { ui: { notify: (m: string, t?: string) => notes.push([m, t]) } } }; }
+function fixture(fn: () => Promise<void> | void) { return async () => { const dir = mkdtempSync(join(tmpdir(), "zero-issue-")); const old = process.cwd(); process.chdir(dir); try { mkdirSync(join(".sdd", "alpha"), { recursive: true }); writeFileSync(join(".sdd", "alpha", "proposal.md"), "# P\n\nDo thing.\n\n## Alcance\n\nOnly this."); writeFileSync(join(".sdd", "alpha", "spec.md"), "### REQ: issue\n\nAcceptance criteria:\n- creates issue"); await fn(); } finally { process.chdir(old); rmSync(dir, { recursive: true, force: true }); } }; }
+
+test("/zero-issue reports missing gh", fixture(async () => { const c = ctx(); await runZeroIssue("alpha", c.ctx as any, fake([{ error: new Error("ENOENT") }]).spawn as any); assert.equal(c.notes[0][1], "error"); }));
+test("/zero-issue links exact duplicate without creating", fixture(async () => { const f = fake([{ out: "gh version 2.0.0" }, { out: '[{"number":5,"title":"Do thing.","url":"u"}]' }]); const c = ctx(); await runZeroIssue("alpha", c.ctx as any, f.spawn as any); assert.equal(JSON.parse(readFileSync(join(".sdd", "alpha", "links.json"), "utf8")).issueNumber, 5); assert.equal(f.calls.some((a) => a[0] === "issue" && a[1] === "create"), false); }));
+test("/zero-issue creates with body-file when no duplicate exists", fixture(async () => { const f = fake([{ out: "gh version 2.0.0" }, { out: "[]" }, { out: '[{"name":"bug"}]' }, { out: "https://github.com/o/r/issues/6" }]); const c = ctx(); await runZeroIssue("alpha --type=bug", c.ctx as any, f.spawn as any); assert.equal(JSON.parse(readFileSync(join(".sdd", "alpha", "links.json"), "utf8")).issueNumber, 6); const call = f.calls.at(-1) ?? []; assert.equal(call.includes("bug"), true); assert.equal(call.includes("--body-file"), true); assert.equal(call.includes("--json"), false); assert.match(f.bodies[0], /## Contexto[\s\S]*## Alcance[\s\S]*## Criterios de aceptación/); assert.equal(existsSync(call[5]), false); }));
+test("/zero-issue reports skipped labels and does not write links when create fails", fixture(async () => { const f = fake([{ out: "gh version 2.0.0" }, { out: "[]" }, { out: "[]" }, { code: 1, err: "bad" }]); const c = ctx(); await runZeroIssue("alpha", c.ctx as any, f.spawn as any); assert.equal(existsSync(join(".sdd", "alpha", "links.json")), false); assert.match(c.notes[0][0], /falló/); }));

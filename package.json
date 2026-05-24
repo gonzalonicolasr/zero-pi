@@ -1,6 +1,6 @@
 {
   "name": "@gonrocca/zero-pi",
-  "version": "0.1.47",
+  "version": "0.1.49",
   "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow (explore → plan → build → veredicto) with per-phase model autotune and token-efficient batched builds. Adds capability to pi without modifying pi.",
   "type": "module",
   "keywords": [
@@ -33,7 +33,13 @@
       "./extensions/zero-models.ts",
       "./extensions/autotune-extension.ts",
       "./extensions/spec-merge-extension.ts",
-      "./extensions/provider-guard-extension.ts"
+      "./extensions/zero-validate-extension.ts",
+      "./extensions/zero-status-extension.ts",
+      "./extensions/zero-pr-extension.ts",
+      "./extensions/zero-issue-extension.ts",
+      "./extensions/zero-diff-extension.ts",
+      "./extensions/provider-guard-extension.ts",
+      "./extensions/scan-guard-extension.ts"
     ]
   },
   "files": [
@@ -53,14 +59,27 @@
     "extensions/autotune-extension.ts",
     "extensions/spec-merge.ts",
     "extensions/spec-merge-extension.ts",
+    "extensions/zero-validate.ts",
+    "extensions/zero-validate-extension.ts",
+    "extensions/zero-status.ts",
+    "extensions/zero-status-extension.ts",
+    "extensions/pr-body.ts",
+    "extensions/sdd-links.ts",
+    "extensions/gh-runner.ts",
+    "extensions/zero-pr-extension.ts",
+    "extensions/zero-issue-extension.ts",
+    "extensions/zero-diff-extension.ts",
     "extensions/provider-guard.ts",
     "extensions/provider-guard-extension.ts",
+    "extensions/scan-guard.ts",
+    "extensions/scan-guard-extension.ts",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "test": "node --test --experimental-strip-types",
-    "prepublishOnly": "node --test --experimental-strip-types"
+    "prepublishOnly": "node --test --experimental-strip-types",
+    "pack-check": "npm pack --dry-run"
   },
   "engines": {
     "node": ">=20.6.0"

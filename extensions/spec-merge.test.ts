@@ -29,7 +29,7 @@ function block(name: string, body = `Body of ${name}.`): RequirementBlock {
 
 /** Build a delta, defaulting every bucket to empty. */
 function delta(over: Partial<SpecDelta> = {}): SpecDelta {
-  return { added: [], modified: [], removed: [], ...over };
+  return { added: [], modified: [], removed: [], renamed: [], ...over };
 }
 
 /** Render a single requirement block to its `### REQ:` markdown form. */
@@ -117,6 +117,7 @@ test("parseDelta: absent sections yield empty buckets (ADDED-only delta)", () =>
   assert.equal(d.added[0].name, "new-one");
   assert.equal(d.modified.length, 0);
   assert.equal(d.removed.length, 0);
+  assert.equal(d.renamed.length, 0);
 });
 
 test("parseDelta: all three sections parse into their buckets", () => {
@@ -177,6 +178,69 @@ test("parseDelta: malformed delta does not throw — empty-name block surfaces",
   const d = parseDelta("## ADDED\n\n### REQ:\n\nbody");
   assert.equal(d.added.length, 1);
   assert.equal(d.added[0].name, "");
+});
+
+// ---------------------------------------------------------------------------
+// RENAMED
+// ---------------------------------------------------------------------------
+
+test("parseDelta: RENAMED recognises from line and is case-insensitive", () => {
+  const d = parseDelta("## renamed\n\n### REQ: new-name\n\nfrom: old-name\n\nNew body");
+  assert.equal(d.renamed.length, 1);
+  assert.deepEqual(d.renamed[0], { from: "old-name", to: "new-name", body: "New body" });
+});
+
+test("checkGuardrails: RENAMED guardrail kinds surface", () => {
+  assert.deepEqual(kinds(checkGuardrails([block("a")], delta({ renamed: [{ from: "ghost", to: "b", body: "body" }] }))), ["renamed-missing"]);
+  assert.deepEqual(kinds(checkGuardrails([block("a"), block("b")], delta({ renamed: [{ from: "a", to: "b", body: "body" }] }))), ["renamed-to-collision"]);
+  assert.deepEqual(kinds(checkGuardrails([block("a")], delta({ added: [block("b")], renamed: [{ from: "a", to: "b", body: "body" }] }))), ["renamed-duplicate"]);
+  assert.deepEqual(kinds(checkGuardrails([block("a")], delta({ renamed: [{ from: "", to: "b", body: "body" }] }))), ["renamed-parse-error"]);
+});
+
+test("mergeDelta: RENAMED preserves store position and summary", () => {
+  const store = storeMarkdown(["a", "body a"], ["c", "body c"]);
+  const result = mergeDelta(store, "## RENAMED\n\n### REQ: b\n\nfrom: a\n\nbody b");
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    const blocks = parseStore(result.store);
+    assert.deepEqual(blocks.map((b) => b.name), ["b", "c"]);
+    assert.equal(blocks[0].body, "body b");
+    assert.deepEqual(result.summary.renamed, [{ from: "a", to: "b" }]);
+  }
+});
+
+test("mergeDelta: RENAMED without body preserves original body", () => {
+  const store = storeMarkdown(["foo", "original body"], ["next", "next body"]);
+  const result = mergeDelta(store, "## RENAMED\n\n### REQ: bar\n\nfrom: foo");
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    const blocks = parseStore(result.store);
+    assert.deepEqual(blocks.map((b) => b.name), ["bar", "next"]);
+    assert.equal(blocks[0].body, "original body");
+  }
+});
+
+test("mergeDelta: RENAMED then MODIFIED target succeeds", () => {
+  const store = storeMarkdown(["foo", "old"], ["next", "next body"]);
+  const deltaText = "## RENAMED\n\n### REQ: bar\n\nfrom: foo\n\nrename body\n\n## MODIFIED\n\n### REQ: bar\n\nmodified body";
+  const result = mergeDelta(store, deltaText);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    const blocks = parseStore(result.store);
+    assert.deepEqual(blocks.map((b) => b.name), ["bar", "next"]);
+    assert.equal(blocks[0].body, "modified body");
+  }
+});
+
+test("isEmptyDelta: RENAMED-only delta is not empty", () => {
+  assert.equal(isEmptyDelta(parseDelta("## RENAMED\n\n### REQ: b\n\nfrom: a\n\nbody")), false);
+  assert.equal(isEmptyDelta(delta()), true);
+});
+
+test("renderStore: round-trips after a merged rename", () => {
+  const result = mergeDelta(storeMarkdown(["old", "old body"]), "## RENAMED\n\n### REQ: new\n\nfrom: old\n\nnew body");
+  assert.equal(result.ok, true);
+  if (result.ok) assert.deepEqual(parseStore(renderStore(parseStore(result.store))), parseStore(result.store));
 });
 
 // ---------------------------------------------------------------------------
@@ -294,7 +358,7 @@ test("mergeDelta: empty-store bootstrap — all-ADDED delta merges cleanly", () 
   const result = mergeDelta("", deltaText);
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.deepEqual(result.summary, { added: ["first"], modified: [], removed: [] });
+    assert.deepEqual(result.summary, { added: ["first"], modified: [], removed: [], renamed: [] });
     const reparsed = parseStore(result.store);
     assert.equal(reparsed.length, 1);
     assert.equal(reparsed[0].name, "first");
@@ -350,7 +414,7 @@ test("mergeDelta: empty delta is ok with the store left structurally unchanged",
   const result = mergeDelta(store, "# Spec delta\n\n## ADDED\n");
   assert.equal(result.ok, true);
   if (result.ok) {
-    assert.deepEqual(result.summary, { added: [], modified: [], removed: [] });
+    assert.deepEqual(result.summary, { added: [], modified: [], removed: [], renamed: [] });
     assert.deepEqual(
       parseStore(result.store).map((b) => b.name),
       ["a"],
@@ -413,6 +477,7 @@ test("mergeDelta: combined ADDED + MODIFIED + REMOVED applies all three", () => 
       added: ["fresh"],
       modified: ["change"],
       removed: ["drop"],
+      renamed: [],
     });
   }
 });

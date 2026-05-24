@@ -7,6 +7,47 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.49] - 2026-05-24
+
+### Added — scan-guard: block filesystem-wide scans
+
+- New extension `scan-guard` (`scan-guard.ts` pure logic + `scan-guard-extension.ts`
+  wiring) hooks the `tool_call` event and **blocks** any shell command whose
+  `find` / `grep -r` / `rg` is rooted at a filesystem root (`/`, a bare drive
+  mount like `/c` or `C:\`, or `~`/`$HOME`), returning a reason that points the
+  agent at the plan's code root. Scoped searches (`find /e/zero/.sdd …`, `rg foo
+  src/`) are always allowed.
+- Motivation: a `zero-veredicto` subagent ran `find / -maxdepth 12 …` to
+  rediscover the code and wedged the whole pipeline for 6+ hours — on Windows
+  that traversal hangs forever forcing OneDrive to hydrate cloud placeholders.
+  The phase prompt already discouraged full-tree scans, but a prompt is not
+  enforcement; this guard is. Degrades to "allow" on any internal error so it
+  can never block a tool by accident or break a session.
+- 23 new tests (`scan-guard.test.ts`, `scan-guard-extension.test.ts`).
+
+### Changed — phase prompts hardened against full-tree scans
+
+- `veredicto.md`: the "Locating the code" guidance is now a hard rule that
+  forbids root-rooted `find`/`grep`/`rg`, explains the Windows/OneDrive hang,
+  and adds a fallback for delta/forge runs with no `design.md` — read the code
+  root from the `Code root:` line in `tasks.md` or the task input.
+- `explore.md`: adds an explicit "scope every search to the project, never the
+  filesystem root" rule.
+- Same edits mirrored in the zero integrator assets (`src/payload/assets/sdd/phases/`).
+
+## [0.1.48] - 2026-05-22
+
+### Added — CI pipeline for zero-pi
+
+- New GitHub Actions workflow `.github/workflows/zero-pi-ci.yml`: runs on push
+  to `main` and PRs touching `packages/zero-pi/**`, matrix Node 20.x / 22.x,
+  executes `npm test` and `npm run pack-check`.
+- New `pack-check` script in `package.json` (`npm pack --dry-run`) used as the
+  packaging gate before publish.
+- README documents the CI gate under a new *Continuous integration* section.
+
+SDD artifacts: `.sdd/zero-pi-improvements/`.
+
 ### autotune v2 — phase attribution (in progress)
 
 Spec-driven work under `.sdd/autotune-phase-attribution/`. The SDD verdict

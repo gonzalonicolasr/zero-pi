@@ -68,6 +68,7 @@ into `/forge` for you.
 | **`/zero-models`** | Pick the model + provider for each SDD phase — a boxed-window picker, or set one directly. |
 | **Autotune** | Learns which model fits each phase from your run history and re-tunes itself. |
 | **`/zero-sync`** | Folds each run's spec delta into a canonical, project-wide spec store. |
+| **PR / Issues** | `/zero-pr <slug>` and `/zero-issue <slug>` create GitHub tracking links from SDD artifacts. |
 | **Run memory** | Every run recalls and saves traces to Cortex, so runs learn from each other. |
 | **Provider guard** | Warns when the `anthropic` provider runs on a metered API key instead of your subscription. |
 | **Startup banner** | The violet ANSI-Shadow `ZERO` wordmark, drawn once at pi startup — `ZERO_HEADER=off` to disable. |
@@ -83,14 +84,61 @@ into `/forge` for you.
 | ------- | ---- |
 | `/forge <feature>` | Run the SDD pipeline — `--continue [slug]` resumes. |
 | `/zero-models [<phase>=[<provider>/]<model>]` | Show or set per-phase models — `autotune=auto\|ask\|off`. |
-| `/zero-sync <slug>` | Fold a run's delta into the canonical spec store. |
+| `/zero-sync <slug>` | Fold a run's spec delta into the canonical spec store; a first all-`## ADDED` delta creates the store lazily. |
+| `/zero-validate <slug>` | Validate a run's proposal/spec/design/tasks artifacts before sync. |
+| `/zero-status` | Show each `.sdd/` run's artifact, sync, latest-verdict, and GitHub-link status. |
+| `/zero-pr <slug>` | Create a GitHub PR from a run that already has verdict `pasa`. |
+| `/zero-issue <slug>` | Create or reuse a GitHub issue for a run and persist the link. |
+| `/zero-diff <slug>` | Preview the logical spec-store merge without writing files. |
 | `/zero-resume` | Write the session handoff note now. |
+
+### PR / Issues
+
+`/zero-pr <slug>` builds a PR title/body from `.sdd/<slug>/proposal.md`,
+`spec.md`, `design.md`, and `tasks.md`, then saves the returned `prNumber` and
+`prUrl` into `.sdd/<slug>/links.json`. It only runs after the run's latest
+recorded verdict is `pasa`; if an issue was already linked, the PR body includes
+`Closes #N`.
+
+`/zero-issue <slug>` searches open GitHub issues for the exact normalized title
+before creating a new one, then saves `issueNumber` and `issueUrl` in the same
+`links.json`. Both commands require the `gh` CLI to be installed and
+authenticated (`gh auth login`). `--type=<label>` is optional: when the label
+exists in the repository it is passed to `gh`, and when it does not exist the
+command continues without it.
+
+The implementation shells out through `gh` rather than GitHub-specific Node
+SDKs, keeping zero-pi dependency-free and portable across Windows, macOS, and
+Linux as long as GitHub CLI is on `PATH`.
+
+### Spec deltas
+
+`/zero-sync` and `/zero-diff` understand four delta sections: `## ADDED`, `## MODIFIED`, `## REMOVED`, and `## RENAMED`. `RENAMED` keeps the requirement's store position while changing its stable name:
+
+```md
+## RENAMED
+
+### REQ: new-name
+
+from: old-name
+
+Updated requirement body.
+
+Acceptance criteria:
+- ...
+```
 
 ## 🔧 Configuration
 
 zero-pi keeps its state in `~/.pi/zero.json` (per-phase models + autotune mode)
 and `~/.pi/zero-runs.jsonl` (the run-metrics log); per-project artifacts live
 under `.sdd/`. Set `ZERO_RESUME=off` to disable the conversation-resume note.
+
+## Continuous integration
+
+The `.github/workflows/zero-pi-ci.yml` workflow runs on every push to `main` and
+on every pull request that touches `packages/zero-pi/**`. It enforces `npm test`
+and `npm run pack-check` for the package.
 
 ## 🔗 Relationship to `zero`
 

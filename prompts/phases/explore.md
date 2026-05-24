@@ -24,6 +24,12 @@ constraints — reading past that point burns tokens without improving the plan.
 As a rough gauge, a localized change rarely needs more than ~20 tool calls; if
 you blow past that on a small request, you are over-exploring.
 
+**Scope every search to the project, never the filesystem root.** Search inside
+the repo/code directory you are working in. A `find`, `grep -r`, or `rg` rooted
+at `/`, a bare drive (`/c`, `C:\`), or `~`/`$HOME` is forbidden — on Windows it
+hangs forever forcing OneDrive to hydrate every cloud placeholder it walks, and
+zero blocks such commands at the tool boundary anyway.
+
 Produce a concise findings report the **plan** phase can build on: what exists,
 what is relevant to the request, and what to watch out for.
 

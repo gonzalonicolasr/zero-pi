@@ -114,6 +114,7 @@ function renderSyncReport(slug: string, date: string, summary: MergeSummary): st
     "",
     section("Added", summary.added),
     section("Modified", summary.modified),
+    section("Renamed", summary.renamed.map((r) => `${r.from} -> ${r.to}`)),
     section("Removed", summary.removed),
   ].join("\n");
 }
@@ -124,6 +125,9 @@ function describeSummary(summary: MergeSummary): string {
   if (summary.added.length > 0) lines.push(`  agregados:    ${summary.added.join(", ")}`);
   if (summary.modified.length > 0) {
     lines.push(`  modificados:  ${summary.modified.join(", ")}  (reemplaza el texto de spec existente)`);
+  }
+  if (summary.renamed.length > 0) {
+    lines.push(`  renombrados:  ${summary.renamed.map((r) => `${r.from} → ${r.to}`).join(", ")}  (mantiene la posición en el store)`);
   }
   if (summary.removed.length > 0) {
     lines.push(`  eliminados:   ${summary.removed.join(", ")}  (borra del store)`);

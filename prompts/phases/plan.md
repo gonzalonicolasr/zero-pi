@@ -85,6 +85,11 @@ means the same number on every run.
   per-task estimates, and the over-budget exceptions list — state "none" when
   there are no exceptions.
 
+When a run is likely to land as a chained PR series, make that explicit in the
+forecast: group tasks into reviewable PR-sized batches, name any ordering
+constraints between batches, and keep each batch small enough that `/zero-pr`
+can produce a focused pull request after `veredicto` returns `pasa`.
+
 **Return contract.** Return a concise result envelope to the orchestrator: your
 phase's outcome (findings, plan, build result, or verdict with its concrete
 reasoning) and the `.sdd/<slug>/` artifact path(s) you touched. No step-by-step
