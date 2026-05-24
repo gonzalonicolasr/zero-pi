@@ -20,7 +20,7 @@ test("extract helpers tolerate normal markdown", () => {
 test("buildPrBody returns title and exact emoji sections in order", () => {
   const { title, body } = buildPrBody({ ...artifacts, verdictReasoning: "npm test" }, { issueNumber: 7 });
   assert.equal(title, "Ship GitHub links.");
-  assert.match(body, /## 🔗 Linked Issue[\s\S]*## 📝 Summary[\s\S]*## 📂 Changes[\s\S]*## 🧪 Test Plan[\s\S]*## ✅ Checklist/);
+  assert.match(body, /## 🔗 Linked Issue[\s\S]*## SDD artifacts[\s\S]*## Requirements[\s\S]*## 📝 Summary[\s\S]*## 📂 Changes[\s\S]*## 🧪 Test evidence[\s\S]*## Risks[\s\S]*## Verdict[\s\S]*## ✅ Checklist/);
   assert.doesNotMatch(body, /Requirements Delta|## Design|## Tasks|Acceptance Criteria/);
   assert.match(body, /Closes #7/);
 });

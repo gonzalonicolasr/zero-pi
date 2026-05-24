@@ -62,6 +62,38 @@ Write all four into `.sdd/<slug>/`:
   absolute (or code-root-relative) paths it creates or edits, marking new files
   `(new)`, so the build phase edits them directly instead of rediscovering them.
 
+## Task schema
+
+Use this exact checklist shape so build/validate/review can parse it without rediscovery:
+
+```markdown
+### T001 — Implement focused capability
+
+- files:
+  - `<root>/src/example.ts`
+  - `<root>/src/example.test.ts` (new)
+- detail: concrete implementation notes and boundaries.
+- evidence: `npm test -- example` passes, or the exact manual check expected.
+- review: ~120 changed lines
+```
+
+Rules:
+- Task ids are monotonic `T###`; keep existing completed ids stable on resume.
+- Add `[P]` only for tasks that are truly parallel-safe, and `[Story:S1]`/`[Story:S2]` when the plan has independently testable stories.
+- `files:` is mandatory and uses exact paths; append `(new)` for created files.
+- `evidence:` is mandatory and names a concrete verification command or artifact.
+- Keep `## Review Workload` present and synchronized with the task list.
+
+## Constitution / Steering check
+
+Before finalizing tasks, check project steering/constitution files when present (`.sdd/constitution.md`, `.sdd/steering.md`, `.kiro/steering/*`, or project equivalents). If absent, mark `n/a`; absence is not a blocker. Include this table in `design.md` or `tasks.md`:
+
+| rule | status | waiver |
+| --- | --- | --- |
+| Steering/constitution present | n/a | No local steering file found |
+| Scope matches product/tech constraints | pass | — |
+| No forbidden dependency or workflow change | pass | — |
+
 Honour the prior-run lessons carried in the explore findings: when a past run
 was sent back with `replantear`, do not repeat the plan mistake it recorded.
 

@@ -42,7 +42,7 @@ function parseVersion(stdout: string | undefined): string | undefined {
 function parseCreatedUrl(stdout: string | undefined, kind: "pull" | "issues"): { number?: number; url?: string } {
   const lines = (stdout ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const url = [...lines].reverse().find((l) => /^https:\/\/github\.com\/.+/.test(l));
-  const number = url ? Number(new RegExp(`/${kind}/(\\d+)(?:$|[?#])`).exec(url)?.[1]) : undefined;
+  const number = url ? Number((new RegExp(`/${kind}/(\\d+)(?:$|[?#])`).exec(url) ?? /\/(?:pull|pulls|issues)\/(\d+)(?:$|[?#])/.exec(url))?.[1]) : undefined;
   return { url, number: Number.isFinite(number) ? number : undefined };
 }
 
@@ -58,8 +58,10 @@ export function createGhRunner({ spawn }: { spawn: SpawnLike }) {
       if (!parsed.ok) return parsed as GhResult<string[]>;
       return { ok: true, data: (parsed.data ?? []).map((l) => l.name).filter((n): n is string => typeof n === "string") };
     },
-    async createPr(input: { title: string; bodyFile: string; labels?: string[]; label?: string }): Promise<GhResult<{ number?: number; url?: string }>> {
+    async createPr(input: { title: string; bodyFile: string; labels?: string[]; label?: string; base?: string; head?: string }): Promise<GhResult<{ number?: number; url?: string }>> {
       const args = ["pr", "create", "--title", input.title, "--body-file", input.bodyFile];
+      if (input.base) args.push("--base", input.base);
+      if (input.head) args.push("--head", input.head);
       for (const label of input.labels ?? (input.label ? [input.label] : [])) args.push("--label", label);
       const r = await run(spawn, args);
       return r.ok ? { ok: true, data: parseCreatedUrl(r.data, "pull"), stderr: r.stderr, exitCode: r.exitCode } : { ok: false, stderr: r.stderr, exitCode: r.exitCode };

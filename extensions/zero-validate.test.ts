@@ -8,10 +8,12 @@ const goodTasks = `# Tasks
 - [ ] **T1. First** — do it.
       - files: \`a.ts\`,
         \`b.ts\` (new)
+      - evidence: npm test -- a
       - review: ~10 changed lines
 
 - [ ] **T2. Second** — do it.
       - files: \`c.ts\`
+      - evidence: npm test -- b
       - review: ~20 changed lines
 
 ## Review Workload
@@ -40,11 +42,11 @@ test("validateTasksFile: well-formed tasks are clean", () => {
 
 test("parseTasks: partially conformant task yields per-task defects", () => {
   const parsed = parseTasks("- [ ] **T1. Bad** — no metadata\n");
-  assert.deepEqual(parsed.defects.map((d) => d.kind), ["missing-files", "missing-review"]);
+  assert.deepEqual(parsed.defects.map((d) => d.kind), ["missing-files", "missing-evidence", "missing-review"]);
 });
 
 test("validateTasksFile: detects non-integer review and missing workload", () => {
-  const defects = validateTasksFile("- [ ] **T1. Bad** — x\n      - files: `a.ts`\n      - review: many lines\n");
+  const defects = validateTasksFile("- [ ] **T1. Bad** — x\n      - files: `a.ts`\n      - evidence: npm test\n      - review: many lines\n");
   assert.ok(defects.some((d) => d.kind === "non-integer-review"));
   assert.ok(defects.some((d) => d.kind === "missing-review-workload"));
 });

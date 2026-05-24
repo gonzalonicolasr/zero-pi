@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readLinks, writeLinks } from "./sdd-links.ts";
+import { mergeLinks, readLinks, writeLinks } from "./sdd-links.ts";
 
 function fixture(fn: (dir: string) => void) {
   const dir = mkdtempSync(join(tmpdir(), "sdd-links-"));
@@ -24,10 +24,15 @@ test("readLinks accepts valid object records", () => fixture((dir) => {
   assert.equal(readLinks(dir, "a").issueNumber, 3);
 }));
 
+test("mergeLinks preserves unknown fields and supports git/archive fields", () => {
+  const next = mergeLinks({ custom: "keep", issueNumber: 3 }, { branch: "sdd/a", baseBranch: "main", archivePath: ".sdd/archive/2026-01-01-a" });
+  assert.deepEqual(next, { custom: "keep", issueNumber: 3, branch: "sdd/a", baseBranch: "main", archivePath: ".sdd/archive/2026-01-01-a" });
+});
+
 test("writeLinks atomically merges and preserves existing fields", () => fixture((dir) => {
-  writeLinks(dir, "a", { issueNumber: 3, issueUrl: "u" });
-  const next = writeLinks(dir, "a", { prNumber: 4 });
-  assert.deepEqual(next, { issueNumber: 3, issueUrl: "u", prNumber: 4 });
+  writeLinks(dir, "a", { issueNumber: 3, issueUrl: "u", custom: "keep" });
+  const next = writeLinks(dir, "a", { prNumber: 4, branch: "sdd/a", baseBranch: "main" });
+  assert.deepEqual(next, { issueNumber: 3, issueUrl: "u", custom: "keep", prNumber: 4, branch: "sdd/a", baseBranch: "main" });
   assert.deepEqual(readLinks(dir, "a"), next);
   assert.equal(readdirSync(join(dir, "a")).some((name) => name.endsWith(".tmp")), false);
 }));

@@ -177,7 +177,7 @@ A zero SDD run has two language surfaces — keep them apart.
 - **Fixed identifiers — verbatim.** Never translate identifiers. Keep verdict
   values (`pasa`, `corregir`, `replantear`, `cap-reached`), feature slugs,
   file and directory paths, model ids, and command names (`/forge`,
-  `/zero-sync`) exactly as they are, even inside Spanish text.
+  `/zero-sync`, `/zero-branch`, `/zero-git-validate`, `/zero-pr`, `/zero-archive`) exactly as they are, even inside Spanish text.
 
 ## Output Contract
 
@@ -361,6 +361,14 @@ verdict" above). If the push fails for any reason, or zero runs with `--no-mcp`
 or Cortex is down — emit a non-blocking warning and continue, never block the
 run. The local line already stands.
 
+## Git/PR/archive commands
+
+Recommended command order for an audit-ready SDD change is: `/zero-branch <slug>` → `/zero-issue <slug>` → `/forge <slug>` (plan/build/veredicto) → `/zero-git-validate <slug> --for=pr` → `/zero-pr <slug>` → `/zero-archive <slug>` after `pasa`.
+
+- `/zero-branch <slug>` creates/reuses `sdd/<slug>` (configurable) and records `branch`/`baseBranch` in `links.json`.
+- `/zero-git-validate <slug>` checks worktree, branch, remote, `gh auth`, and verdict gating without mutating.
+- `/zero-archive <slug>` merges approved deltas into `.sdd/specs/` and moves the run to `.sdd/archive/YYYY-MM-DD-<slug>/`.
+
 ## Spec sync & archive
 
 The project keeps a **canonical spec store** at `.sdd/specs/requirements.md` —
@@ -369,12 +377,13 @@ emits a delta `spec.md` against that store; once the run reaches a `pasa`
 verdict the delta is folded back into the store.
 
 **After a `pasa` verdict — and only then.** Alongside the Cortex save and the
-`zero-runs.jsonl` append, invoke the **`/zero-sync <slug>`** command, passing
-the run's feature slug explicitly. `/zero-sync` is a real pi command — a
+`zero-runs.jsonl` append, invoke the **`/zero-archive <slug>`** command, passing
+the run's feature slug explicitly. `/zero-archive` is a real pi command — a
 deterministic, unit-tested merge, not a prompt instruction — that reads
-`.sdd/specs/requirements.md` and `.sdd/<slug>/spec.md`, folds the delta into the
-store, writes the store atomically, and archives the change. You only call it;
-you never edit the store yourself.
+`.sdd/specs/requirements.md` or per-domain `.sdd/specs/<domain>/requirements.md`
+and `.sdd/<slug>/spec.md` or `.sdd/<slug>/specs/<domain>/spec.md`, folds the
+delta into the store, writes atomically, moves the run to `.sdd/archive/`, and
+records `archivePath` in `links.json`. You only call it; you never edit the store yourself.
 
 **Never sync on a non-`pasa` outcome.** Do **not** invoke `/zero-sync` for a
 `corregir` or `replantear` verdict, or when the iteration cap was reached

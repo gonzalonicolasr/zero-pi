@@ -54,3 +54,12 @@ invoke `/forge` explicitly. A missed natural-language route is harmless — the
 user can still type `/forge`. A wrong route forces routine work through the
 heavy pipeline, which is not. Triggering only on a clear signal phrase is the
 rule; `/forge` remains the explicit primary entry point.
+
+## Related zero commands
+
+- `/zero-branch <slug>` — create/reuse the configured Git branch for the SDD run and persist it in `.sdd/<slug>/links.json`.
+- `/zero-git-validate <slug>` — validate worktree, branch, remote, GitHub CLI auth, and verdict gating before PR/archive.
+- `/zero-pr <slug>` — create an audit-ready GitHub PR from SDD artifacts after `veredicto` returns `pasa`.
+- `/zero-archive <slug>` — merge approved deltas into `.sdd/specs/` and move the run to `.sdd/archive/YYYY-MM-DD-<slug>/`.
+
+Recommended flow: `/zero-branch` → `/zero-issue` → `/forge` → `/zero-git-validate --for=pr` → `/zero-pr` → `/zero-archive`.

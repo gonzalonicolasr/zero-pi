@@ -1,3 +1,6 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { checkGuardrails, parseDelta, type MergeError, type RenameBlock, type RequirementBlock } from "./spec-merge.ts";
 
 export interface ValidationDefect {
@@ -14,6 +17,7 @@ export interface TaskRecord {
   id: string;
   title: string;
   files: { path: string; isNew: boolean }[];
+  evidence: string | null;
   review: number | null;
   reviewRaw: string | null;
 }
@@ -37,9 +41,9 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
   };
 
   for (const line of lines) {
-    const task = line.match(/^\s*- \[[ xX]\]\s+\*\*(T\d+)\.\s+([^*]+)\*\*/);
+    const task = line.match(/^\s*- \[[ xX]\]\s+\*\*(T\d+)\.\s+([^*]+)\*\*/) ?? line.match(/^###\s+(T\d+)\s+[—-]\s+(.+)$/) ?? line.match(/^##\s+\[[ xX]\]\s+(T\d+)\s*(?:[—-]\s*(.+))?$/);
     if (task) {
-      current = { id: task[1], title: task[2].trim(), files: [], review: null, reviewRaw: null };
+      current = { id: task[1], title: (task[2] ?? "").trim(), files: [], evidence: null, review: null, reviewRaw: null };
       tasks.push(current);
       collectingFiles = false;
       continue;
@@ -48,6 +52,11 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
     if (/^\s*-\s+files:/.test(line)) {
       collectingFiles = true;
       pushFile(line);
+      continue;
+    }
+    if (/^\s*-\s+evidence:/.test(line)) {
+      collectingFiles = false;
+      current.evidence = line.replace(/^\s*-\s+evidence:\s*/, "").trim();
       continue;
     }
     if (/^\s*-\s+review:/.test(line)) {
@@ -59,13 +68,14 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
       continue;
     }
     if (collectingFiles) {
-      if (/^\s*`[^`]+`/.test(line) || /^\s+`[^`]+`/.test(line)) pushFile(line);
+      if (/^\s*`[^`]+`/.test(line) || /^\s+`[^`]+`/.test(line) || /^\s*-\s+`[^`]+`/.test(line)) pushFile(line);
       else if (/^\s*-\s+/.test(line)) collectingFiles = false;
     }
   }
 
   for (const task of tasks) {
     if (task.files.length === 0) defects.push({ kind: "missing-files", task: task.id, message: `${task.id} is missing files list` });
+    if (task.evidence === null || task.evidence === "") defects.push({ kind: "missing-evidence", task: task.id, message: `${task.id} is missing evidence` });
     if (task.reviewRaw === null) defects.push({ kind: "missing-review", task: task.id, message: `${task.id} is missing review estimate` });
     else if (task.review === null) defects.push({ kind: "non-integer-review", task: task.id, message: `${task.id} review estimate is not an integer` });
   }
@@ -122,6 +132,25 @@ export function validateSpecDelta(text: string): ValidationDefect[] {
     if (!block.body.includes("Acceptance criteria")) defects.push({ kind: "missing-acceptance-criteria", name, message: `Requirement ${name} is missing Acceptance criteria` });
   }
   return defects;
+}
+
+export function discoverSpecFiles(runDir: string): string[] {
+  const files: string[] = [];
+  if (existsSync(join(runDir, "spec.md"))) files.push(join(runDir, "spec.md"));
+  const specsDir = join(runDir, "specs");
+  try {
+    for (const e of readdirSync(specsDir, { withFileTypes: true })) if (e.isDirectory()) {
+      const file = join(specsDir, e.name, "spec.md");
+      if (existsSync(file)) files.push(file);
+    }
+  } catch {}
+  return files;
+}
+
+export function validateSpecInputs(runDir: string): ValidationDefect[] {
+  const files = discoverSpecFiles(runDir);
+  if (files.length === 0) return [{ kind: "missing-spec", path: "spec.md", message: "spec.md or specs/<domain>/spec.md is missing" }];
+  return files.flatMap((file) => validateSpecDelta(readFileSync(file, "utf8")).map((d) => ({ ...d, path: file })));
 }
 
 export function validateArtifactSet(present: { proposal: boolean; spec: boolean; design: boolean; tasks: boolean }): ValidationDefect[] {

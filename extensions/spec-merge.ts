@@ -97,6 +97,15 @@ export function parseStore(text: string): RequirementBlock[] {
   return parseBlocks(text.split(/\r?\n/));
 }
 
+export function loadCanonical(text: string | undefined | null): { blocks: RequirementBlock[]; errors: MergeError[] } {
+  const source = text ?? "";
+  const blocks = parseStore(source);
+  const errors = blocks.some((b) => b.name === "")
+    ? [{ kind: "parse-error" as const, name: "", message: "malformed canonical store: empty REQ name" }]
+    : [];
+  return { blocks, errors };
+}
+
 export function parseDelta(text: string): SpecDelta {
   const delta: SpecDelta = { added: [], modified: [], removed: [], renamed: [] };
   if (typeof text !== "string") return delta;
@@ -220,6 +229,10 @@ export function checkGuardrails(
   return errors;
 }
 
+export function serializeCanonical(blocks: readonly RequirementBlock[], title: string = STORE_TITLE): string {
+  return renderStore([...blocks].sort((a, b) => a.name.localeCompare(b.name)), title);
+}
+
 export function renderStore(blocks: readonly RequirementBlock[], title: string = STORE_TITLE): string {
   const parts: string[] = [`# ${title}`];
   for (const block of blocks) {
@@ -229,9 +242,9 @@ export function renderStore(blocks: readonly RequirementBlock[], title: string =
   return `${parts.join("\n\n")}\n`;
 }
 
-export function mergeDelta(storeText: string, deltaText: string): MergeResult {
-  const store = parseStore(storeText);
-  const delta = parseDelta(deltaText);
+export function mergeDelta(storeTextOrBlocks: string | readonly RequirementBlock[], deltaTextOrDelta: string | SpecDelta): MergeResult {
+  const store = typeof storeTextOrBlocks === "string" ? parseStore(storeTextOrBlocks) : [...storeTextOrBlocks];
+  const delta = typeof deltaTextOrDelta === "string" ? parseDelta(deltaTextOrDelta) : deltaTextOrDelta;
   const errors = checkGuardrails(store, delta);
   if (errors.length > 0) return { ok: false, errors };
 

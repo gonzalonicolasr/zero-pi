@@ -39,6 +39,21 @@ Review the build adversarially, with a fresh perspective. Check it against the
 plan's requirements, run the tests yourself, and look for gaps, regressions,
 and unmet acceptance criteria.
 
+## Constitution / Steering gate
+
+Re-check the plan's Constitution/Steering table before choosing a verdict. If a
+present steering or constitution rule is violated and the plan did not record an
+explicit waiver, return `corregir` even if the code compiles. If steering files
+are absent, treat the row as `n/a`, not as a failure.
+
+Example gate table to cite in reasoning when relevant:
+
+| rule | status | waiver |
+| --- | --- | --- |
+| Steering/constitution present | n/a | No local steering file found |
+| Scope matches product/tech constraints | pass | — |
+| No forbidden dependency or workflow change | fail | corregir: added undeclared dependency |
+
 Record exactly one verdict:
 
 - `pasa` — the build meets the plan; the run finishes successfully.

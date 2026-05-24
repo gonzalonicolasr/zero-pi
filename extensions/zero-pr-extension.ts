@@ -7,6 +7,7 @@ import { readRunRecords } from "./autotune.ts";
 import { buildPrBody } from "./pr-body.ts";
 import { createGhRunner, type SpawnLike } from "./gh-runner.ts";
 import { readLinks, writeLinks } from "./sdd-links.ts";
+import { validateArtifactSet, validateSpecInputs, validateTasksFile } from "./zero-validate.ts";
 
 const SDD_DIR = ".sdd";
 type NotifyType = "info" | "warning" | "error";
@@ -45,6 +46,18 @@ function writeTempBody(body: string): string {
   return file;
 }
 function skippedNote(skipped: string[]): string { return skipped.length ? `; skipié labels que no existen en este repo: ${skipped.join(", ")}` : ""; }
+function readSpecArtifacts(dir: string): { specMd: string; specs?: Record<string, string> } {
+  const flat = readFileOrEmpty(join(dir, "spec.md"));
+  const specsDir = join(dir, "specs");
+  const specs: Record<string, string> = {};
+  try {
+    for (const e of readdirSync(specsDir, { withFileTypes: true })) if (e.isDirectory()) {
+      const text = readFileOrEmpty(join(specsDir, e.name, "spec.md"));
+      if (text) specs[e.name] = text;
+    }
+  } catch {}
+  return Object.keys(specs).length ? { specMd: flat, specs } : { specMd: flat };
+}
 
 export async function runZeroPr(args: string, ctx: PiCommandContext, spawnImpl: SpawnLike = spawn as unknown as SpawnLike): Promise<void> {
   const notify = (m: string, t?: NotifyType) => { try { ctx.ui.notify(m, t); } catch {} };
@@ -54,18 +67,25 @@ export async function runZeroPr(args: string, ctx: PiCommandContext, spawnImpl: 
   const verdict = latestVerdict(slug);
   if (verdict?.verdict !== "pasa") { notify(`zero-pr: ${slug} no tiene veredicto pasa (último: ${verdict?.verdict ?? "—"})`, "warning"); return; }
   const dir = join(SDD_DIR, slug);
-  const artifacts = { proposalMd: readFileOrEmpty(join(dir, "proposal.md")), specMd: readFileOrEmpty(join(dir, "spec.md")), tasksMd: readFileOrEmpty(join(dir, "tasks.md")), verdictReasoning: verdict.reasoning };
+  const artifacts = { proposalMd: readFileOrEmpty(join(dir, "proposal.md")), ...readSpecArtifacts(dir), tasksMd: readFileOrEmpty(join(dir, "tasks.md")), verdictReasoning: verdict.reasoning };
+  const defects = [
+    ...validateArtifactSet({ proposal: artifacts.proposalMd !== "", spec: artifacts.specMd !== "" || Boolean(artifacts.specs), design: existsSync(join(dir, "design.md")), tasks: artifacts.tasksMd !== "" }),
+    ...validateSpecInputs(dir),
+    ...validateTasksFile(artifacts.tasksMd),
+  ].filter((d) => !d.kind.startsWith("missing-proposal"));
+  if (defects.length > 0) { notify(`zero-pr: validateForPr falló:\n${defects.map((d) => `  - [${d.kind}] ${d.message}`).join("\n")}`, "error"); return; }
   const links = readLinks(SDD_DIR, slug);
   const gh = createGhRunner({ spawn: spawnImpl });
   const detected = await gh.detect();
   if (!detected.data?.available) { notify(`zero-pr: ${detected.data?.hint ?? "gh CLI no disponible"}`, "error"); return; }
   const { applied, skipped } = await labelIfExists(gh, labels);
-  const built = buildPrBody({ ...artifacts, linkedIssueNumber: typeof links.issueNumber === "number" ? links.issueNumber : undefined });
+  const built = buildPrBody({ slug, links, artifacts: { ...artifacts, linkedIssueNumber: typeof links.issueNumber === "number" ? links.issueNumber : undefined } });
   const tmp = writeTempBody(built.body);
   try {
-    const result = await gh.createPr({ title: built.title, bodyFile: tmp, labels: applied });
+    const result = await gh.createPr({ title: built.title, bodyFile: tmp, labels: applied, base: typeof links.baseBranch === "string" ? links.baseBranch : undefined, head: typeof links.branch === "string" ? links.branch : undefined } as any);
     if (!result.ok) { notify(`zero-pr: gh pr create falló${result.stderr ? ` — ${result.stderr}` : ""}`, "error"); return; }
-    writeLinks(SDD_DIR, slug, { prNumber: result.data?.number, prUrl: result.data?.url, createdAt: new Date().toISOString() });
+    const parsedNumber = result.data?.number ?? (result.data?.url ? Number(/\/(?:pull|pulls)\/(\d+)(?:$|[?#])/.exec(result.data.url)?.[1]) : undefined);
+    writeLinks(SDD_DIR, slug, { prNumber: Number.isFinite(parsedNumber) ? parsedNumber : undefined, prUrl: result.data?.url, createdAt: new Date().toISOString() });
     notify(`zero-pr: PR creado${result.data?.number ? ` #${result.data.number}` : ""}${result.data?.url ? ` ${result.data.url}` : ""}${skippedNote(skipped)}`, "info");
   } finally {
     if (existsSync(tmp)) rmSync(tmp, { force: true });

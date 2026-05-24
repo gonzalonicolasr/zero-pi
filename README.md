@@ -67,8 +67,8 @@ into `/forge` for you.
 | ------- | ------------ |
 | **`/zero-models`** | Pick the model + provider for each SDD phase — a boxed-window picker, or set one directly. |
 | **Autotune** | Learns which model fits each phase from your run history and re-tunes itself. |
-| **`/zero-sync`** | Folds each run's spec delta into a canonical, project-wide spec store. |
-| **PR / Issues** | `/zero-pr <slug>` and `/zero-issue <slug>` create GitHub tracking links from SDD artifacts. |
+| **`/zero-sync` / `/zero-archive`** | Folds each run's spec delta into a canonical, project-wide spec store and archives approved runs. |
+| **Git / PR / Issues** | `/zero-branch`, `/zero-git-validate`, `/zero-pr`, and `/zero-issue` keep branches and GitHub links audit-ready. |
 | **Run memory** | Every run recalls and saves traces to Cortex, so runs learn from each other. |
 | **Provider guard** | Warns when the `anthropic` provider runs on a metered API key instead of your subscription. |
 | **Startup banner** | The violet ANSI-Shadow `ZERO` wordmark, drawn once at pi startup — `ZERO_HEADER=off` to disable. |
@@ -85,14 +85,40 @@ into `/forge` for you.
 | `/forge <feature>` | Run the SDD pipeline — `--continue [slug]` resumes. |
 | `/zero-models [<phase>=[<provider>/]<model>]` | Show or set per-phase models — `autotune=auto\|ask\|off`. |
 | `/zero-sync <slug>` | Fold a run's spec delta into the canonical spec store; a first all-`## ADDED` delta creates the store lazily. |
-| `/zero-validate <slug>` | Validate a run's proposal/spec/design/tasks artifacts before sync. |
+| `/zero-archive <slug>` | Merge an approved run into `.sdd/specs/`, move it to `.sdd/archive/YYYY-MM-DD-<slug>/`, and persist `archivePath`. |
+| `/zero-validate <slug>` | Validate proposal/spec/design/tasks artifacts, including task schema and per-domain specs. |
 | `/zero-status` | Show each `.sdd/` run's artifact, sync, latest-verdict, and GitHub-link status. |
-| `/zero-pr <slug>` | Create a GitHub PR from a run that already has verdict `pasa`. |
+| `/zero-branch <slug>` | Create/reuse the configured SDD Git branch and persist `branch`/`baseBranch`. |
+| `/zero-git-validate <slug>` | Check worktree, branch, remote, `gh auth`, and verdict gating before PR/archive. |
+| `/zero-pr <slug>` | Create an audit-ready GitHub PR from a run that already has verdict `pasa`. |
 | `/zero-issue <slug>` | Create or reuse a GitHub issue for a run and persist the link. |
 | `/zero-diff <slug>` | Preview the logical spec-store merge without writing files. |
 | `/zero-resume` | Write the session handoff note now. |
 
-### PR / Issues
+### Git / PR / Issues
+
+Recommended flow: `/zero-branch <slug>` → `/zero-issue <slug>` → `/forge <slug>` → `/zero-git-validate <slug> --for=pr` → `/zero-pr <slug>` → `/zero-archive <slug>`.
+
+`links.json` is forward-compatible and may contain:
+
+```json
+{
+  "issueNumber": 12,
+  "issueUrl": "https://github.com/org/repo/issues/12",
+  "branch": "sdd/my-feature",
+  "baseBranch": "main",
+  "prNumber": 34,
+  "prUrl": "https://github.com/org/repo/pull/34",
+  "archivePath": ".sdd/archive/2026-05-24-my-feature"
+}
+```
+
+`/zero-branch <slug>` uses `.sdd/config.json` when present:
+
+```json
+{ "git": { "branchPrefix": "sdd/", "numbering": false, "autoCommit": false, "commitStyle": "conventional", "baseBranch": "main" } }
+```
+
 
 `/zero-pr <slug>` builds a PR title/body from `.sdd/<slug>/proposal.md`,
 `spec.md`, `design.md`, and `tasks.md`, then saves the returned `prNumber` and

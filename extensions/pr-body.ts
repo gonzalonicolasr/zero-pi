@@ -1,6 +1,7 @@
 export interface ArtifactTexts {
   proposal?: string;
   spec?: string;
+  specs?: Record<string, string>;
   design?: string;
   tasks?: string;
   proposalMd?: string;
@@ -9,6 +10,8 @@ export interface ArtifactTexts {
   verdictReasoning?: string;
   linkedIssueNumber?: number;
 }
+
+export interface PrBodyInput { slug?: string; links?: { issueNumber?: number; branch?: string; baseBranch?: string; prUrl?: string }; artifacts: ArtifactTexts }
 
 export interface BuiltBody { title: string; body: string }
 
@@ -54,18 +57,19 @@ export function extractSectionByHeading(markdown: string | undefined, heading: s
 export function extractTasksTable(tasks: string | undefined): string {
   const text = normalize(tasks);
   if (text === "") return "";
-  const taskMatches = [...text.matchAll(/^##\s+\[[ xX]\]\s+(T\d+\s+[^\n]*)/gm)];
+  const taskMatches = [...text.matchAll(/^(?:##\s+\[[ xX]\]\s+|###\s+)(T\d+[^\n]*)/gm)];
   if (taskMatches.length === 0) return "";
-  const rows = ["| Task | Files |", "| --- | --- |"];
+  const rows = ["| Task | Files | Evidence |", "| --- | --- | --- |"];
   for (const match of taskMatches) {
     const title = match[1].trim();
     const start = match.index ?? 0;
-    const next = text.slice(start + match[0].length).search(/^##\s+/m);
+    const next = text.slice(start + match[0].length).search(/^#{2,3}\s+/m);
     const block = next === -1 ? text.slice(start) : text.slice(start, start + match[0].length + next);
     if (!/^\s*-\s+files:\s*$/m.test(block)) continue;
     const files = [...block.matchAll(/^\s+-\s+`([^`]+)`/gm)].map((m) => m[1]);
+    const evidence = (/^\s*-\s+evidence:\s*(.+)$/m.exec(block)?.[1] ?? "").trim();
     if (files.length === 0) continue;
-    rows.push(`| ${title} | ${files.join("<br>")} |`);
+    rows.push(`| ${title} | ${files.join("<br>")} | ${evidence || "—"} |`);
   }
   return rows.length > 2 ? rows.join("\n") : "";
 }
@@ -99,12 +103,25 @@ function issueSections(input: ArtifactTexts): string[] {
   return sections;
 }
 
-export function buildPrBody(input: ArtifactTexts, links: { issueNumber?: number } = {}): BuiltBody {
+export function buildPrBody(inputOrWrapped: ArtifactTexts | PrBodyInput, linksArg: { issueNumber?: number; branch?: string; baseBranch?: string } = {}): BuiltBody {
+  const wrapped = "artifacts" in inputOrWrapped ? inputOrWrapped as PrBodyInput : null;
+  const input = wrapped?.artifacts ?? inputOrWrapped as ArtifactTexts;
+  const links = { ...linksArg, ...(wrapped?.links ?? {}) };
   const issueNumber = input.linkedIssueNumber ?? links.issueNumber;
   const linkedIssue = issueNumber ? `Closes #${issueNumber}` : "Closes #\n<!-- Reemplazá # por el número de issue si existe. -->";
+  const specText = input.specs ? Object.entries(input.specs).map(([domain, spec]) => `### ${domain}\n\n${spec}`).join("\n\n") : specOf(input);
   const body = [
     "## 🔗 Linked Issue",
     linkedIssue,
+    "",
+    "## SDD artifacts",
+    `- Slug: ${wrapped?.slug ?? "n/a"}`,
+    `- Branch: ${links.branch ?? "n/a"}`,
+    `- Base branch: ${links.baseBranch ?? "n/a"}`,
+    "- Artifacts: proposal.md, spec.md/specs/*/spec.md, design.md, tasks.md, veredicto.md",
+    "",
+    "## Requirements",
+    placeholder(extractAcceptanceCriteria(specText)),
     "",
     "## 📝 Summary",
     placeholder(extractFirstParagraph(proposalOf(input))),
@@ -112,8 +129,14 @@ export function buildPrBody(input: ArtifactTexts, links: { issueNumber?: number 
     "## 📂 Changes",
     placeholder(extractTasksTable(tasksOf(input))),
     "",
-    "## 🧪 Test Plan",
+    "## 🧪 Test evidence",
     placeholder(input.verdictReasoning ?? ""),
+    "",
+    "## Risks",
+    placeholder(extractSectionByHeading(proposalOf(input), "Riesgos") || extractSectionByHeading(input.design, "Riesgos")),
+    "",
+    "## Verdict",
+    placeholder(input.verdictReasoning ?? "Sin veredicto registrado."),
     "",
     "## ✅ Checklist",
     "- [ ] Revisé el diff local",
