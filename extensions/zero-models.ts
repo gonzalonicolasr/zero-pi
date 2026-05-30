@@ -64,13 +64,14 @@ export type PhaseProviders = Record<Phase, string>;
  *  to plan and review. */
 const DEFAULT_MODELS: PhaseModels = {
   explore: "claude-haiku-4-5",
-  plan: "claude-opus-4-7",
+  plan: "claude-opus-4-8",
   build: "claude-sonnet-4-6",
-  veredicto: "claude-opus-4-7",
+  veredicto: "claude-opus-4-8",
 };
 
 /** Model list used only when pi's model registry is unavailable. */
 const FALLBACK_MODELS = [
+  "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-opus-4-6",
   "claude-sonnet-4-6",

@@ -66,7 +66,7 @@ test("readModels fills missing phases with the defaults", () => {
 test("readModels keeps the values present in zero.json", () => {
   const models = readModels({ models: { build: "my-model" } });
   assert.equal(models.build, "my-model");
-  assert.equal(models.plan, "claude-opus-4-7", "untouched phases keep the default");
+  assert.equal(models.plan, "claude-opus-4-8", "untouched phases keep the default");
 });
 
 test("readModels ignores non-string model entries", () => {

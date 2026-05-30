@@ -385,7 +385,7 @@ export type Tier = (typeof TIER)[keyof typeof TIER];
 const TIER_REPRESENTATIVE: Record<Tier, string> = {
   [TIER.haiku]: "claude-haiku-4-5",
   [TIER.sonnet]: "claude-sonnet-4-6",
-  [TIER.opus]: "claude-opus-4-7",
+  [TIER.opus]: "claude-opus-4-8",
 };
 
 /**
