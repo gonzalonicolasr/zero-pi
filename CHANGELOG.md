@@ -7,6 +7,8 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.52] - 2026-06-02
+
 ### Added — Strict TDD in the SDD pipeline (ported from gentle-ai)
 
 - Two new support modules drive a real test-first discipline through the
