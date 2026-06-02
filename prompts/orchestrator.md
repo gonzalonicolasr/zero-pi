@@ -152,6 +152,29 @@ phase (re-batching whatever tasks its defects reopened) as the next round.
 **Resume is unaffected.** Each batch marks its tasks `[x]` as they land, so an
 interrupted batched build resumes from the first `[ ]` task with no new state.
 
+## Strict TDD forwarding
+
+zero runs build test-first by default. Before the **build** and **veredicto**
+phases, resolve the run's TDD mode once and forward it explicitly — never rely
+on the sub-agent to discover it alone.
+
+- Read `.sdd/config.json` at run start. `tdd.mode` is `"strict"` by default
+  (absent file or field = strict); `"off"` disables the discipline.
+- Strict TDD only *engages* when a test runner exists (`tdd.testCommand`, or one
+  the phase detects from the project) and the work touches code — the phase
+  prompts gate on this and degrade gracefully for docs/config-only changes or
+  projects with no runner. You do not need to pre-check the runner; just forward
+  the mode.
+- When mode is strict, add one line to the `zero-build` and `zero-veredicto`
+  briefs: `Strict TDD mode: strict (test command: <cmd or "auto-detect">).
+  Follow RED → GREEN → TRIANGULATE → REFACTOR and record the TDD Cycle Evidence
+  table.` When mode is `off`, forward `Strict TDD mode: off`.
+- The build writes its evidence to `.sdd/<slug>/tdd-evidence.md`; veredicto
+  audits it. Reference that artifact by path in the briefs — never paste it.
+- A veredicto that fails the TDD audit (missing evidence, a reported-green test
+  that now fails, or a CRITICAL assertion violation) returns `corregir`, which
+  re-runs build as the next round exactly like any other defect list.
+
 ## Model configuration
 
 The per-phase model assignments live in `~/.pi/zero.json`: `models` maps each

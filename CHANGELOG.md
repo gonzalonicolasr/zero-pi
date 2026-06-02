@@ -7,6 +7,36 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — Strict TDD in the SDD pipeline (ported from gentle-ai)
+
+- Two new support modules drive a real test-first discipline through the
+  build/veredicto phases:
+  - `prompts/support/strict-tdd.md` — the **build** contract: RED → GREEN →
+    TRIANGULATE → REFACTOR, a Safety Net for modified files, test-layer
+    selection, pure-function preference, approval testing for refactors, the
+    banned-assertion catalogue (tautologies, ghost loops, smoke-only tests,
+    impl-detail/CSS assertions, mock-heavy tests), and a mandatory **TDD Cycle
+    Evidence** table written to `.sdd/<slug>/tdd-evidence.md`.
+  - `prompts/support/strict-tdd-verify.md` — the **veredicto** audit: verify the
+    evidence table, cross-reference reported test files, re-run the tests, audit
+    assertion quality, and map a failed audit to a `corregir` verdict.
+- `extensions/sdd-config.ts`: new `tdd` block in `.sdd/config.json` —
+  `{ mode: "strict" | "off", testCommand: string }`, defaulting to
+  `strict` with auto-detected runner. Strict is **runtime-gated**: it only
+  engages when a test runner exists and the change touches code, so docs/config
+  changes and runner-less projects degrade gracefully.
+- `extensions/sdd-agents.ts`: at load it now stages the two support modules to
+  `~/.pi/agent/agents/zero/support/` (`SUPPORT_MODULES`, `supportModulesDir()`)
+  so the `inheritSkills: false` `zero-build` / `zero-veredicto` sub-agents can
+  `read` them at runtime. Best-effort: a copy failure falls back to the prompt's
+  inline TDD contract.
+- Phase prompts wired with a Strict TDD gate: `build.md` (resolve mode + runner
+  + code-touch, then follow the module), `veredicto.md` (TDD audit → verdict),
+  `plan.md` (TDD-shaped tasks pair a test file with each production file),
+  `orchestrator.md` (`## Strict TDD forwarding`), and `forge.md`.
+- 11 new tests (`sdd-config.test.ts` tdd defaults/overrides, `sdd-agents.test.ts`
+  support-module exports).
+
 ## [0.1.49] - 2026-05-24
 
 ### Added — scan-guard: block filesystem-wide scans

@@ -56,6 +56,14 @@ The verdict is `pasa` (done), `corregir` (re-run build), or `replantear`
 without a `pasa`, the run stops and is reported as **not verified**.
 `/forge --continue [slug]` resumes an interrupted run.
 
+**Build runs test-first.** By default the build phase follows a strict TDD
+cycle — RED → GREEN → TRIANGULATE → REFACTOR — and records a **TDD Cycle
+Evidence** table; veredicto audits that evidence (tests exist, are really green,
+assertions verify real behavior) and returns `corregir` if the discipline
+slipped. It engages only when a test runner exists and the change touches code,
+so docs/config-only work degrades gracefully. Opt a project out with
+`tdd.mode: "off"` in `.sdd/config.json` (see *Configuration*).
+
 The run speaks **Spanish**, in a bounded, low-noise format — one short summary
 per phase, naming the model that phase runs on, no raw tool output. Or just
 describe the work and say "hacelo con sdd": the `sdd-routing` skill routes it
@@ -65,6 +73,7 @@ into `/forge` for you.
 
 | Feature | What it does |
 | ------- | ------------ |
+| **Strict TDD** | The build phase drives RED → GREEN → TRIANGULATE → REFACTOR with a TDD Cycle Evidence table; veredicto audits it. On by default, runtime-gated on a test runner; `tdd.mode: "off"` disables it. |
 | **`/zero-models`** | Pick the model + provider for each SDD phase — a boxed-window picker, or set one directly. |
 | **Autotune** | Learns which model fits each phase from your run history and re-tunes itself. |
 | **`/zero-sync` / `/zero-archive`** | Folds each run's spec delta into a canonical, project-wide spec store and archives approved runs. |
@@ -159,6 +168,20 @@ Acceptance criteria:
 zero-pi keeps its state in `~/.pi/zero.json` (per-phase models + autotune mode)
 and `~/.pi/zero-runs.jsonl` (the run-metrics log); per-project artifacts live
 under `.sdd/`. Set `ZERO_RESUME=off` to disable the conversation-resume note.
+
+`.sdd/config.json` carries the per-project git and TDD settings:
+
+```json
+{
+  "git": { "branchPrefix": "sdd/", "numbering": false, "autoCommit": false, "commitStyle": "conventional", "baseBranch": "main" },
+  "tdd": { "mode": "strict", "testCommand": "" }
+}
+```
+
+`tdd.mode` defaults to `"strict"` (the build phase runs test-first; veredicto
+audits the TDD evidence) and accepts `"off"` to disable the discipline.
+`tdd.testCommand` overrides the auto-detected test runner the TDD cycle invokes;
+leave it empty to let the build/veredicto phases detect it from the project.
 
 ## Continuous integration
 

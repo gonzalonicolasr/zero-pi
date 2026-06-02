@@ -14,6 +14,12 @@ claim success unless veredicto returned `pasa`.
 If the request begins with `--continue [slug]`, resume that unfinished run from
 its `.sdd/<slug>/` artifacts instead of starting fresh.
 
+**Strict TDD by default.** Follow the orchestrator's `## Strict TDD forwarding`:
+build runs test-first (RED → GREEN → TRIANGULATE → REFACTOR) and emits a TDD
+Cycle Evidence table whenever a test runner exists and the work touches code;
+veredicto audits that evidence and returns `corregir` if it fails. Set
+`tdd.mode: "off"` in `.sdd/config.json` to opt a project out.
+
 **Output and language.** Follow the orchestrator's `## Language Boundary` and
 `## Output Contract`: user-facing chat in Spanish (natural Rioplatense voseo),
 the bounded per-phase summary, no raw tool output, no agent listings, no

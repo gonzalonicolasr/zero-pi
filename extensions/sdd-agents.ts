@@ -11,7 +11,7 @@
 // the per-phase models in `~/.pi/zero.json`. The files are regenerated every
 // load, so they stay in sync with the prompts and with `/zero-models`.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,20 @@ import { fileURLToPath } from "node:url";
 /** The four SDD phases, each backed by a `prompts/phases/<phase>.md`. */
 export const PHASES = ["explore", "plan", "build", "veredicto"] as const;
 export type Phase = (typeof PHASES)[number];
+
+/**
+ * The Strict TDD support modules, copied verbatim from `prompts/support/` to a
+ * stable directory beside the generated agents so the `zero-build` /
+ * `zero-veredicto` sub-agents can `read` them at runtime. The sub-agents are
+ * generated with `inheritSkills: false`, so the phase prompt body is the only
+ * channel that can point them at these files — see `supportModulesDir()`.
+ */
+export const SUPPORT_MODULES = ["strict-tdd.md", "strict-tdd-verify.md"] as const;
+
+/** Absolute path of the runtime support dir the phase prompts reference. */
+export function supportModulesDir(): string {
+  return join(homedir(), ".pi", "agent", "agents", "zero", "support");
+}
 
 /**
  * Split a phase prompt into its `description` (from `---` frontmatter) and its
@@ -109,6 +123,7 @@ export default function register(_pi?: unknown): void {
   try {
     const here = dirname(fileURLToPath(import.meta.url)); // <pkg>/extensions
     const phasesDir = join(here, "..", "prompts", "phases");
+    const supportSrcDir = join(here, "..", "prompts", "support");
     const agentsDir = join(homedir(), ".pi", "agent", "agents", "zero");
     mkdirSync(agentsDir, { recursive: true });
 
@@ -121,6 +136,23 @@ export default function register(_pi?: unknown): void {
       } catch {
         // A single phase failing must not block the other three.
       }
+    }
+
+    // Stage the Strict TDD support modules next to the agents so `zero-build`
+    // and `zero-veredicto` can read them at runtime. A copy failure is
+    // non-fatal: the build/veredicto prompts carry an inline fallback contract.
+    try {
+      const supportDir = supportModulesDir();
+      mkdirSync(supportDir, { recursive: true });
+      for (const mod of SUPPORT_MODULES) {
+        try {
+          copyFileSync(join(supportSrcDir, mod), join(supportDir, mod));
+        } catch {
+          // One module failing must not block the other.
+        }
+      }
+    } catch {
+      // Support staging is best-effort; the inline fallback covers absence.
     }
   } catch {
     // Sub-agent provisioning must never break a pi session.

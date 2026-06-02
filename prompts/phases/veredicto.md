@@ -39,6 +39,29 @@ Review the build adversarially, with a fresh perspective. Check it against the
 plan's requirements, run the tests yourself, and look for gaps, regressions,
 and unmet acceptance criteria.
 
+## Strict TDD audit
+
+Resolve whether **Strict TDD Mode** governed this run, by the same gate the
+build phase used: `tdd.mode` in `.sdd/config.json` is `"strict"` (the default
+when the file or field is absent) **and** a test runner exists
+(`tdd.testCommand` or one detected from the project) **and** the change touches
+code. A `.sdd/<slug>/tdd-evidence.md` file or a TDD Cycle Evidence table in the
+build result also signals it was active.
+
+When Strict TDD governed the run, read the support module
+`~/.pi/agent/agents/zero/support/strict-tdd-verify.md` and apply it: confirm the
+TDD Cycle Evidence table exists, cross-reference every reported test file
+against the codebase, run the listed tests yourself to confirm GREEN still
+holds, and audit assertion quality (no tautologies, ghost loops, lone type-only
+assertions, smoke-only tests, or implementation-detail/CSS assertions). A
+missing evidence table, a reported-green test that now fails, or a CRITICAL
+assertion violation is grounds for **`corregir`**, not `pasa`. If that support
+file is missing, perform the same checks from memory and note the missing module
+as a risk — do not skip the TDD audit.
+
+When Strict TDD did not govern the run (mode `off`, no test runner, or a
+code-free change), skip the TDD audit and review on the standard criteria below.
+
 ## Constitution / Steering gate
 
 Re-check the plan's Constitution/Steering table before choosing a verdict. If a

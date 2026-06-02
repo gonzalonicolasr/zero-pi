@@ -5,7 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildAgentFile, phaseModel, PHASES, splitPhasePrompt } from "./sdd-agents.ts";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+import { buildAgentFile, phaseModel, PHASES, splitPhasePrompt, SUPPORT_MODULES, supportModulesDir } from "./sdd-agents.ts";
 
 test("splitPhasePrompt separates frontmatter description from the body", () => {
   const raw = "---\ndescription: SDD explore phase — investigate read-only\n---\n\nYou run the explore phase.\n";
@@ -44,6 +47,17 @@ test("buildAgentFile falls back to a default description", () => {
 
 test("PHASES are the four SDD phases", () => {
   assert.deepEqual([...PHASES], ["explore", "plan", "build", "veredicto"]);
+});
+
+test("SUPPORT_MODULES names the two Strict TDD modules", () => {
+  assert.deepEqual([...SUPPORT_MODULES], ["strict-tdd.md", "strict-tdd-verify.md"]);
+});
+
+test("supportModulesDir resolves under the generated agents tree", () => {
+  assert.equal(
+    supportModulesDir(),
+    join(homedir(), ".pi", "agent", "agents", "zero", "support"),
+  );
 });
 
 test("phaseModel reads a plain model id", () => {

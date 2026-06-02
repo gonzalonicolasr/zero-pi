@@ -24,3 +24,22 @@ test("loadSddConfig rejects malformed JSON", () => fixture((dir) => {
   writeFileSync(join(dir, ".sdd", "config.json"), "{");
   assert.throws(() => loadSddConfig(dir), /invalid \.sdd\/config\.json/);
 }));
+
+test("loadSddConfig defaults tdd to strict mode with no test command", () => fixture((dir) => {
+  assert.deepEqual(loadSddConfig(dir).tdd, { mode: "strict", testCommand: "" });
+}));
+
+test("loadSddConfig defaults tdd to strict when the file omits the tdd block", () => fixture((dir) => {
+  writeFileSync(join(dir, ".sdd", "config.json"), JSON.stringify({ git: { branchPrefix: "feat/" } }));
+  assert.deepEqual(loadSddConfig(dir).tdd, { mode: "strict", testCommand: "" });
+}));
+
+test("loadSddConfig honours tdd off and an explicit test command", () => fixture((dir) => {
+  writeFileSync(join(dir, ".sdd", "config.json"), JSON.stringify({ tdd: { mode: "off", testCommand: "pnpm test" } }));
+  assert.deepEqual(loadSddConfig(dir).tdd, { mode: "off", testCommand: "pnpm test" });
+}));
+
+test("loadSddConfig falls back to strict for an unknown tdd mode", () => fixture((dir) => {
+  writeFileSync(join(dir, ".sdd", "config.json"), JSON.stringify({ tdd: { mode: "loose", testCommand: 42 } }));
+  assert.deepEqual(loadSddConfig(dir).tdd, { mode: "strict", testCommand: "" });
+}));
