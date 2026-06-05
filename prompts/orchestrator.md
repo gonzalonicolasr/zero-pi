@@ -392,41 +392,45 @@ Recommended command order for an audit-ready SDD change is: `/zero-branch <slug>
 - `/zero-git-validate <slug>` checks worktree, branch, remote, `gh auth`, and verdict gating without mutating.
 - `/zero-archive <slug>` merges approved deltas into `.sdd/specs/` and moves the run to `.sdd/archive/YYYY-MM-DD-<slug>/`.
 
-## Spec sync & archive
+## Spec archive
 
 The project keeps a **canonical spec store** at `.sdd/specs/requirements.md` —
 the accepted requirements of every prior run. A `/forge` run's `plan` phase
 emits a delta `spec.md` against that store; once the run reaches a `pasa`
-verdict the delta is folded back into the store.
+verdict the delta is folded back into the store and the run is archived. One
+command does both: **`/zero-archive`**. (The older `/zero-sync` still exists as a
+manual fold-only command, but the pipeline drives `/zero-archive`, which already
+folds the delta itself — never run both for the same run.)
 
 **After a `pasa` verdict — and only then.** Alongside the Cortex save and the
 `zero-runs.jsonl` append, invoke the **`/zero-archive <slug>`** command, passing
 the run's feature slug explicitly. `/zero-archive` is a real pi command — a
-deterministic, unit-tested merge, not a prompt instruction — that reads
-`.sdd/specs/requirements.md` or per-domain `.sdd/specs/<domain>/requirements.md`
-and `.sdd/<slug>/spec.md` or `.sdd/<slug>/specs/<domain>/spec.md`, folds the
-delta into the store, writes atomically, moves the run to `.sdd/archive/`, and
-records `archivePath` in `links.json`. You only call it; you never edit the store yourself.
+deterministic, unit-tested operation, not a prompt instruction. In one step it
+folds the delta into the store (`.sdd/specs/requirements.md`, or per-domain
+`.sdd/specs/<domain>/requirements.md`), writes the store atomically, moves the
+run to `.sdd/archive/<YYYY-MM-DD>-<slug>/`, and records `archivePath` in
+`links.json`. It guards itself: it refuses to run unless the run's last verdict
+is `pasa`, the worktree is clean (override with `--allow-dirty` when justified),
+and the spec/tasks artifacts validate. Use `--dry-run` to preview the writes
+without touching disk. You only call it; you never edit the store yourself.
 
-**Never sync on a non-`pasa` outcome.** Do **not** invoke `/zero-sync` for a
-`corregir` or `replantear` verdict, or when the iteration cap was reached
-without a `pasa` — the store is changed by a `pasa` run only, and no archive
-entry is created otherwise. Likewise skip it for a **legacy resumed run** whose
-`.sdd/<slug>/` has no `spec.md` (the older artifact shape) — that run has no
-delta to fold, and `/zero-sync` will report it has nothing to sync.
+**Never archive on a non-`pasa` outcome.** Do **not** invoke `/zero-archive`
+for a `corregir` or `replantear` verdict, or when the iteration cap was reached
+without a `pasa` — the command refuses it anyway, and no store change or archive
+entry is created. Likewise skip it for a **legacy resumed run** whose
+`.sdd/<slug>/` has no `spec.md` (the older artifact shape): there is no delta to
+fold, so the command reports nothing to archive.
 
-**On a guardrail error, surface — do not claim a sync.** If `/zero-sync`
+**On a guardrail error, surface — do not claim success.** If `/zero-archive`
 reports a guardrail failure (a duplicate name, an ADDED collision, a MODIFIED or
-REMOVED of a missing block, or a malformed store/delta) it writes **nothing**.
-Relay the failing requirement name(s) and reason to the user and state plainly
-that the canonical store was **not** updated and is out of sync for a manual
-fix. The `pasa` verdict still stands — the build shipped; only the store fold
-was rejected. Never report the store as updated when `/zero-sync` did not
-update it.
+REMOVED of a missing block, a malformed store/delta, a failed validation, or a
+dirty worktree) it changes **nothing**, and on a mid-write failure it rolls the
+store back. Relay the failing reason to the user and state plainly that the
+canonical store was **not** updated. The `pasa` verdict still stands — the build
+shipped; only the archive step was rejected. Never report the store as updated
+when `/zero-archive` did not update it.
 
-**On success, relay the report.** When `/zero-sync` succeeds it writes the new
-store and creates an archive entry at `.sdd/archive/<YYYY-MM-DD>-<slug>/` — a
-copy of the run's `proposal.md` and `spec.md` plus a `sync.md` report listing
-every added, modified, and removed requirement. Include `/zero-sync`'s report in
-the run's final summary, calling out the destructive effects (replacements,
-deletions) explicitly.
+**On success, relay the report.** When `/zero-archive` succeeds it writes the
+new store, moves the run to `.sdd/archive/<YYYY-MM-DD>-<slug>/`, and records the
+archive path in `links.json`. Include its report in the run's final summary,
+calling out the destructive effects (replacements, deletions) explicitly.

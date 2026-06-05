@@ -7,6 +7,32 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.54] - 2026-06-05
+
+### Fixed — orchestrator: one archive command, not two half-described ones
+
+- The `## Spec sync & archive` section mixed two commands: it told the
+  orchestrator to invoke `/zero-archive` but then described every condition,
+  guardrail, and success path in terms of `/zero-sync`, leaving the model unsure
+  which to run after a `pasa` verdict. Both are real pi commands and overlap
+  (`/zero-archive` already folds the delta itself via `mergeDelta`), so running
+  `/zero-sync` *and* `/zero-archive` would merge twice.
+- Rewrote the section (now `## Spec archive`) to drive a single command,
+  **`/zero-archive`** — the robust successor that folds the delta, validates the
+  `pasa` verdict + clean worktree, supports `--dry-run` / `--allow-dirty`, moves
+  the run to `.sdd/archive/`, and rolls back on a mid-write failure. `/zero-sync`
+  is noted as the older fold-only command, explicitly "never run both for the
+  same run". Payload copy (claude-code / opencode) is intentionally unchanged:
+  the `/zero-*` commands are pi-only extensions, so its orchestrator describes
+  the fold as a manual step.
+
+### Internal — prompt parity guard extended
+
+- `src/payload/prompt-parity.test.ts` now also pins the spec-store discipline
+  shared by both orchestrator copies — a canonical store, a fold only after a
+  `pasa` verdict, and the archive trail — without pinning the command name,
+  which legitimately differs by target.
+
 ## [0.1.53] - 2026-06-05
 
 ### Fixed — `/forge --continue` argument parsing
