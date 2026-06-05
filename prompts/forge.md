@@ -11,8 +11,16 @@ report the result as not verified. Ask the user for interactive or automatic
 mode up front; in interactive mode pause after each phase for approval. Never
 claim success unless veredicto returned `pasa`.
 
-If the request begins with `--continue [slug]`, resume that unfinished run from
-its `.sdd/<slug>/` artifacts instead of starting fresh.
+**Parse the arguments first.** If the request begins with `--continue`, this is
+a **resume** run, not a fresh one:
+
+- `--continue` with no slug → resume mode: hand control to the orchestrator's
+  `## Resuming a run` section, which scans `.sdd/*/` for an unfinished run.
+- `--continue <slug>` → resume mode targeting `.sdd/<slug>/` directly. If that
+  directory does not exist, report "no such run: <slug>" and stop — do **not**
+  start a fresh run under that slug.
+- Anything else (a feature request, or no arguments) → a fresh run: the
+  arguments are the feature request below.
 
 **Strict TDD by default.** Follow the orchestrator's `## Strict TDD forwarding`:
 build runs test-first (RED → GREEN → TRIANGULATE → REFACTOR) and emits a TDD

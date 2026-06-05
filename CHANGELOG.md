@@ -7,6 +7,29 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.53] - 2026-06-05
+
+### Fixed — `/forge --continue` argument parsing
+
+- `prompts/forge.md` now parses `--continue` the same robust way the zero
+  integrator's `forge` command already did: `--continue` with no slug resumes
+  the single unfinished run, `--continue <slug>` targets `.sdd/<slug>/` directly
+  and reports `no such run: <slug>` (instead of silently starting a fresh run)
+  when that directory is absent. Previously the pi copy only said "resume from
+  `.sdd/<slug>/`" with no missing-run guard.
+
+### Internal — prompt parity guard
+
+- Added `src/payload/prompt-parity.test.ts` (zero integrator) pinning the shared
+  **contract** invariants across both SDD prompt renderings — the pi copy
+  (`packages/zero-pi/prompts/`) and the payload copy
+  (`src/payload/assets/sdd/`). The two copies are intentionally not byte-equal
+  (pi externalises Strict TDD to runtime `support/*.md` modules; the payload
+  inlines it), so the test asserts the phase vocabulary, verdicts, artifact set,
+  Review Workload budget, TDD cycle, and `--continue` affordance exist in both —
+  catching future drift without forcing a single source that would break either
+  target.
+
 ## [0.1.52] - 2026-06-02
 
 ### Added — Strict TDD in the SDD pipeline (ported from gentle-ai)
