@@ -60,6 +60,20 @@ export type PhaseModels = Record<Phase, string>;
 /** The per-phase provider map — parallel to {@link PhaseModels}. */
 export type PhaseProviders = Record<Phase, string>;
 
+/** The six real pi effort levels, in ascending order. The single source of
+ *  truth for thinking-level validity — no `max`/`ultracode` aliases exist. */
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+/** One of the six real pi effort levels. */
+export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
+/** The per-phase thinking map — partial on purpose: an absent phase means
+ *  "no thinking configured", which renders to no `thinking:` frontmatter. */
+export type PhaseThinking = Partial<Record<Phase, ThinkingLevel>>;
+
+/** Whether a value is one of the six real pi effort levels. */
+export function isThinkingLevel(value: unknown): value is ThinkingLevel {
+  return typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
+}
+
 /** Fallback models when `~/.pi/zero.json` has none — cheap to explore, strong
  *  to plan and review. */
 const DEFAULT_MODELS: PhaseModels = {
@@ -105,9 +119,23 @@ export function readModels(data: Record<string, unknown>): PhaseModels {
   const raw = (data.models ?? {}) as Record<string, unknown>;
   const models: PhaseModels = { ...DEFAULT_MODELS };
   for (const phase of PHASES) {
-    if (typeof raw[phase] === "string") models[phase] = raw[phase] as string;
+    if (typeof raw[phase] === "string") models[phase] = stripThinkingSuffix(raw[phase] as string);
   }
   return models;
+}
+
+/**
+ * Strip a single whitespace-separated trailing token from a stored model string
+ * only when that token is a valid thinking level (legacy `"<model> <level>"`
+ * form). A non-level trailing token is left intact — dropping it would silently
+ * lose data — and a plain model id is returned unchanged.
+ */
+function stripThinkingSuffix(model: string): string {
+  const trimmed = model.trim();
+  const idx = trimmed.lastIndexOf(" ");
+  if (idx < 0) return model;
+  const tail = trimmed.slice(idx + 1);
+  return isThinkingLevel(tail) ? trimmed.slice(0, idx).trim() : model;
 }
 
 /**
@@ -123,16 +151,83 @@ export function readProviders(data: Record<string, unknown>): PhaseProviders {
   return providers;
 }
 
+/**
+ * Extract the per-phase thinking levels from a zero.json object.
+ *
+ * For each phase the explicit `thinking[phase]` value wins when it is a valid
+ * level. Otherwise a legacy model string of the form `"<model> <level>"` is
+ * mined: its trailing whitespace-separated token supplies the level, but only
+ * when that token is one of the six real levels. The result is a partial map —
+ * a phase with no valid or recoverable level is simply absent, never defaulted.
+ */
+export function readThinking(data: Record<string, unknown>): PhaseThinking {
+  const out: PhaseThinking = {};
+  const raw = (data.thinking ?? {}) as Record<string, unknown>;
+  const models = data.models as Record<string, unknown> | undefined;
+  for (const phase of PHASES) {
+    if (isThinkingLevel(raw[phase])) {
+      out[phase] = raw[phase];
+      continue;
+    }
+    // Legacy recovery: "<model> <level>" with a valid trailing level.
+    const model = models?.[phase];
+    if (typeof model === "string") {
+      const trimmed = model.trim();
+      const tail = trimmed.split(/\s+/).slice(-1)[0];
+      if (trimmed.includes(" ") && isThinkingLevel(tail)) out[phase] = tail;
+    }
+  }
+  return out;
+}
+
 /** A provider-qualified model assignment from the direct command form. */
 export interface Assignment {
   phase: Phase;
   model: string;
   provider?: string;
+  thinking?: ThinkingLevel;
+}
+
+/** The result of mining a thinking token out of an assignment value:
+ *  the cleaned value plus the level, or the `"invalid"` sentinel when an
+ *  explicit `thinking=` token names an unknown level. */
+export type ThinkingTokenResult = { value: string; thinking?: ThinkingLevel } | "invalid";
+
+/**
+ * Mine a thinking level out of an assignment value.
+ *
+ * Precedence:
+ *   1. An explicit `thinking=<level>` token anywhere in the value. When the
+ *      level is valid it is removed from the value and returned; when it is
+ *      unknown the whole parse is `"invalid"` so the handler shows usage help.
+ *   2. Otherwise a trailing bare `<level>` token — recognized only when it is
+ *      one of the six real levels; a non-level trailing token stays in the value.
+ *   3. Otherwise the value is returned unchanged with no thinking.
+ */
+export function parseThinkingToken(value: string): ThinkingTokenResult {
+  const tokens = value.trim().split(/\s+/);
+  // 1. explicit thinking=<level> anywhere in the value.
+  const idx = tokens.findIndex((t) => /^thinking=/i.test(t));
+  if (idx >= 0) {
+    const level = tokens[idx].slice("thinking=".length);
+    if (!isThinkingLevel(level)) return "invalid";
+    const rest = tokens.slice(0, idx).concat(tokens.slice(idx + 1));
+    return { value: rest.join(" "), thinking: level };
+  }
+  // 2. trailing bare <level> shorthand.
+  if (tokens.length > 1 && isThinkingLevel(tokens[tokens.length - 1])) {
+    return { value: tokens.slice(0, -1).join(" "), thinking: tokens[tokens.length - 1] };
+  }
+  // 3. no thinking token.
+  return { value: value.trim() };
 }
 
 /**
  * Parse a direct `<phase>=<model>` assignment. The value may carry an explicit
- * provider as `<provider>/<model>` — the first `/` splits them.
+ * provider as `<provider>/<model>` — the first `/` splits them — and an optional
+ * thinking level via `thinking=<level>` or a trailing bare `<level>` shorthand.
+ * An invalid explicit thinking level makes the whole parse `null` so the handler
+ * writes nothing and shows usage help.
  */
 export function parseAssignment(arg: string): Assignment | null {
   const match = arg.trim().match(/^(\w+)\s*[=\s]\s*(.+)$/);
@@ -142,18 +237,40 @@ export function parseAssignment(arg: string): Assignment | null {
   let value = match[2].trim();
   if (value === "") return null;
 
+  const parsed = parseThinkingToken(value);
+  if (parsed === "invalid") return null;
+  value = parsed.value.trim();
+  if (value === "") return null;
+  const thinking = parsed.thinking;
+
   const slash = value.indexOf("/");
   if (slash > 0 && slash < value.length - 1) {
-    return { phase, provider: value.slice(0, slash).trim(), model: value.slice(slash + 1).trim() };
+    const out: Assignment = {
+      phase,
+      provider: value.slice(0, slash).trim(),
+      model: value.slice(slash + 1).trim(),
+    };
+    if (thinking) out.thinking = thinking;
+    return out;
   }
-  return { phase, model: value };
+  const out: Assignment = { phase, model: value };
+  if (thinking) out.thinking = thinking;
+  return out;
 }
 
-/** Render the per-phase model map as an aligned `provider/model` block. */
-export function formatPhases(models: PhaseModels, providers: PhaseProviders): string {
+/**
+ * Render the per-phase model map as an aligned `provider/model` block, with the
+ * thinking level appended as ` · thinking <level>` for any phase that has one.
+ */
+export function formatPhases(
+  models: PhaseModels,
+  providers: PhaseProviders,
+  thinking: PhaseThinking,
+): string {
   return PHASES.map((phase) => {
     const provider = providers[phase];
-    const label = provider ? `${provider}/${models[phase]}` : models[phase];
+    let label = provider ? `${provider}/${models[phase]}` : models[phase];
+    if (thinking[phase]) label += ` · thinking ${thinking[phase]}`;
     return `  ${phase.padEnd(10)} ${label}`;
   }).join("\n");
 }
@@ -541,6 +658,7 @@ export default function register(pi?: PiExtensionAPI): void {
         const data = readZeroJson();
         const models = readModels(data);
         const providers = readProviders(data);
+        const thinking = readThinking(data);
         const groups = providerGroups(ctx.modelRegistry);
 
         // Direct form: /zero-models build=claude-opus-4-7
@@ -566,11 +684,23 @@ export default function register(pi?: PiExtensionAPI): void {
             return;
           }
 
+          // A malformed explicit `thinking=<level>` gets a targeted usage help
+          // and writes nothing — distinct from the generic assignment help.
+          const thinkingToken = arg.match(/(?:^|\s)thinking=(\S+)/i);
+          if (thinkingToken && !isThinkingLevel(thinkingToken[1])) {
+            ctx.ui.notify(
+              "uso: thinking=<nivel>  (nivel: off | minimal | low | medium | high | xhigh)",
+              "warning",
+            );
+            return;
+          }
+
           const assignment = parseAssignment(arg);
           if (!assignment) {
             ctx.ui.notify(
-              "uso: /zero-models  —o—  /zero-models <fase>=[<provider>/]<modelo> " +
-                "(fase: explore | plan | build | veredicto)  —o—  " +
+              "uso: /zero-models  —o—  /zero-models <fase>=[<provider>/]<modelo> [thinking=<nivel>] " +
+                "(fase: explore | plan | build | veredicto · " +
+                "nivel: off | minimal | low | medium | high | xhigh)  —o—  " +
                 "/zero-models autotune=<modo>",
               "warning",
             );
@@ -581,15 +711,25 @@ export default function register(pi?: PiExtensionAPI): void {
             assignment.provider ??
             resolveProvider(ctx.modelRegistry, assignment.model) ??
             providers[assignment.phase];
-          writeFileSync(
-            zeroJsonPath(),
-            `${JSON.stringify({ ...data, models, providers }, null, 2)}\n`,
-            "utf8",
-          );
+          // Resolve the thinking map: start from the recovered/persisted levels
+          // (legacy suffixes already mined by `readThinking`), apply the new
+          // level when given, preserve the prior level when absent. `models` was
+          // read via `readModels`, which already stripped any valid legacy
+          // suffix — so the written store is normalized (model token only).
+          const nextThinking = { ...thinking };
+          if (assignment.thinking) nextThinking[assignment.phase] = assignment.thinking;
+          const merged: Record<string, unknown> = { ...data, models, providers };
+          if (Object.keys(nextThinking).length > 0) merged.thinking = nextThinking;
+          else delete merged.thinking;
+          writeFileSync(zeroJsonPath(), `${JSON.stringify(merged, null, 2)}\n`, "utf8");
           const shown = providers[assignment.phase]
             ? `${providers[assignment.phase]}/${assignment.model}`
             : assignment.model;
-          ctx.ui.notify(`zero models: ${assignment.phase} → ${shown}`, "info");
+          const level = nextThinking[assignment.phase];
+          ctx.ui.notify(
+            `zero models: ${assignment.phase} → ${shown}${level ? ` · thinking ${level}` : ""}`,
+            "info",
+          );
           return;
         }
 
@@ -600,6 +740,7 @@ export default function register(pi?: PiExtensionAPI): void {
         const initialState = createPickerState({
           models,
           providers,
+          thinking,
           autotuneMode,
           pending,
           groups,
@@ -618,7 +759,7 @@ export default function register(pi?: PiExtensionAPI): void {
           // `zero.json` byte-for-byte unchanged, and report the leave-as-is
           // state — the existing "sin cambios" notification text.
           ctx.ui.notify(
-            `zero · modelos SDD (sin cambios):\n${formatPhases(models, providers)}\n` +
+            `zero · modelos SDD (sin cambios):\n${formatPhases(models, providers, thinking)}\n` +
               `  autotune   ${autotuneMode}`,
             "info",
           );
@@ -634,21 +775,26 @@ export default function register(pi?: PiExtensionAPI): void {
             models: edits.models,
             providers: edits.providers,
           };
+          // Persist the staged per-phase thinking map alongside models/
+          // providers; omit the key entirely when no phase has a level so the
+          // store stays byte-minimal and backward-compatible.
+          if (Object.keys(edits.thinking).length > 0) patch.thinking = edits.thinking;
           if (edits.autotuneChanged) patch.autotune = edits.autotuneMode;
 
           const merged = { ...data, ...patch };
+          if (Object.keys(edits.thinking).length === 0) delete merged.thinking;
           if (edits.pendingApplied) delete merged.autotunePending;
           writeFileSync(zeroJsonPath(), `${JSON.stringify(merged, null, 2)}\n`, "utf8");
 
           const summary = [
-            `zero · modelos SDD guardados:\n${formatPhases(edits.models, edits.providers)}`,
+            `zero · modelos SDD guardados:\n${formatPhases(edits.models, edits.providers, edits.thinking)}`,
           ];
           summary.push(`  autotune   ${edits.autotuneMode}`);
           if (edits.pendingApplied) summary.push("sugerencia aplicada");
           ctx.ui.notify(summary.join("\n"), "info");
         } else {
           ctx.ui.notify(
-            `zero · modelos SDD (sin cambios):\n${formatPhases(edits.models, edits.providers)}\n` +
+            `zero · modelos SDD (sin cambios):\n${formatPhases(edits.models, edits.providers, edits.thinking)}\n` +
               `  autotune   ${edits.autotuneMode}`,
             "info",
           );

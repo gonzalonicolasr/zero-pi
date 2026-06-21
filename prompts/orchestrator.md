@@ -178,11 +178,19 @@ on the sub-agent to discover it alone.
 ## Model configuration
 
 The per-phase model assignments live in `~/.pi/zero.json`: `models` maps each
-phase (`explore`, `plan`, `build`, `veredicto`) to a model id, and the parallel
-`providers` map gives the provider that model belongs to. Read that file at the
-start of a run and delegate each phase's sub-agent to its configured
-provider + model. When the file is absent, a phase is missing, or its provider
-entry is empty, fall back to the session's default model.
+phase (`explore`, `plan`, `build`, `veredicto`) to a model id, the parallel
+`providers` map gives the provider that model belongs to, and a parallel
+`thinking` map gives the pi effort level (`off`, `minimal`, `low`, `medium`,
+`high`, `xhigh`) for each phase. Read that file at the start of a run and
+delegate each phase's sub-agent to its configured provider + model. When the
+file is absent, a phase is missing, or its provider entry is empty, fall back to
+the session's default model.
+
+The `thinking` map is optional and partial: a phase with no entry simply gets no
+`thinking:` line in its generated `zero-<phase>.md` frontmatter — no aggressive
+default is written. When a phase has a valid level, the generated agent file
+carries a `thinking: <level>` line in its frontmatter (placed after `model:` and
+before `systemPromptMode:`), so the sub-agent runs at that effort level.
 
 ## Language Boundary
 

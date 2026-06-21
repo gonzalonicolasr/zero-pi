@@ -15,7 +15,7 @@ import {
   submitText,
   type PickerState,
 } from "./zero-models-picker.ts";
-import type { PhaseModels, PhaseProviders } from "./zero-models.ts";
+import type { PhaseModels, PhaseProviders, PhaseThinking } from "./zero-models.ts";
 import type { AutotuneMode } from "./autotune.ts";
 import type { AutotunePending } from "./autotune-extension.ts";
 
@@ -39,11 +39,17 @@ function makeProviders(over: Partial<PhaseProviders> = {}): PhaseProviders {
   return { explore: "", plan: "", build: "", veredicto: "", ...over };
 }
 
+/** A per-phase thinking map — empty (no levels configured) by default. */
+function makeThinking(over: Partial<PhaseThinking> = {}): PhaseThinking {
+  return { ...over };
+}
+
 /** Build a `PickerState` via `createPickerState`, overriding any input field. */
 function makeState(over: Partial<Parameters<typeof createPickerState>[0]> = {}): PickerState {
   return createPickerState({
     models: makeModels(),
     providers: makeProviders(),
+    thinking: makeThinking(),
     autotuneMode: "auto" as AutotuneMode,
     pending: [],
     groups: new Map(),
@@ -131,6 +137,31 @@ test("createPickerState phase row label omits the provider when it is empty", ()
   assert.ok(!explore!.label.includes("/"), "no slash when the provider is empty");
 });
 
+test("createPickerState phase row label shows the staged thinking level when set", () => {
+  const state = makeState({
+    providers: makeProviders({ build: "anthropic" }),
+    thinking: makeThinking({ build: "high" }),
+  });
+  const build = state.entries.find((e) => e.kind === "phase" && e.value === "build");
+  assert.ok(build);
+  assert.ok(
+    build!.label.includes("anthropic/claude-sonnet-4-6"),
+    "the provider/model is still shown",
+  );
+  assert.ok(
+    build!.label.includes("· thinking high"),
+    "a staged thinking level is appended to the row label",
+  );
+});
+
+test("createPickerState phase row label shows no thinking text when unset", () => {
+  const explore = makeState().entries.find(
+    (e) => e.kind === "phase" && e.value === "explore",
+  );
+  assert.ok(explore);
+  assert.ok(!explore!.label.includes("thinking"), "no `· thinking` artifact when unset");
+});
+
 test("createPickerState copies the models/providers maps — no caller aliasing", () => {
   const models = makeModels();
   const providers = makeProviders();
@@ -145,6 +176,38 @@ test("createPickerState starts with all change flags false", () => {
   assert.equal(state.edits.changed, false);
   assert.equal(state.edits.autotuneChanged, false);
   assert.equal(state.edits.pendingApplied, false);
+});
+
+// ---------------------------------------------------------------------------
+// T007 — thinking screen, drillModel, staged thinking
+// ---------------------------------------------------------------------------
+
+test("createPickerState copies the thinking map — no caller aliasing", () => {
+  const thinking = makeThinking({ build: "high" });
+  const state = makeState({ thinking });
+  assert.notStrictEqual(state.edits.thinking, thinking, "thinking is a copy");
+  assert.deepEqual(state.edits.thinking, { build: "high" });
+});
+
+test("createPickerState starts with drillModel null", () => {
+  const state = makeState();
+  assert.equal(state.drillModel, null, "drillModel starts null");
+});
+
+test("rebuildEntries on the thinking screen produces exactly the six level rows", () => {
+  const state = makeState();
+  state.screen = "thinking";
+  rebuildEntries(state);
+  assert.deepEqual(
+    state.entries.map((e) => e.kind),
+    ["thinking-level", "thinking-level", "thinking-level", "thinking-level", "thinking-level", "thinking-level"],
+    "exactly six thinking-level rows",
+  );
+  assert.deepEqual(
+    state.entries.map((e) => e.value),
+    ["off", "minimal", "low", "medium", "high", "xhigh"],
+    "the six real pi levels in order",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -456,57 +519,71 @@ test("enter on apply-pending applies every pending adjustment", () => {
 // provider/model commit
 // ---------------------------------------------------------------------------
 
-test("selecting a provider then a model commits to the right phase with edits.changed", () => {
+/** Move the cursor onto the row whose `kind` and `value` both match. */
+function cursorToValue(state: PickerState, kind: string, value: string): void {
+  const idx = state.entries.findIndex((e) => e.kind === kind && e.value === value);
+  assert.notEqual(idx, -1, `expected a ${kind}=${value} row on the current screen`);
+  state.cursor = idx;
+}
+
+test("selecting a provider then a model moves to the thinking screen WITHOUT committing", () => {
   const state = makeState({
     groups: new Map([["anthropic", ["claude-opus-4-7", "claude-sonnet-4-6"]]]),
   });
-  // Drill into the `build` phase.
-  const buildIdx = state.entries.findIndex(
-    (e) => e.kind === "phase" && e.value === "build",
-  );
-  state.cursor = buildIdx;
+  cursorToValue(state, "phase", "build");
   enter(state); // → provider screen
   cursorTo(state, "provider"); // anthropic
   enter(state); // → model screen
-  // Pick the second model.
-  const modelIdx = state.entries.findIndex(
-    (e) => e.kind === "model" && e.value === "claude-sonnet-4-6",
-  );
-  state.cursor = modelIdx;
+  // Pick a model that differs from the fixture default build model so the
+  // "not committed" check is unambiguous.
+  cursorToValue(state, "model", "claude-opus-4-7");
   const result = enter(state);
   assert.equal(result.type, "state");
-  assert.equal(state.screen, "main", "returns to the main screen");
-  assert.equal(state.edits.models.build, "claude-sonnet-4-6");
-  assert.equal(state.edits.providers.build, "anthropic");
+  assert.equal(state.screen, "thinking", "model selection advances to the thinking screen");
+  assert.equal(state.drillModel, "claude-opus-4-7", "the picked model is held in drillModel");
+  assert.equal(state.drillProvider, "anthropic", "the picked provider is still held");
+  assert.equal(state.edits.models.build, "claude-sonnet-4-6", "edits.models still holds the default, not the pick");
+  assert.equal(state.edits.changed, false, "no edit is committed before a level is chosen");
+});
+
+test("choosing a thinking level commits model + provider + thinking atomically", () => {
+  const state = makeState({
+    groups: new Map([["anthropic", ["claude-opus-4-7", "claude-sonnet-4-6"]]]),
+  });
+  cursorToValue(state, "phase", "build");
+  enter(state); // → provider
+  cursorTo(state, "provider"); // anthropic
+  enter(state); // → model
+  cursorToValue(state, "model", "claude-sonnet-4-6");
+  enter(state); // → thinking
+  cursorToValue(state, "thinking-level", "high");
+  const result = enter(state); // commit
+  assert.equal(result.type, "state");
+  assert.equal(state.screen, "main", "returns to the main screen after committing");
+  assert.equal(state.edits.models.build, "claude-sonnet-4-6", "model committed");
+  assert.equal(state.edits.providers.build, "anthropic", "provider committed");
+  assert.equal(state.edits.thinking.build, "high", "thinking level committed");
   assert.equal(state.edits.changed, true);
   assert.equal(state.drillPhase, null, "drill context is cleared");
   assert.equal(state.drillProvider, null);
+  assert.equal(state.drillModel, null, "drillModel is cleared after the commit");
 });
 
-test("model commit via the provider screen records exactly the picked provider", () => {
-  // Real flow: non-empty registry, drill a phase → provider screen → pick a
-  // provider → model screen → pick a model. `drillProvider` carries the pick.
+test("the committed provider is exactly the one picked, with the chosen level", () => {
   const state = makeState({
     groups: new Map([["openai-codex", ["gpt-5-codex", "gpt-5-mini"]]]),
   });
-  const exploreIdx = state.entries.findIndex(
-    (e) => e.kind === "phase" && e.value === "explore",
-  );
-  state.cursor = exploreIdx;
-  enter(state); // → provider screen
+  cursorToValue(state, "phase", "explore");
+  enter(state); // → provider
   cursorTo(state, "provider"); // openai-codex
-  enter(state); // → model screen, drillProvider = "openai-codex"
-  const modelIdx = state.entries.findIndex(
-    (e) => e.kind === "model" && e.value === "gpt-5-mini",
-  );
-  state.cursor = modelIdx;
+  enter(state); // → model, drillProvider = "openai-codex"
+  cursorToValue(state, "model", "gpt-5-mini");
+  enter(state); // → thinking
+  cursorToValue(state, "thinking-level", "low");
   enter(state); // commit
   assert.equal(state.edits.models.explore, "gpt-5-mini", "picked model committed");
-  assert.equal(
-    state.edits.providers.explore,
-    "openai-codex",
-    "the committed provider is exactly the one picked on the provider screen",
-  );
+  assert.equal(state.edits.providers.explore, "openai-codex", "the picked provider committed");
+  assert.equal(state.edits.thinking.explore, "low", "the chosen level committed");
   assert.equal(state.edits.changed, true);
 });
 
@@ -517,15 +594,15 @@ test("model commit via the empty-registry skip records an empty provider", () =>
     groups: new Map(),
     fallbackModels: ["claude-opus-4-7", "claude-haiku-4-5"],
   });
-  const exploreIdx = state.entries.findIndex(
-    (e) => e.kind === "phase" && e.value === "explore",
-  );
-  state.cursor = exploreIdx;
+  cursorToValue(state, "phase", "explore");
   enter(state); // empty registry → skip to model screen, drillProvider null
   assert.equal(state.screen, "model");
   assert.equal(state.drillProvider, null, "the skip leaves drillProvider null");
   cursorTo(state, "model"); // first fallback model
   const model = state.entries[state.cursor].value;
+  enter(state); // → thinking
+  assert.equal(state.screen, "thinking", "model selection still advances to thinking");
+  cursorToValue(state, "thinking-level", "medium");
   enter(state); // commit
   assert.equal(state.edits.models.explore, model, "fallback model committed");
   assert.equal(
@@ -533,21 +610,44 @@ test("model commit via the empty-registry skip records an empty provider", () =>
     "",
     "the empty-registry skip commits an empty provider",
   );
+  assert.equal(state.edits.thinking.explore, "medium");
   assert.equal(state.edits.changed, true);
 });
 
 test("model commit leaves provider empty when no group owns the model", () => {
   const state = makeState({ groups: new Map() });
-  const planIdx = state.entries.findIndex(
-    (e) => e.kind === "phase" && e.value === "plan",
-  );
-  state.cursor = planIdx;
+  cursorToValue(state, "phase", "plan");
   enter(state); // empty groups → model screen, drillProvider null
   cursorTo(state, "model"); // first fallback model
   const model = state.entries[state.cursor].value;
-  enter(state);
+  enter(state); // → thinking
+  cursorToValue(state, "thinking-level", "off");
+  enter(state); // commit
   assert.equal(state.edits.models.plan, model);
   assert.equal(state.edits.providers.plan, "", "no owner → empty provider");
+  assert.equal(state.edits.thinking.plan, "off");
+});
+
+test("Esc from the thinking screen commits no partial edit and clears drillModel", () => {
+  const state = makeState({
+    groups: new Map([["anthropic", ["claude-opus-4-7", "claude-sonnet-4-6"]]]),
+  });
+  cursorToValue(state, "phase", "build");
+  enter(state); // → provider
+  cursorTo(state, "provider"); // anthropic
+  enter(state); // → model
+  cursorToValue(state, "model", "claude-opus-4-7"); // differs from default build model
+  enter(state); // → thinking, drillModel set
+  assert.equal(state.drillModel, "claude-opus-4-7", "model is staged in drillModel");
+  const result = back(state); // Esc
+  assert.equal(result.type, "state");
+  assert.equal(state.screen, "main", "Esc returns to main");
+  assert.equal(state.edits.changed, false, "no model/provider/thinking change is committed");
+  assert.equal(state.edits.models.build, "claude-sonnet-4-6", "model is NOT half-committed (default intact)");
+  assert.equal(state.edits.thinking.build, undefined, "no thinking is committed");
+  assert.equal(state.drillModel, null, "drillModel is cleared on Esc");
+  assert.equal(state.drillPhase, null, "drillPhase is cleared on Esc");
+  assert.equal(state.drillProvider, null, "drillProvider is cleared on Esc");
 });
 
 // ---------------------------------------------------------------------------
@@ -617,6 +717,8 @@ test("a single phase model edit sets edits.changed", () => {
   cursorTo(state, "provider");
   enter(state); // → model
   cursorTo(state, "model");
+  enter(state); // → thinking
+  cursorTo(state, "thinking-level"); // pick a level → commit
   enter(state); // commit
   assert.equal(state.edits.changed, true);
   assert.equal(state.edits.autotuneChanged, false, "autotune untouched");
@@ -681,17 +783,25 @@ test("submitText: custom provider then custom model commits the typed strings to
   assert.equal(state.textPrompt!.for, "model");
 
   submitText(state, "  my-model  ");
+  // The typed model now advances to the thinking screen rather than committing.
   assert.equal(state.textPrompt, null, "the prompt is cleared");
-  assert.equal(state.screen, "main", "returns to the main screen");
+  assert.equal(state.screen, "thinking", "a typed model advances to the thinking screen");
+  assert.equal(state.drillModel, "my-model", "the typed model is staged in drillModel, trimmed");
+  // Choose a level to commit model + provider + thinking atomically.
+  cursorToValue(state, "thinking-level", "high");
+  enter(state); // commit
+  assert.equal(state.screen, "main", "returns to the main screen after committing");
   assert.equal(state.edits.models.build, "my-model", "typed model committed, trimmed");
   assert.equal(
     state.edits.providers.build,
     "my-provider",
     "the typed provider is committed for the phase",
   );
+  assert.equal(state.edits.thinking.build, "high", "the chosen level is committed");
   assert.equal(state.edits.changed, true);
   assert.equal(state.drillPhase, null, "drill context is cleared");
   assert.equal(state.drillProvider, null);
+  assert.equal(state.drillModel, null, "drillModel is cleared after the commit");
 });
 
 test("submitText: a typed model with no drilled provider commits an empty provider", () => {
@@ -707,8 +817,14 @@ test("submitText: a typed model with no drilled provider commits an empty provid
   enter(state); // opens the model text prompt
 
   submitText(state, "typed-model");
+  // The typed model advances to the thinking screen; commit on a level.
+  assert.equal(state.screen, "thinking", "a typed model advances to the thinking screen");
+  assert.equal(state.drillModel, "typed-model", "the typed model is staged");
+  cursorToValue(state, "thinking-level", "medium");
+  enter(state); // commit
   assert.equal(state.edits.models.plan, "typed-model");
   assert.equal(state.edits.providers.plan, "", "null drillProvider → empty provider");
+  assert.equal(state.edits.thinking.plan, "medium");
   assert.equal(state.edits.changed, true);
   assert.equal(state.screen, "main");
 });

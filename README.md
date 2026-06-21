@@ -74,7 +74,7 @@ into `/forge` for you.
 | Feature | What it does |
 | ------- | ------------ |
 | **Strict TDD** | The build phase drives RED → GREEN → TRIANGULATE → REFACTOR with a TDD Cycle Evidence table; veredicto audits it. On by default, runtime-gated on a test runner; `tdd.mode: "off"` disables it. |
-| **`/zero-models`** | Pick the model + provider for each SDD phase — a boxed-window picker, or set one directly. |
+| **`/zero-models`** | Pick the model + provider + thinking level for each SDD phase — a boxed-window picker, or set one directly. |
 | **Autotune** | Learns which model fits each phase from your run history and re-tunes itself. |
 | **`/zero-sync` / `/zero-archive`** | Folds each run's spec delta into a canonical, project-wide spec store and archives approved runs. |
 | **Git / PR / Issues** | `/zero-branch`, `/zero-git-validate`, `/zero-pr`, and `/zero-issue` keep branches and GitHub links audit-ready. |
@@ -92,7 +92,7 @@ into `/forge` for you.
 | Command | Does |
 | ------- | ---- |
 | `/forge <feature>` | Run the SDD pipeline — `--continue [slug]` resumes. |
-| `/zero-models [<phase>=[<provider>/]<model>]` | Show or set per-phase models — `autotune=auto\|ask\|off`. |
+| `/zero-models [<phase>=[<provider>/]<model> [thinking=<level>]]` | Show or set per-phase models, providers, and thinking — `thinking=<level>` (`off\|minimal\|low\|medium\|high\|xhigh`); `autotune=auto\|ask\|off`. |
 | `/zero-sync <slug>` | Fold a run's spec delta into the canonical spec store; a first all-`## ADDED` delta creates the store lazily. |
 | `/zero-archive <slug>` | Merge an approved run into `.sdd/specs/`, move it to `.sdd/archive/YYYY-MM-DD-<slug>/`, and persist `archivePath`. |
 | `/zero-validate <slug>` | Validate proposal/spec/design/tasks artifacts, including task schema and per-domain specs. |
@@ -165,9 +165,31 @@ Acceptance criteria:
 
 ## 🔧 Configuration
 
-zero-pi keeps its state in `~/.pi/zero.json` (per-phase models + autotune mode)
-and `~/.pi/zero-runs.jsonl` (the run-metrics log); per-project artifacts live
-under `.sdd/`. Set `ZERO_RESUME=off` to disable the conversation-resume note.
+zero-pi keeps its state in `~/.pi/zero.json` (per-phase `models`, `providers`,
+`thinking`, and autotune mode) and `~/.pi/zero-runs.jsonl` (the run-metrics log);
+per-project artifacts live under `.sdd/`. Set `ZERO_RESUME=off` to disable the
+conversation-resume note.
+
+`~/.pi/zero.json` stores three parallel per-phase maps plus the autotune mode:
+
+```json
+{
+  "models":    { "explore": "claude-haiku-4-5", "build": "claude-sonnet-4-6" },
+  "providers": { "explore": "anthropic",        "build": "anthropic" },
+  "thinking":  { "explore": "low",              "build": "high" },
+  "autotune": "ask"
+}
+```
+
+The `thinking` map sets each phase's pi effort level — one of `off`, `minimal`,
+`low`, `medium`, `high`, `xhigh`. A phase with no entry gets no `thinking:` line
+in its generated sub-agent (no aggressive default). Set it from the picker's
+after-model thinking screen, or directly:
+
+```
+/zero-models build=anthropic/claude-sonnet-4-6 thinking=high
+/zero-models build=anthropic/claude-sonnet-4-6 high      # trailing shorthand
+```
 
 `.sdd/config.json` carries the per-project git and TDD settings:
 

@@ -10,14 +10,79 @@ import {
   formatPhases,
   groupByProvider,
   isPhase,
+  isThinkingLevel,
   parseAssignment,
   parseAutotuneArg,
+  parseThinkingToken,
   PHASES,
   readModels,
   readProviders,
+  readThinking,
+  THINKING_LEVELS,
   type PhaseModels,
   type PhaseProviders,
+  type PhaseThinking,
 } from "./zero-models.ts";
+
+test("THINKING_LEVELS is exactly the six real pi effort levels, in order", () => {
+  assert.deepEqual(
+    [...THINKING_LEVELS],
+    ["off", "minimal", "low", "medium", "high", "xhigh"],
+  );
+});
+
+test("isThinkingLevel accepts each of the six real levels", () => {
+  for (const level of THINKING_LEVELS) assert.ok(isThinkingLevel(level));
+});
+
+test("isThinkingLevel rejects bogus levels, empty string, and non-strings", () => {
+  assert.ok(!isThinkingLevel("max"));
+  assert.ok(!isThinkingLevel("ultracode"));
+  assert.ok(!isThinkingLevel(""));
+  assert.ok(!isThinkingLevel("HIGH"), "case-sensitive — uppercase is not a level");
+  assert.ok(!isThinkingLevel(42));
+  assert.ok(!isThinkingLevel(null));
+  assert.ok(!isThinkingLevel(undefined));
+  assert.ok(!isThinkingLevel({}));
+});
+
+test("readThinking reads a valid per-phase thinking level", () => {
+  assert.deepEqual(readThinking({ thinking: { build: "high" } }), { build: "high" });
+});
+
+test("readThinking ignores an invalid thinking value", () => {
+  assert.deepEqual(readThinking({ thinking: { build: "max" } }), {});
+});
+
+test("readThinking returns an empty map when no thinking is configured", () => {
+  assert.deepEqual(readThinking({}), {});
+});
+
+test("readThinking ignores non-string thinking entries, never coercing them", () => {
+  assert.deepEqual(readThinking({ thinking: { build: 42, plan: null } }), {});
+});
+
+test("readThinking recovers a valid trailing legacy level from the model string", () => {
+  assert.deepEqual(readThinking({ models: { build: "claude-opus-4-8 high" } }), {
+    build: "high",
+  });
+});
+
+test("readThinking does not recover an invalid trailing legacy token", () => {
+  assert.deepEqual(readThinking({ models: { build: "claude-opus-4-8 max" } }), {});
+});
+
+test("readThinking does not recover from a model with no trailing token", () => {
+  assert.deepEqual(readThinking({ models: { build: "claude-opus-4-8" } }), {});
+});
+
+test("readThinking: an explicit thinking map wins over a legacy suffix", () => {
+  const out = readThinking({
+    thinking: { build: "low" },
+    models: { build: "claude-opus-4-8 high" },
+  });
+  assert.deepEqual(out, { build: "low" });
+});
 
 test("isPhase recognises the four SDD phases and nothing else", () => {
   for (const phase of PHASES) assert.ok(isPhase(phase));
@@ -57,6 +122,71 @@ test("parseAssignment rejects an unknown phase, an empty model, or no value", ()
   assert.equal(parseAssignment(""), null);
 });
 
+test("parseAssignment parses an explicit thinking=<level> token", () => {
+  assert.deepEqual(parseAssignment("build=anthropic/claude-opus-4-8 thinking=high"), {
+    phase: "build",
+    provider: "anthropic",
+    model: "claude-opus-4-8",
+    thinking: "high",
+  });
+});
+
+test("parseAssignment parses a trailing bare <level> shorthand", () => {
+  assert.deepEqual(parseAssignment("build=anthropic/claude-opus-4-8 high"), {
+    phase: "build",
+    provider: "anthropic",
+    model: "claude-opus-4-8",
+    thinking: "high",
+  });
+});
+
+test("parseAssignment yields no thinking when no thinking token is present", () => {
+  const out = parseAssignment("build=anthropic/claude-opus-4-8");
+  assert.deepEqual(out, { phase: "build", provider: "anthropic", model: "claude-opus-4-8" });
+  assert.ok(out && !("thinking" in out), "thinking key absent when not supplied");
+});
+
+test("parseAssignment does not treat a non-level trailing token as thinking", () => {
+  assert.deepEqual(parseAssignment("build=claude-opus-4-8 codex"), {
+    phase: "build",
+    model: "claude-opus-4-8 codex",
+  });
+});
+
+test("parseAssignment rejects an invalid explicit thinking level (null — no write)", () => {
+  assert.equal(parseAssignment("build=anthropic/claude-opus-4-8 thinking=max"), null);
+  assert.equal(parseAssignment("build=anthropic/claude-opus-4-8 thinking=ultracode"), null);
+});
+
+test("parseThinkingToken extracts an explicit thinking=<level> and cleans the value", () => {
+  assert.deepEqual(parseThinkingToken("anthropic/claude-opus-4-8 thinking=high"), {
+    value: "anthropic/claude-opus-4-8",
+    thinking: "high",
+  });
+});
+
+test("parseThinkingToken extracts a trailing bare <level>", () => {
+  assert.deepEqual(parseThinkingToken("claude-opus-4-8 medium"), {
+    value: "claude-opus-4-8",
+    thinking: "medium",
+  });
+});
+
+test("parseThinkingToken leaves a non-level trailing token in the value", () => {
+  assert.deepEqual(parseThinkingToken("claude-opus-4-8 codex"), {
+    value: "claude-opus-4-8 codex",
+  });
+});
+
+test("parseThinkingToken returns the value unchanged when there is no thinking token", () => {
+  assert.deepEqual(parseThinkingToken("claude-opus-4-8"), { value: "claude-opus-4-8" });
+});
+
+test("parseThinkingToken signals 'invalid' for an unknown explicit level", () => {
+  assert.equal(parseThinkingToken("claude-opus-4-8 thinking=max"), "invalid");
+  assert.equal(parseThinkingToken("claude-opus-4-8 thinking=ultracode"), "invalid");
+});
+
 test("readModels fills missing phases with the defaults", () => {
   const models = readModels({});
   for (const phase of PHASES) assert.equal(typeof models[phase], "string");
@@ -72,6 +202,21 @@ test("readModels keeps the values present in zero.json", () => {
 test("readModels ignores non-string model entries", () => {
   const models = readModels({ models: { build: 42 } });
   assert.equal(models.build, "claude-sonnet-4-6", "a non-string value falls back");
+});
+
+test("readModels strips a valid trailing thinking level for display", () => {
+  const models = readModels({ models: { build: "claude-opus-4-8 high" } });
+  assert.equal(models.build, "claude-opus-4-8");
+});
+
+test("readModels leaves a non-level trailing token untouched (no silent data loss)", () => {
+  const models = readModels({ models: { build: "claude-opus-4-8 max" } });
+  assert.equal(models.build, "claude-opus-4-8 max");
+});
+
+test("readModels leaves a plain model id (no trailing token) untouched", () => {
+  const models = readModels({ models: { build: "claude-opus-4-8" } });
+  assert.equal(models.build, "claude-opus-4-8");
 });
 
 test("readProviders reads stored providers and defaults the rest to empty", () => {
@@ -112,11 +257,27 @@ test("groupByProvider skips malformed entries", () => {
 test("formatPhases shows provider/model when a provider is set, model alone otherwise", () => {
   const models: PhaseModels = { explore: "m-e", plan: "m-p", build: "m-b", veredicto: "m-v" };
   const providers: PhaseProviders = { explore: "anthropic", plan: "", build: "codex", veredicto: "" };
-  const out = formatPhases(models, providers);
+  const out = formatPhases(models, providers, {});
   for (const phase of PHASES) assert.ok(out.includes(phase));
   assert.ok(out.includes("anthropic/m-e"));
   assert.ok(out.includes("codex/m-b"));
   assert.ok(out.includes(" m-p"), "no provider → bare model");
+});
+
+test("formatPhases appends the thinking level beside provider/model when set", () => {
+  const models: PhaseModels = { explore: "m-e", plan: "m-p", build: "m-b", veredicto: "m-v" };
+  const providers: PhaseProviders = { explore: "anthropic", plan: "", build: "codex", veredicto: "" };
+  const thinking: PhaseThinking = { build: "high" };
+  const out = formatPhases(models, providers, thinking);
+  assert.ok(out.includes("codex/m-b · thinking high"), "thinking shown beside the model");
+});
+
+test("formatPhases shows no thinking artifact for a phase without a level", () => {
+  const models: PhaseModels = { explore: "m-e", plan: "m-p", build: "m-b", veredicto: "m-v" };
+  const providers: PhaseProviders = { explore: "anthropic", plan: "", build: "codex", veredicto: "" };
+  const out = formatPhases(models, providers, { build: "high" });
+  const planLine = out.split("\n").find((l) => l.includes("plan"))!;
+  assert.ok(!planLine.includes("· thinking"), "unset phase has no · thinking text");
 });
 
 test("parseAutotuneArg accepts each valid mode", () => {

@@ -1,6 +1,6 @@
 {
   "name": "@gonrocca/zero-pi",
-  "version": "0.1.54",
+  "version": "0.1.55",
   "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow (explore → plan → build → veredicto) with per-phase model autotune and token-efficient batched builds. Adds capability to pi without modifying pi.",
   "type": "module",
   "keywords": [

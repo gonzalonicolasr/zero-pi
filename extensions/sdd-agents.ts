@@ -16,6 +16,9 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { isThinkingLevel } from "./zero-models.ts";
+import type { ThinkingLevel } from "./zero-models.ts";
+
 /** The four SDD phases, each backed by a `prompts/phases/<phase>.md`. */
 export const PHASES = ["explore", "plan", "build", "veredicto"] as const;
 export type Phase = (typeof PHASES)[number];
@@ -59,6 +62,7 @@ export function buildAgentFile(
   body: string,
   description: string,
   model: string | undefined,
+  thinking?: ThinkingLevel,
 ): string {
   const front = [
     "---",
@@ -66,6 +70,11 @@ export function buildAgentFile(
     `description: ${description || `zero SDD ${phase} phase`}`,
   ];
   if (model) front.push(`model: ${model}`);
+  // The `thinking:` line sits after the optional `model:` and before
+  // `systemPromptMode:`. It is emitted only when a level is present AND valid —
+  // defensive: callers already validate, but the file builder must never write
+  // a bad level into agent frontmatter.
+  if (thinking && isThinkingLevel(thinking)) front.push(`thinking: ${thinking}`);
   front.push(
     "systemPromptMode: replace",
     "inheritProjectContext: true",
@@ -101,10 +110,49 @@ export function phaseModel(data: unknown, phase: Phase): string | undefined {
   return model;
 }
 
+/**
+ * Resolve the agent `thinking:` level for a phase from a parsed `zero.json`.
+ *
+ * The explicit `thinking[phase]` value wins when it is one of the six real pi
+ * effort levels. Otherwise a legacy model string of the form `"<model> <level>"`
+ * is mined: its trailing whitespace-separated token supplies the level, but
+ * only when that token is a valid level. `max`/`ultracode` and any other token
+ * resolve to `undefined`, so no `thinking:` line is emitted. Exported for tests.
+ */
+export function phaseThinking(data: unknown, phase: Phase): ThinkingLevel | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const d = data as {
+    thinking?: Record<string, unknown>;
+    models?: Record<string, unknown>;
+  };
+  const direct = d.thinking?.[phase];
+  if (isThinkingLevel(direct)) return direct;
+  // Legacy recovery: a valid trailing level on "<model> <level>".
+  const model = d.models?.[phase];
+  if (typeof model === "string" && model.trim().includes(" ")) {
+    const tail = model.trim().split(/\s+/).slice(-1)[0];
+    if (isThinkingLevel(tail)) return tail;
+  }
+  return undefined;
+}
+
 /** Read the per-phase model from `~/.pi/zero.json`; `undefined` when absent. */
 function readPhaseModel(phase: Phase): string | undefined {
   try {
     return phaseModel(
+      JSON.parse(readFileSync(join(homedir(), ".pi", "zero.json"), "utf8")),
+      phase,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read the per-phase thinking level from `~/.pi/zero.json`; `undefined` when
+ *  absent, invalid, or unrecoverable. Mirrors {@link readPhaseModel}. */
+function readPhaseThinking(phase: Phase): ThinkingLevel | undefined {
+  try {
+    return phaseThinking(
       JSON.parse(readFileSync(join(homedir(), ".pi", "zero.json"), "utf8")),
       phase,
     );
@@ -131,7 +179,13 @@ export default function register(_pi?: unknown): void {
       try {
         const raw = readFileSync(join(phasesDir, `${phase}.md`), "utf8");
         const { description, body } = splitPhasePrompt(raw);
-        const file = buildAgentFile(phase, body, description, readPhaseModel(phase));
+        const file = buildAgentFile(
+          phase,
+          body,
+          description,
+          readPhaseModel(phase),
+          readPhaseThinking(phase),
+        );
         writeFileSync(join(agentsDir, `zero-${phase}.md`), file, "utf8");
       } catch {
         // A single phase failing must not block the other three.

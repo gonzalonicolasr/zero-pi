@@ -7,6 +7,33 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.55] - 2026-06-21
+
+### Added — per-phase thinking (effort) level in `/zero-models`
+
+- `/zero-models` now selects a **thinking level per SDD phase** alongside the
+  model and provider. The six levels are pi's real ones —
+  `off`, `minimal`, `low`, `medium`, `high`, `xhigh` — not Claude Code's
+  `max`/`ultracode` (those belong to a different tool and are rejected
+  everywhere).
+- Interactive picker: after picking a phase's model, a new **thinking** screen
+  offers the six levels. The model + provider + thinking are committed
+  **atomically** — pressing Esc on the thinking screen leaves no half-committed
+  model.
+- Direct form: `/zero-models build=anthropic/claude-opus-4-8 thinking=high`, or
+  the trailing shorthand `/zero-models build=anthropic/claude-opus-4-8 high`
+  when the final token is one of the six levels. An invalid level
+  (`thinking=max`) is rejected with usage help and writes nothing; an
+  assignment with no thinking token preserves the phase's prior level.
+- Persisted as a `thinking` map in `~/.pi/zero.json`, parallel to `models` and
+  `providers`. `sdd-agents.ts` injects `thinking: <level>` into each generated
+  sub-agent's frontmatter, so every phase runs at its configured effort.
+- Backward-compatible: a phase with no thinking level emits **no** `thinking:`
+  frontmatter (no aggressive default), and a legacy `"<model> <level>"` model
+  string recovers the level only when it is one of the six valid ones. The
+  picker state module stays pure (no `node:fs`, no pi-tui import). +17 tests
+  (599 → 616).
+
 ## [0.1.54] - 2026-06-05
 
 ### Fixed — orchestrator: one archive command, not two half-described ones

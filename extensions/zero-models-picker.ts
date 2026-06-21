@@ -12,7 +12,7 @@
 // new state. Type-only imports are `import type` so `--experimental-strip-types`
 // erases them with no runtime resolution. Mirrors the `autotune.ts` precedent.
 
-import type { Phase, PhaseModels, PhaseProviders } from "./zero-models.ts";
+import type { Phase, PhaseModels, PhaseProviders, PhaseThinking, ThinkingLevel } from "./zero-models.ts";
 import type { AutotuneMode } from "./autotune.ts";
 import type { AutotunePending } from "./autotune-extension.ts";
 
@@ -24,12 +24,17 @@ const PHASES = ["explore", "plan", "build", "veredicto"] as const;
 /** The three autotune modes offered on the autotune screen. */
 const AUTOTUNE_MODES = ["auto", "ask", "off"] as const;
 
+/** The six real pi effort levels, in ascending order — re-stated locally so
+ *  the pure module carries no value import. Must stay in lockstep with
+ *  `THINKING_LEVELS` in `zero-models.ts`. No `max`/`ultracode` aliases. */
+const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+
 // ---------------------------------------------------------------------------
 // Screen model
 // ---------------------------------------------------------------------------
 
 /** Which sub-screen the picker is currently showing. */
-export type Screen = "main" | "provider" | "model" | "autotune";
+export type Screen = "main" | "provider" | "model" | "thinking" | "autotune";
 
 /** One selectable row in the current screen. */
 export interface MenuEntry {
@@ -43,6 +48,7 @@ export interface MenuEntry {
     | "custom-provider" // — otro provider (escribir) —
     | "model" // a concrete model id        (model screen)
     | "custom-model" // — otro modelo (escribir) —
+    | "thinking-level" // off | minimal | … | xhigh   (thinking screen)
     | "autotune-mode"; // auto | ask | off           (autotune screen)
   /** The text shown for the row (Spanish, voseo). */
   label: string;
@@ -60,6 +66,9 @@ export interface StagedEdits {
   models: PhaseModels;
   /** From `readProviders` — a mutated copy, parallel to {@link models}. */
   providers: PhaseProviders;
+  /** From `readThinking` — a mutated copy, parallel to {@link models}. A
+   *  partial map: an absent phase means no thinking level configured. */
+  thinking: PhaseThinking;
   /** The autotune mode, possibly changed from disk. */
   autotuneMode: AutotuneMode;
   /** Any phase model/provider changed. */
@@ -95,6 +104,9 @@ export interface PickerState {
   drillPhase: Phase | null;
   /** Drill-down context: provider chosen so far (model screen). */
   drillProvider: string | null;
+  /** Drill-down context: the model chosen, awaiting a thinking level
+   *  (thinking screen). Held out of `edits` until a level commits it. */
+  drillModel: string | null;
   /** When non-null, the component shows an inline text input for this. */
   textPrompt: { for: "provider" | "model"; label: string } | null;
 }
@@ -120,15 +132,19 @@ const CUSTOM_MODEL_LABEL = "— otro modelo (escribir) —";
 /** The save-and-exit row label. */
 const SAVE_LABEL = "— guardar y salir —";
 
-/** Render a phase's current `provider/model` (provider omitted when empty). */
+/** Render a phase's current `provider/model` (provider omitted when empty),
+ *  with ` · thinking <level>` appended when a level is staged — mirroring
+ *  `formatPhases` in `zero-models.ts`. No artifact when no level is set. */
 function phaseLabel(
   phase: Phase,
   models: PhaseModels,
   providers: PhaseProviders,
+  thinking: PhaseThinking,
 ): string {
   const provider = providers[phase];
   const model = provider ? `${provider}/${models[phase]}` : models[phase];
-  return `${phase}   →   ${model}`;
+  const level = thinking[phase];
+  return `${phase}   →   ${model}${level ? ` · thinking ${level}` : ""}`;
 }
 
 /** Render the `★ aplicar sugerencia` label from the pending adjustments. */
@@ -149,6 +165,7 @@ function applyLabel(pending: readonly AutotunePending[]): string {
 export function createPickerState(input: {
   models: PhaseModels;
   providers: PhaseProviders;
+  thinking: PhaseThinking;
   autotuneMode: AutotuneMode;
   pending: AutotunePending[];
   groups: Map<string, string[]>;
@@ -161,6 +178,7 @@ export function createPickerState(input: {
     edits: {
       models: { ...input.models },
       providers: { ...input.providers },
+      thinking: { ...input.thinking },
       autotuneMode: input.autotuneMode,
       changed: false,
       autotuneChanged: false,
@@ -171,6 +189,7 @@ export function createPickerState(input: {
     fallbackModels: input.fallbackModels,
     drillPhase: null,
     drillProvider: null,
+    drillModel: null,
     textPrompt: null,
   };
   return rebuildEntries(state);
@@ -197,7 +216,12 @@ function mainEntries(state: PickerState): MenuEntry[] {
   for (const phase of PHASES) {
     entries.push({
       kind: "phase",
-      label: phaseLabel(phase, state.edits.models, state.edits.providers),
+      label: phaseLabel(
+        phase,
+        state.edits.models,
+        state.edits.providers,
+        state.edits.thinking,
+      ),
       value: phase,
     });
   }
@@ -242,6 +266,15 @@ function modelEntries(state: PickerState): MenuEntry[] {
   return entries;
 }
 
+/** Build the rows for the `thinking` screen — the six real pi effort levels. */
+function thinkingEntries(): MenuEntry[] {
+  return THINKING_LEVELS.map((level) => ({
+    kind: "thinking-level" as const,
+    label: level,
+    value: level,
+  }));
+}
+
 /** Build the rows for the `autotune` screen — the three modes. */
 function autotuneEntries(): MenuEntry[] {
   return AUTOTUNE_MODES.map((mode) => ({
@@ -269,6 +302,9 @@ export function rebuildEntries(state: PickerState): PickerState {
       break;
     case "model":
       state.entries = modelEntries(state);
+      break;
+    case "thinking":
+      state.entries = thinkingEntries();
       break;
     case "autotune":
       state.entries = autotuneEntries();
@@ -365,20 +401,34 @@ export function enter(state: PickerState): EnterResult {
     }
 
     case "model": {
-      if (state.drillPhase !== null) {
+      // Selecting a model no longer commits — it stages the model in
+      // `drillModel` and advances to the thinking screen, so model + provider
+      // + thinking are written together (atomically) only when a level is
+      // chosen. An Esc before that leaves `edits` untouched.
+      state.drillModel = entry.value;
+      state.screen = "thinking";
+      state.cursor = 0;
+      return { type: "state", state: rebuildEntries(state) };
+    }
+
+    case "thinking-level": {
+      // The single commit point: write model + provider + thinking together
+      // for the drilled phase, then clear all drill context and return to main.
+      const level = entry.value as ThinkingLevel;
+      if (state.drillPhase !== null && state.drillModel !== null) {
         const phase = state.drillPhase;
-        state.edits.models[phase] = entry.value;
+        state.edits.models[phase] = state.drillModel;
         // `drillProvider` is the provider picked/typed on the provider screen,
-        // or `null` when the empty-registry skip jumped straight here — in
-        // which case there is no provider, so `""`. (The design's middle
-        // `resolveProvider` term is unreachable in the pure module: a null
-        // `drillProvider` only ever co-occurs with an empty `groups`.)
+        // or `null` when the empty-registry skip jumped straight to the model
+        // screen — in which case there is no provider, so `""`.
         state.edits.providers[phase] = state.drillProvider ?? "";
+        state.edits.thinking[phase] = level;
         state.edits.changed = true;
       }
       state.screen = "main";
       state.drillPhase = null;
       state.drillProvider = null;
+      state.drillModel = null;
       state.cursor = 0;
       return { type: "state", state: rebuildEntries(state) };
     }
@@ -428,6 +478,10 @@ export function back(state: PickerState): EnterResult {
   state.screen = "main";
   state.drillPhase = null;
   state.drillProvider = null;
+  // Clearing `drillModel` here is what makes the model+provider+thinking write
+  // atomic: Esc from the thinking screen drops the staged model so no partial
+  // edit is ever committed.
+  state.drillModel = null;
   state.textPrompt = null;
   state.cursor = 0;
   return { type: "state", state: rebuildEntries(state) };
@@ -470,16 +524,11 @@ export function submitText(state: PickerState, typed: string): PickerState {
     state.screen = "model";
     state.cursor = 0;
   } else {
-    // prompt.for === "model": commit the typed model into the drilled phase.
-    if (state.drillPhase !== null) {
-      const phase = state.drillPhase;
-      state.edits.models[phase] = value;
-      state.edits.providers[phase] = state.drillProvider ?? "";
-      state.edits.changed = true;
-    }
-    state.screen = "main";
-    state.drillPhase = null;
-    state.drillProvider = null;
+    // prompt.for === "model": stage the typed model in `drillModel` and advance
+    // to the thinking screen — the commit happens atomically when a level is
+    // chosen, never here. Mirrors the `model`-row `enter` path.
+    state.drillModel = value;
+    state.screen = "thinking";
     state.cursor = 0;
   }
 
