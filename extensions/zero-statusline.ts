@@ -4,8 +4,8 @@
 //
 //   claude-opus-4-7 · tok ↑12.3K ↓4.1K · diff +50/-12 · ctx 45% · master · www.ceroclawd.com
 //
-// Themed: model violet, tokens cyan/blue, diff mint/rose, ctx mint→amber→rose
-// by load, branch steel, brand amber. Pure 24-bit ANSI, no runtime deps.
+// Themed (sunset): model coral, tokens gold/peach, diff mint/rose, ctx
+// mint→amber→rose by load, branch steel, brand orchid. Pure 24-bit ANSI.
 //
 // Refreshes on `session_start`, `model_select`, `message_update`
 // (accumulates tokens), and `tool_execution_end` (re-reads git, since tools
@@ -17,17 +17,18 @@ import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
 
-// ─── Color palette (matches the zero-sdd theme `vars`) ─────────────────────
+// ─── Color palette (matches the zero-sunset theme `vars`) ─────────────────────
 
 type RGB = [number, number, number];
-const VIOLET: RGB = [175, 138, 255];
-const CYAN: RGB = [80, 210, 255];
-const BLUE: RGB = [116, 151, 255];
-const MINT: RGB = [79, 221, 171];
-const AMBER: RGB = [238, 190, 92];
-const ROSE: RGB = [255, 106, 122];
-const STEEL: RGB = [143, 152, 168];
-const DIM: RGB = [95, 104, 120];
+const CORAL: RGB = [255, 124, 92]; //  model
+const GOLD: RGB = [255, 214, 130]; //  tokens in
+const PEACH: RGB = [255, 168, 99]; //  tokens out
+const ORCHID: RGB = [176, 106, 179]; // brand
+const MINT: RGB = [79, 221, 171]; //   diff added / ctx ok    (semantic)
+const AMBER: RGB = [238, 190, 92]; //  ctx mid                (semantic)
+const ROSE: RGB = [255, 106, 122]; //  diff removed / ctx hot (semantic)
+const STEEL: RGB = [176, 152, 142]; // branch (warm gray)
+const DIM: RGB = [120, 104, 98]; //    labels / separators (warm gray)
 
 function fg([r, g, b]: RGB, text: string): string {
   return `\x1b[38;2;${r};${g};${b}m${text}\x1b[0m`;
@@ -78,11 +79,11 @@ const SEP = fg(DIM, " · ");
 export function composeStatusline(p: StatuslineParts): string {
   const parts: string[] = [];
 
-  if (p.model) parts.push(fg(VIOLET, p.model));
+  if (p.model) parts.push(fg(CORAL, p.model));
 
   if (p.tokensIn != null || p.tokensOut != null) {
-    const inS = fg(CYAN, `↑${formatTokenCount(p.tokensIn ?? 0)}`);
-    const outS = fg(BLUE, `↓${formatTokenCount(p.tokensOut ?? 0)}`);
+    const inS = fg(GOLD, `↑${formatTokenCount(p.tokensIn ?? 0)}`);
+    const outS = fg(PEACH, `↓${formatTokenCount(p.tokensOut ?? 0)}`);
     parts.push(`${fg(DIM, "tok")} ${inS} ${outS}`);
   }
 
@@ -98,7 +99,7 @@ export function composeStatusline(p: StatuslineParts): string {
 
   if (p.branch) parts.push(fg(STEEL, p.branch));
 
-  if (p.brand) parts.push(fg(VIOLET, p.brand));
+  if (p.brand) parts.push(fg(ORCHID, p.brand));
 
   return parts.join(SEP);
 }

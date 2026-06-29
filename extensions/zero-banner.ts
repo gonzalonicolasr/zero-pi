@@ -1,8 +1,9 @@
 // zero-pi — static ZERO SDD startup banner.
 //
 // Renders the ZERO wordmark ONCE, at extension load, as an "ANSI Shadow" 3D
-// block in ceroclawd.com violet — deep-violet faces, a lit top edge, dark
-// shadow strokes and a cast shadow for depth.
+// block in a sunset gradient — gold at the lit top edge melting down through
+// coral and magenta to a ceroclawd-violet base, with dark shadow strokes and
+// a cast shadow for depth.
 //
 // It writes a single block to stdout before pi's UI takes over. There is
 // deliberately NO setHeader and NO animation timer: an animated header that
@@ -29,14 +30,23 @@ const FONT: Record<string, string[]> = {
   " ": ["    ", "    ", "    ", "    ", "    ", "    "],
 };
 
-// ceroclawd.com palette — violet, glow and darkness.
-const VIOLET_DEEP: RGB = [124, 58, 237];
-const LAVENDER: RGB = [205, 188, 255];
-const PEAK: RGB = [248, 244, 255];
-const SHADOW: RGB = [38, 24, 66];
-const INK: RGB = [20, 13, 34];
-const VIOLET: RGB = [167, 139, 250];
-const MUTED: RGB = [120, 110, 150];
+// Sunset palette — a warm sky gradient (gold → peach → coral → rose → magenta
+// → violet) for the letter faces, plus glow, shadow and darkness. The violet
+// base keeps the ZERO wordmark ending on the ceroclawd brand colour.
+const SKY: RGB[] = [
+  [255, 214, 130], // gold
+  [255, 168, 99], //  peach
+  [255, 124, 92], //  coral
+  [255, 92, 122], //  rose
+  [214, 74, 140], //  magenta
+  [142, 59, 158], //  violet
+];
+const PEAK: RGB = [255, 244, 224];
+const SHADOW: RGB = [46, 22, 54];
+const INK: RGB = [22, 12, 30];
+const CORAL: RGB = [255, 124, 92];
+const PEACH: RGB = [255, 168, 99];
+const MUTED: RGB = [150, 120, 130];
 
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
@@ -55,6 +65,14 @@ function mix(a: RGB, b: RGB, t: number): RGB {
     Math.round(lerp(a[1], b[1], k)),
     Math.round(lerp(a[2], b[2], k)),
   ];
+}
+
+/** Sample a multi-stop colour ramp at t∈[0,1] — the sunset sky, top to base. */
+function ramp(stops: RGB[], t: number): RGB {
+  const k = Math.max(0, Math.min(1, t));
+  const seg = k * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(seg));
+  return mix(stops[i], stops[i + 1], seg - i);
 }
 
 /** Printable width of a string, ignoring ANSI colour escapes. */
@@ -76,17 +94,17 @@ function matrixFor(text: string): { rows: string[]; width: number } {
   return { rows, width: rows[0]?.length ?? 0 };
 }
 
-/** Front-face colour: violet vertical gradient with a lit top edge. */
+/** Front-face colour: sunset vertical gradient with a lit top edge. */
 function faceColor(row: number, topEdge: boolean): RGB {
-  const vt = Math.pow(row / (ROWS - 1), 0.85);
-  const base = mix(LAVENDER, VIOLET_DEEP, vt);
-  return topEdge ? mix(base, PEAK, 0.5) : base;
+  const vt = Math.pow(row / (ROWS - 1), 0.82);
+  const base = ramp(SKY, vt);
+  return topEdge ? mix(base, PEAK, 0.55) : base;
 }
 
 /** Extrusion side: a darker, shaded version of the face it belongs to. */
 function sideColor(row: number): RGB {
-  const vt = Math.pow(row / (ROWS - 1), 0.85);
-  return mix(mix(LAVENDER, VIOLET_DEEP, vt), SHADOW, 0.66);
+  const vt = Math.pow(row / (ROWS - 1), 0.82);
+  return mix(ramp(SKY, vt), SHADOW, 0.62);
 }
 
 function renderLogo(width: number): string[] {
@@ -114,13 +132,13 @@ function renderLogo(width: number): string[] {
   return lines;
 }
 
-/** A thin violet rule, brightest in the middle. */
+/** A thin sunset rule, brightest in the middle. */
 function ornament(width: number): string {
   const length = Math.min(46, Math.max(22, Math.floor(width * 0.5)));
   let line = "";
   for (let i = 0; i < length; i++) {
     const t = i / Math.max(1, length - 1);
-    line += fg(mix(VIOLET_DEEP, VIOLET, Math.sin(t * Math.PI)), "─");
+    line += fg(mix(CORAL, PEACH, Math.sin(t * Math.PI)), "─");
   }
   return center(line, width);
 }
@@ -136,9 +154,9 @@ function ornament(width: number): string {
  */
 export function bannerBlock(width: number): string[] {
   if (width < 64) {
-    return [center(fg(VIOLET, "ZERO SDD"), width), center(fg(MUTED, "pi.dev · spec-driven work"), width)];
+    return [center(fg(PEACH, "ZERO SDD"), width), center(fg(MUTED, "pi.dev · spec-driven work"), width)];
   }
-  const tag = fg(VIOLET, "ZERO SDD") + fg(MUTED, "   explore → plan → build → veredicto");
+  const tag = fg(PEACH, "ZERO SDD") + fg(MUTED, "   explore → plan → build → veredicto");
   return [ornament(width), ...renderLogo(width), center(tag, width), ornament(width)];
 }
 

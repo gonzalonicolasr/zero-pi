@@ -7,6 +7,24 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.56] - 2026-06-29
+
+### Added — `zero-sunset` theme
+
+- New warm "sunset" theme (`themes/zero-sunset.json`): gold/coral/magenta
+  accents over warm-dark panels, with one cool tone (`syntaxType`) kept for
+  code legibility. Activate with `/theme zero-sunset`. The existing `zero-sdd`
+  theme is left untouched.
+
+### Changed — sunset startup banner & statusline
+
+- The ZERO startup banner now renders in a sunset gradient (gold → peach →
+  coral → rose → magenta → violet) via a multi-stop colour ramp, replacing the
+  single-violet gradient. The violet base keeps the wordmark on-brand.
+- The statusline footer adopts the sunset accents (model coral, tokens
+  gold/peach, brand orchid). Diff and context-load colours stay semantic
+  (mint/amber/rose), so `ctxColor` behaviour is unchanged.
+
 ## [0.1.55] - 2026-06-21
 
 ### Added — per-phase thinking (effort) level in `/zero-models`

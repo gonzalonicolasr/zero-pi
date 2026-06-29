@@ -86,6 +86,7 @@ into `/forge` for you.
 | **Windows tree-kill** | Aborting a turn kills the whole process tree — no orphaned `claude`. |
 | **Skill auto-learning** | Distills reusable skills from substantial tasks and surfaces them later. |
 | **`zero-sdd` theme** | A dark, high-contrast pi theme tuned for SDD work. |
+| **`zero-sunset` theme** | A warm sunset variant — gold/coral/magenta accents over warm-dark panels, with one cool tone kept for syntax legibility. Activate with `/theme zero-sunset`. |
 
 ## ⌨️ Commands
 
