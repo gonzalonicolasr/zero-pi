@@ -7,6 +7,24 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.57] - 2026-06-30
+
+### Added — `/zero-cost` run cost report
+
+- New read-only command **`/zero-cost [slug]`** that aggregates the sub-agent
+  `meta.json` files a `/forge` run writes (under
+  `~/.pi/agent/sessions/*/subagent-artifacts/`) into a per-phase table —
+  tokens (in / out / cache), USD cost, duration, and tool-count — plus a run
+  total. `/zero-cost <slug>` reports that run; `/zero-cost` with no argument
+  reports the most recent run. `~/.pi/zero-runs.jsonl` records the verdict and
+  per-phase model but never cost, so this fills the only-by-hand gap of
+  "what did this run cost, by phase?".
+- Purely additive: no schema change, no pipeline change. The pure module
+  `zero-cost.ts` (phase mapping, slug extraction, selection, aggregation,
+  formatting) is fully unit-tested (+12 tests, 628 total); `zero-cost-extension.ts`
+  globs the meta files and renders the report. Reuses the shared `formatTokens`
+  helper (now shipped in the package).
+
 ## [0.1.56] - 2026-06-29
 
 ### Added — `zero-sunset` theme
