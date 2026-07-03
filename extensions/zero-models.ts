@@ -328,6 +328,85 @@ export function groupByProvider(models: readonly PiModel[]): Map<string, string[
   return map;
 }
 
+/** Result of validating a direct `/zero-models <phase>=...` assignment
+ *  against pi's model registry. */
+export type AssignmentValidation =
+  | { ok: true; provider?: string }
+  | { ok: false; message: string };
+
+function containsModel(list: readonly string[] | undefined, model: string): boolean {
+  return Boolean(list?.includes(model));
+}
+
+function modelProviders(groups: Map<string, string[]>, model: string): string[] {
+  const providers: string[] = [];
+  for (const [provider, models] of groups) if (models.includes(model)) providers.push(provider);
+  return providers.sort();
+}
+
+function suggestModels(groups: Map<string, string[]>, model: string): string[] {
+  const needle = model.toLowerCase();
+  const scored: string[] = [];
+  for (const [provider, models] of groups) {
+    for (const id of models) {
+      const hay = id.toLowerCase();
+      if (hay.includes(needle) || needle.includes(hay)) scored.push(`${provider}/${id}`);
+    }
+  }
+  return scored.slice(0, 5);
+}
+
+/**
+ * Validate a direct assignment against pi's model registry.
+ *
+ * Empty registry = permissive fallback (old behaviour), because tests and some
+ * headless contexts may not expose `ctx.modelRegistry`. When the registry is
+ * present, the command writes only provider/model pairs pi can actually
+ * resolve. Bare ambiguous model ids are rejected with a provider-qualified hint.
+ */
+export function validateAssignment(
+  assignment: Assignment,
+  groups: Map<string, string[]>,
+): AssignmentValidation {
+  if (groups.size === 0) return { ok: true, provider: assignment.provider };
+
+  if (assignment.provider) {
+    const providerModels = groups.get(assignment.provider);
+    if (!providerModels) {
+      return {
+        ok: false,
+        message: `provider desconocido: ${assignment.provider}. Usá uno de: ${[...groups.keys()].sort().join(", ")}`,
+      };
+    }
+    if (!containsModel(providerModels, assignment.model)) {
+      const suggestions = suggestModels(groups, assignment.model);
+      return {
+        ok: false,
+        message:
+          `modelo desconocido para ${assignment.provider}: ${assignment.model}` +
+          (suggestions.length > 0 ? `. Quizás: ${suggestions.join(", ")}` : ""),
+      };
+    }
+    return { ok: true, provider: assignment.provider };
+  }
+
+  const providers = modelProviders(groups, assignment.model);
+  if (providers.length === 1) return { ok: true, provider: providers[0] };
+  if (providers.length > 1) {
+    return {
+      ok: false,
+      message: `modelo ambiguo: ${assignment.model}. Usá provider/model: ${providers.map((p) => `${p}/${assignment.model}`).join(", ")}`,
+    };
+  }
+  const suggestions = suggestModels(groups, assignment.model);
+  return {
+    ok: false,
+    message:
+      `modelo desconocido: ${assignment.model}` +
+      (suggestions.length > 0 ? `. Quizás: ${suggestions.join(", ")}` : ""),
+  };
+}
+
 /** The pi-TUI host handed to a `ctx.ui.custom()` factory — only the one
  *  method the picker shell uses. */
 interface PiTui {
@@ -706,8 +785,15 @@ export default function register(pi?: PiExtensionAPI): void {
             );
             return;
           }
+          const validation = validateAssignment(assignment, groups);
+          if (!validation.ok) {
+            ctx.ui.notify(`zero-models: ${validation.message}`, "warning");
+            return;
+          }
+
           models[assignment.phase] = assignment.model;
           providers[assignment.phase] =
+            validation.provider ??
             assignment.provider ??
             resolveProvider(ctx.modelRegistry, assignment.model) ??
             providers[assignment.phase];

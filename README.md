@@ -74,8 +74,9 @@ into `/forge` for you.
 | Feature | What it does |
 | ------- | ------------ |
 | **Strict TDD** | The build phase drives RED → GREEN → TRIANGULATE → REFACTOR with a TDD Cycle Evidence table; veredicto audits it. On by default, runtime-gated on a test runner; `tdd.mode: "off"` disables it. |
-| **`/zero-models`** | Pick the model + provider + thinking level for each SDD phase — a boxed-window picker, or set one directly. |
+| **`/zero-models`** | Pick the model + provider + thinking level for each SDD phase — a boxed-window picker, or set one directly. Direct assignments are validated against pi's model registry when available. |
 | **Autotune** | Learns which model fits each phase from your run history and re-tunes itself. |
+| **`/zero-doctor`** | Preflight diagnostics for zero-pi: package install, Node version, pi-subagents, generated phase agents, model config, `.sdd/config`, run history, git, and `gh` auth. |
 | **`/zero-cost`** | Aggregates a run's sub-agent `meta.json` files into a per-phase token/cost/duration report — no schema change, reads what pi already writes. |
 | **`/zero-sync` / `/zero-archive`** | Folds each run's spec delta into a canonical, project-wide spec store and archives approved runs. |
 | **Git / PR / Issues** | `/zero-branch`, `/zero-git-validate`, `/zero-pr`, and `/zero-issue` keep branches and GitHub links audit-ready. |
@@ -85,7 +86,7 @@ into `/forge` for you.
 | **Working-phrase ticker** | Swaps pi's `Working...` for a context-aware Spanish phrase + spinner. |
 | **Conversation resume** | Writes `.pi/zero-resume.md` on exit — the restore command + a conversation tail. |
 | **Windows tree-kill** | Aborting a turn kills the whole process tree — no orphaned `claude`. |
-| **Skill auto-learning** | Distills reusable skills from substantial tasks and surfaces them later. |
+| **SDD routing skill** | Natural-language requests that say "hacelo con sdd" route into `/forge` without remembering the slash command. |
 | **`zero-sdd` theme** | A dark, high-contrast pi theme tuned for SDD work. |
 | **`zero-sunset` theme** | A warm sunset variant — gold/coral/magenta accents over warm-dark panels, with one cool tone kept for syntax legibility. Activate with `/theme zero-sunset`. |
 
@@ -94,7 +95,8 @@ into `/forge` for you.
 | Command | Does |
 | ------- | ---- |
 | `/forge <feature>` | Run the SDD pipeline — `--continue [slug]` resumes. |
-| `/zero-models [<phase>=[<provider>/]<model> [thinking=<level>]]` | Show or set per-phase models, providers, and thinking — `thinking=<level>` (`off\|minimal\|low\|medium\|high\|xhigh`); `autotune=auto\|ask\|off`. |
+| `/zero-models [<phase>=[<provider>/]<model> [thinking=<level>]]` | Show or set per-phase models, providers, and thinking — `thinking=<level>` (`off\|minimal\|low\|medium\|high\|xhigh`); `autotune=auto\|ask\|off`. Direct assignments fail fast when pi's registry says the provider/model is unknown or ambiguous. |
+| `/zero-doctor` | Run zero-pi preflight diagnostics: package, Node, pi-subagents, generated agents/support modules, model config, `.sdd/config`, run history, git, and `gh`. |
 | `/zero-sync <slug>` | Fold a run's spec delta into the canonical spec store; a first all-`## ADDED` delta creates the store lazily. |
 | `/zero-archive <slug>` | Merge an approved run into `.sdd/specs/`, move it to `.sdd/archive/YYYY-MM-DD-<slug>/`, and persist `archivePath`. |
 | `/zero-validate <slug>` | Validate proposal/spec/design/tasks artifacts, including task schema and per-domain specs. |

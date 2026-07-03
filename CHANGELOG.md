@@ -7,6 +7,29 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.58] - 2026-07-03
+
+### Added — `/zero-doctor` preflight diagnostics
+
+- New command **`/zero-doctor`** checks the local zero-pi setup before a run:
+  package manifest, Node version, `~/.pi/agent/settings.json`, `pi-subagents`,
+  generated zero phase agents and Strict TDD support modules, `~/.pi/zero.json`
+  model config, optional `.sdd/config.json`, `~/.pi/zero-runs.jsonl`, git
+  remote, and `gh auth`. It reports `ok / warn / fail` with concrete hints
+  (for example `pi install npm:pi-subagents` or "restart pi" when generated
+  agents are missing).
+
+### Fixed — `/zero-models` rejects invalid direct assignments
+
+- Direct `/zero-models <phase>=...` assignments now validate against pi's model
+  registry when it is available. Unknown providers, provider/model mismatches,
+  and ambiguous bare model ids (for example model ids exposed by more than one
+  provider) fail fast and write nothing. If pi does not expose a registry in the
+  current context, zero-pi preserves the previous permissive behavior so tests
+  and headless runs remain compatible.
+- README no longer advertises a non-existent "Skill auto-learning" feature; it
+  now documents the real `sdd-routing` skill and the new `/zero-doctor` command.
+
 ## [0.1.57] - 2026-06-30
 
 ### Added — `/zero-cost` run cost report

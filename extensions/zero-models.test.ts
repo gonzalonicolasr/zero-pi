@@ -19,6 +19,7 @@ import {
   readProviders,
   readThinking,
   THINKING_LEVELS,
+  validateAssignment,
   type PhaseModels,
   type PhaseProviders,
   type PhaseThinking,
@@ -252,6 +253,57 @@ test("groupByProvider skips malformed entries", () => {
   ]);
   assert.deepEqual([...groups.keys()], ["ok"]);
   assert.deepEqual(groups.get("ok"), ["good"]);
+});
+
+test("validateAssignment allows exact provider/model from the registry", () => {
+  const groups = groupByProvider([
+    { provider: "anthropic", id: "claude-opus-4-8" },
+    { provider: "openai-codex", id: "gpt-5.5" },
+  ]);
+  assert.deepEqual(
+    validateAssignment({ phase: "build", provider: "anthropic", model: "claude-opus-4-8" }, groups),
+    { ok: true, provider: "anthropic" },
+  );
+});
+
+test("validateAssignment infers provider for a unique bare model", () => {
+  const groups = groupByProvider([
+    { provider: "anthropic", id: "claude-opus-4-8" },
+    { provider: "openai-codex", id: "gpt-5.5" },
+  ]);
+  assert.deepEqual(validateAssignment({ phase: "plan", model: "gpt-5.5" }, groups), {
+    ok: true,
+    provider: "openai-codex",
+  });
+});
+
+test("validateAssignment rejects unknown providers and models when registry exists", () => {
+  const groups = groupByProvider([{ provider: "anthropic", id: "claude-opus-4-8" }]);
+  const badProvider = validateAssignment({ phase: "build", provider: "bogus", model: "x" }, groups);
+  assert.equal(badProvider.ok, false);
+  assert.match(badProvider.ok ? "" : badProvider.message, /provider desconocido/);
+
+  const badModel = validateAssignment({ phase: "build", provider: "anthropic", model: "missing" }, groups);
+  assert.equal(badModel.ok, false);
+  assert.match(badModel.ok ? "" : badModel.message, /modelo desconocido/);
+});
+
+test("validateAssignment rejects ambiguous bare model ids", () => {
+  const groups = groupByProvider([
+    { provider: "azure-openai-responses", id: "gpt-5.5" },
+    { provider: "openai-codex", id: "gpt-5.5" },
+  ]);
+  const out = validateAssignment({ phase: "explore", model: "gpt-5.5" }, groups);
+  assert.equal(out.ok, false);
+  assert.match(out.ok ? "" : out.message, /modelo ambiguo/);
+  assert.match(out.ok ? "" : out.message, /openai-codex\/gpt-5\.5/);
+});
+
+test("validateAssignment keeps old permissive behavior when registry is unavailable", () => {
+  assert.deepEqual(
+    validateAssignment({ phase: "build", provider: "custom", model: "my-model" }, new Map()),
+    { ok: true, provider: "custom" },
+  );
 });
 
 test("formatPhases shows provider/model when a provider is set, model alone otherwise", () => {
