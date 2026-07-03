@@ -207,8 +207,11 @@ strong analyze):
 ```
 
 The `thinking` map sets each phase's pi effort level — one of `off`, `minimal`,
-`low`, `medium`, `high`, `xhigh`. A phase with no entry gets no `thinking:` line
-in its generated sub-agent (no aggressive default). `autotuneBudget` is optional:
+`low`, `medium`, `high`, `xhigh`. An explicit entry always wins; a phase with no
+entry (or an invalid level) falls back to the package default — `clarify:
+medium`, `explore: high`, `plan: high`, `analyze: high`, `build: high`,
+`veredicto: xhigh` — so no phase inherits your session-wide
+`defaultThinkingLevel`. `autotuneBudget` is optional:
 when `maxPhaseCostUsd` is set, autotune will not step a blamed phase up to a more
 expensive tier if that phase/model is already at or above the average USD
 ceiling with enough cost samples (`minSamples`, default 3). Set thinking from
@@ -232,6 +235,18 @@ the picker's after-model thinking screen, or directly:
 audits the TDD evidence) and accepts `"off"` to disable the discipline.
 `tdd.testCommand` overrides the auto-detected test runner the TDD cycle invokes;
 leave it empty to let the build/veredicto phases detect it from the project.
+
+### Token efficiency
+
+The phase sub-agents run **without** your global project context
+(`inheritProjectContext: false`): a global `AGENTS.md` is heavy and may carry
+personal data or credentials no phase needs — project conventions still reach
+the phases, because explore/build skim the repo's own `AGENTS.md`/`CLAUDE.md`.
+Every phase runs at an explicit `thinking:` level (your `zero.json` entry wins;
+gaps take the package defaults above), and explore works under a numeric
+tool-call budget with a mid-budget stop check. The heavy lifting happens inside
+the sub-agents on their own models — leave the session that runs `/forge` on
+your cheap default model.
 
 ## Continuous integration
 

@@ -88,6 +88,21 @@ const DEFAULT_MODELS: PhaseModels = {
   veredicto: "claude-opus-4-8",
 };
 
+/** Package default thinking level per phase, used to fill any gap in the
+ *  user's `zero.json` when the agent files are generated — so no phase ever
+ *  inherits the session-wide `defaultThinkingLevel` from the user's settings.
+ *  An explicit valid `zero.json` entry always wins. The gates get a level
+ *  proportional to their job (clarify records assumptions, analyze reviews
+ *  artifacts); veredicto keeps `xhigh` as the pipeline's adversarial guard. */
+export const DEFAULT_THINKING: Record<Phase, ThinkingLevel> = {
+  clarify: "medium",
+  explore: "high",
+  plan: "high",
+  analyze: "high",
+  build: "high",
+  veredicto: "xhigh",
+};
+
 /** Model list used only when pi's model registry is unavailable. */
 const FALLBACK_MODELS = [
   "claude-opus-4-8",

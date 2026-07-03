@@ -5,7 +5,34 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.61] - 2026-07-03
+
+### Changed — token diet for phase sub-agents
+
+- Generated `zero-*` sub-agents no longer inherit the user's global project
+  context (`inheritProjectContext: false`). The global `AGENTS.md` (often
+  10k+ tokens) was re-sent to every phase; project conventions now come from
+  the repo's own `AGENTS.md`/`CLAUDE.md`, which the explore and build prompts
+  skim once.
+- Every generated agent now carries an explicit `thinking:` level. A valid
+  `zero.json` entry still wins; a missing or invalid entry falls back to the
+  new package defaults (`DEFAULT_THINKING`: clarify `medium`, explore `high`,
+  plan `high`, analyze `high`, build `high`, veredicto `xhigh`) instead of
+  silently inheriting the session-wide `defaultThinkingLevel`.
+- The explore prompt's soft turn gauge is now a numeric **exploration budget**:
+  20 tool calls for a localized change / 40 for a cross-cutting one, a
+  mid-budget stop check, a mandatory `Budget exceeded: <reason>` line in
+  `findings.md` when going over, and a `## Unknowns` section instead of
+  open-ended reading.
+- The build prompt points the sub-agent at the repo's own
+  `AGENTS.md`/`CLAUDE.md` for project conventions.
+
+### Security
+
+- The user's global project context — which can contain real credentials — is
+  no longer injected into any phase sub-agent (and therefore no longer persists
+  in sub-agent sessions, artifacts, or third-party provider requests for a
+  configured phase model).
 
 ## [0.1.60] - 2026-07-03
 

@@ -13,6 +13,8 @@ is normal; do not treat the missing directory as an error.
 Investigate the codebase and the feature request read-only. Do not modify any
 files. Map the relevant modules, the existing patterns and conventions, the
 integration points, and the constraints. Identify the risks and the unknowns.
+If the project root carries an `AGENTS.md` or `CLAUDE.md`, skim it once for
+project conventions — you receive no global user context.
 
 **Size exploration to the request.** Match breadth to what the change actually
 needs. A localized change — copy/text, one component, a config value, a single
@@ -21,8 +23,15 @@ wiring; do not map the full permission/billing model or unrelated subsystems
 unless the request touches them. A cross-cutting or architectural change earns
 full breadth. Stop once you can name the exact files to change and their
 constraints — reading past that point burns tokens without improving the plan.
-As a rough gauge, a localized change rarely needs more than ~20 tool calls; if
-you blow past that on a small request, you are over-exploring.
+
+**Exploration budget.** Classify the request from `request.md` before the first
+tool call: a localized change gets a budget of **20 tool calls**; a
+cross-cutting or architectural change gets **40**. At half budget, checkpoint:
+if you can already name the exact files to change and their constraints, STOP
+and write the findings. Exceeding the budget requires a
+`Budget exceeded: <concrete reason>` line inside `findings.md`, and whatever you
+did not get to goes into a `## Unknowns` section of the findings instead of more
+reading.
 
 **Scope every search to the project, never the filesystem root.** Search inside
 the repo/code directory you are working in. A `find`, `grep -r`, or `rg` rooted

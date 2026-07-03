@@ -260,11 +260,14 @@ and lists only the original four phases stays valid, and `clarify`/`analyze`
 fall back to their defaults (`clarify` cheap/fast, `analyze` strong). Configure
 all six through `/zero-models`.
 
-The `thinking` map is optional and partial: a phase with no entry simply gets no
-`thinking:` line in its generated `zero-<phase>.md` frontmatter — no aggressive
-default is written. When a phase has a valid level, the generated agent file
-carries a `thinking: <level>` line in its frontmatter (placed after `model:` and
-before `systemPromptMode:`), so the sub-agent runs at that effort level.
+The `thinking` map is optional and partial: an explicit valid entry always
+wins, and a phase with no entry (or an invalid level) falls back to the package
+default — `clarify: medium`, `explore: high`, `plan: high`, `analyze: high`,
+`build: high`, `veredicto: xhigh` — so no phase silently inherits the
+session-wide `defaultThinkingLevel` from the user's settings. Every generated
+`zero-<phase>.md` therefore carries a `thinking: <level>` line in its
+frontmatter (placed after `model:` and before `systemPromptMode:`), so the
+sub-agent runs at that effort level.
 
 ## Language Boundary
 

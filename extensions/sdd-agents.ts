@@ -17,7 +17,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isThinkingLevel } from "./zero-models.ts";
+import { DEFAULT_THINKING, isThinkingLevel } from "./zero-models.ts";
 import type { ThinkingLevel } from "./zero-models.ts";
 
 /** The six SDD phases, in pipeline order, each backed by a
@@ -115,9 +115,13 @@ export function buildAgentFile(
   if (thinking && isThinkingLevel(thinking)) front.push(`thinking: ${thinking}`);
   front.push(`tools: ${PHASE_TOOLS[phase].join(", ")}`);
   if (!PHASE_COMPLETION_GUARD[phase]) front.push("completionGuard: false");
+  // `inheritProjectContext: false` keeps the user's global AGENTS.md out of
+  // every phase sub-agent: it is heavy (re-sent to each phase) and may carry
+  // personal data or credentials no phase needs. Project conventions still
+  // reach the phases — explore/build skim the repo's own AGENTS.md/CLAUDE.md.
   front.push(
     "systemPromptMode: replace",
-    "inheritProjectContext: true",
+    "inheritProjectContext: false",
     "inheritSkills: false",
     "---",
   );
@@ -176,6 +180,17 @@ export function phaseThinking(data: unknown, phase: Phase): ThinkingLevel | unde
   return undefined;
 }
 
+/**
+ * Resolve the effective `thinking:` level for a phase: the user's valid
+ * `zero.json` entry (or recoverable legacy suffix) wins; a missing or invalid
+ * entry falls back to the package default, so no generated agent ever inherits
+ * the session-wide `defaultThinkingLevel` from the user's settings. Exported
+ * for tests.
+ */
+export function resolvePhaseThinking(data: unknown, phase: Phase): ThinkingLevel {
+  return phaseThinking(data, phase) ?? DEFAULT_THINKING[phase];
+}
+
 /** Read the per-phase model from `~/.pi/zero.json`; `undefined` when absent. */
 function readPhaseModel(phase: Phase): string | undefined {
   try {
@@ -224,7 +239,7 @@ export default function register(_pi?: unknown): void {
           body,
           description,
           readPhaseModel(phase),
-          readPhaseThinking(phase),
+          readPhaseThinking(phase) ?? DEFAULT_THINKING[phase],
         );
         writeFileSync(join(agentsDir, `zero-${phase}.md`), file, "utf8");
       } catch {

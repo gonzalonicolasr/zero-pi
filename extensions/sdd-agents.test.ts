@@ -15,10 +15,12 @@ import {
   PHASE_COMPLETION_GUARD,
   PHASE_TOOLS,
   PHASES,
+  resolvePhaseThinking,
   splitPhasePrompt,
   SUPPORT_MODULES,
   supportModulesDir,
 } from "./sdd-agents.ts";
+import { DEFAULT_THINKING } from "./zero-models.ts";
 
 test("splitPhasePrompt separates frontmatter description from the body", () => {
   const raw = "---\ndescription: SDD explore phase — investigate read-only\n---\n\nYou run the explore phase.\n";
@@ -40,7 +42,7 @@ test("buildAgentFile produces a valid agent definition with the phase model", ()
   assert.ok(file.includes("description: Explore desc"));
   assert.ok(file.includes("model: claude-sonnet-4-6"));
   assert.ok(file.includes("systemPromptMode: replace"));
-  assert.ok(file.includes("inheritProjectContext: true"));
+  assert.ok(file.includes("inheritProjectContext: false"));
   assert.ok(file.trimEnd().endsWith("You run the explore phase."));
 });
 
@@ -214,5 +216,30 @@ test("phaseThinking: an explicit map level wins over a legacy suffix", () => {
       "build",
     ),
     "low",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// resolvePhaseThinking — package defaults fill zero.json gaps
+// ---------------------------------------------------------------------------
+
+test("resolvePhaseThinking: a phase with no zero.json entry gets that phase's package default", () => {
+  assert.equal(resolvePhaseThinking({}, "clarify"), "medium");
+  assert.equal(resolvePhaseThinking({}, "veredicto"), "xhigh");
+  for (const phase of PHASES) {
+    assert.equal(resolvePhaseThinking({}, phase), DEFAULT_THINKING[phase]);
+  }
+});
+
+test("resolvePhaseThinking: a valid user entry wins over the package default", () => {
+  assert.equal(resolvePhaseThinking({ thinking: { explore: "low" } }, "explore"), "low");
+  assert.equal(resolvePhaseThinking({ thinking: { veredicto: "medium" } }, "veredicto"), "medium");
+});
+
+test("resolvePhaseThinking: an invalid user level falls back to the default, never an omission", () => {
+  assert.equal(resolvePhaseThinking({ thinking: { build: "max" } }, "build"), "high");
+  assert.equal(
+    resolvePhaseThinking({ thinking: { veredicto: "ultracode" } }, "veredicto"),
+    "xhigh",
   );
 });

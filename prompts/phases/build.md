@@ -22,6 +22,8 @@ re-read a file you already read this run unless you have changed it since —
 re-reading the same large file repeatedly is the main avoidable token cost. If
 the code roots are missing or wrong, run a single targeted search to fix them,
 then proceed — never fall back to scanning the whole tree.
+If the project root carries an `AGENTS.md` or `CLAUDE.md`, skim it once for
+project conventions — you receive no global user context.
 
 Implement the planned tasks in dependency order, test-first where practical. `tasks.md` is a dependency-aware graph: every task has a `depends:` line. Before starting a task, verify each listed dependency is already `[x]`; if a dependency is unchecked, complete that dependency first (when it is in your assigned batch) or stop and report the blocked task (when it is outside the assigned batch). Never skip ahead just because a later task looks easier. Keep every change within the plan's scope — do not expand it on your own initiative.
 
