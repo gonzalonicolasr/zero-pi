@@ -8,7 +8,17 @@ import assert from "node:assert/strict";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildAgentFile, phaseModel, phaseThinking, PHASES, splitPhasePrompt, SUPPORT_MODULES, supportModulesDir } from "./sdd-agents.ts";
+import {
+  buildAgentFile,
+  phaseModel,
+  phaseThinking,
+  PHASE_COMPLETION_GUARD,
+  PHASE_TOOLS,
+  PHASES,
+  splitPhasePrompt,
+  SUPPORT_MODULES,
+  supportModulesDir,
+} from "./sdd-agents.ts";
 
 test("splitPhasePrompt separates frontmatter description from the body", () => {
   const raw = "---\ndescription: SDD explore phase — investigate read-only\n---\n\nYou run the explore phase.\n";
@@ -40,15 +50,18 @@ test("buildAgentFile omits the model line when no model is configured", () => {
   assert.ok(file.includes("name: zero-build"));
 });
 
-test("buildAgentFile injects thinking after model: and before systemPromptMode:", () => {
+test("buildAgentFile injects thinking and tools before systemPromptMode:", () => {
   const file = buildAgentFile("build", "body", "Build desc", "claude-opus-4-8", "high");
   assert.ok(file.includes("thinking: high"), "the thinking line is present");
+  assert.ok(file.includes("tools: read, bash, write, edit"), "the build tool allowlist is present");
   const modelIdx = file.indexOf("model: claude-opus-4-8");
   const thinkingIdx = file.indexOf("thinking: high");
+  const toolsIdx = file.indexOf("tools: read, bash, write, edit");
   const sysIdx = file.indexOf("systemPromptMode: replace");
-  assert.ok(modelIdx >= 0 && thinkingIdx >= 0 && sysIdx >= 0, "all three lines present");
+  assert.ok(modelIdx >= 0 && thinkingIdx >= 0 && toolsIdx >= 0 && sysIdx >= 0, "all four lines present");
   assert.ok(modelIdx < thinkingIdx, "thinking: sits after model:");
-  assert.ok(thinkingIdx < sysIdx, "thinking: sits before systemPromptMode:");
+  assert.ok(thinkingIdx < toolsIdx, "tools: sits after thinking:");
+  assert.ok(toolsIdx < sysIdx, "tools: sits before systemPromptMode:");
 });
 
 test("buildAgentFile omits the thinking line when no level is given", () => {
@@ -75,6 +88,27 @@ test("buildAgentFile omits an invalid thinking level defensively", () => {
 test("buildAgentFile falls back to a default description", () => {
   const file = buildAgentFile("veredicto", "body", "", undefined);
   assert.ok(file.includes("description: zero SDD veredicto phase"));
+});
+
+test("buildAgentFile makes non-build phases read-only and disables completion guard", () => {
+  const explore = buildAgentFile("explore", "body", "Explore desc", undefined);
+  assert.ok(explore.includes("tools: read, bash"));
+  assert.ok(!explore.includes("write"));
+  assert.ok(!explore.includes("edit"));
+  assert.ok(explore.includes("completionGuard: false"));
+
+  const build = buildAgentFile("build", "body", "Build desc", undefined);
+  assert.ok(build.includes("tools: read, bash, write, edit"));
+  assert.ok(!build.includes("completionGuard: false"));
+});
+
+test("PHASE_TOOLS and completion guard profiles are complete", () => {
+  assert.deepEqual(PHASE_TOOLS.explore, ["read", "bash"]);
+  assert.deepEqual(PHASE_TOOLS.plan, ["read", "bash", "write", "edit"]);
+  assert.deepEqual(PHASE_TOOLS.build, ["read", "bash", "write", "edit"]);
+  assert.deepEqual(PHASE_TOOLS.veredicto, ["read", "bash"]);
+  assert.equal(PHASE_COMPLETION_GUARD.build, true);
+  assert.equal(PHASE_COMPLETION_GUARD.veredicto, false);
 });
 
 test("PHASES are the four SDD phases", () => {

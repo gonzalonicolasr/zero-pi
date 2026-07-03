@@ -17,6 +17,7 @@ export interface TaskRecord {
   id: string;
   title: string;
   files: { path: string; isNew: boolean }[];
+  depends: string[] | null;
   evidence: string | null;
   review: number | null;
   reviewRaw: string | null;
@@ -25,6 +26,13 @@ export interface TaskRecord {
 export interface WorkloadSection {
   estimates: Map<string, number>;
   declaredTotal: number | null;
+}
+
+export function parseDepends(raw: string): string[] {
+  const value = raw.trim();
+  if (value === "" || value === "[]" || /^(none|n\/a|na)$/i.test(value)) return [];
+  const ids = [...value.matchAll(/\bT\d+\b/g)].map((m) => m[0]);
+  return [...new Set(ids)];
 }
 
 export function parseTasks(text: string): { tasks: TaskRecord[]; workload: WorkloadSection | null; defects: ValidationDefect[] } {
@@ -43,7 +51,7 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
   for (const line of lines) {
     const task = line.match(/^\s*- \[[ xX]\]\s+\*\*(T\d+)\.\s+([^*]+)\*\*/) ?? line.match(/^###\s+(T\d+)\s+[—-]\s+(.+)$/) ?? line.match(/^##\s+\[[ xX]\]\s+(T\d+)\s*(?:[—-]\s*(.+))?$/);
     if (task) {
-      current = { id: task[1], title: (task[2] ?? "").trim(), files: [], evidence: null, review: null, reviewRaw: null };
+      current = { id: task[1], title: (task[2] ?? "").trim(), files: [], depends: null, evidence: null, review: null, reviewRaw: null };
       tasks.push(current);
       collectingFiles = false;
       continue;
@@ -52,6 +60,11 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
     if (/^\s*-\s+files:/.test(line)) {
       collectingFiles = true;
       pushFile(line);
+      continue;
+    }
+    if (/^\s*-\s+depends:/.test(line)) {
+      collectingFiles = false;
+      current.depends = parseDepends(line.replace(/^\s*-\s+depends:\s*/, ""));
       continue;
     }
     if (/^\s*-\s+evidence:/.test(line)) {
@@ -73,8 +86,16 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
     }
   }
 
-  for (const task of tasks) {
+  const order = new Map(tasks.map((task, index) => [task.id, index] as const));
+  for (const [index, task] of tasks.entries()) {
     if (task.files.length === 0) defects.push({ kind: "missing-files", task: task.id, message: `${task.id} is missing files list` });
+    if (task.depends === null) defects.push({ kind: "missing-depends", task: task.id, message: `${task.id} is missing depends list` });
+    else for (const dep of task.depends) {
+      const depIndex = order.get(dep);
+      if (dep === task.id) defects.push({ kind: "self-depends", task: task.id, message: `${task.id} cannot depend on itself` });
+      else if (depIndex === undefined) defects.push({ kind: "unknown-depends", task: task.id, message: `${task.id} depends on unknown ${dep}` });
+      else if (depIndex > index) defects.push({ kind: "forward-depends", task: task.id, message: `${task.id} depends on later task ${dep}` });
+    }
     if (task.evidence === null || task.evidence === "") defects.push({ kind: "missing-evidence", task: task.id, message: `${task.id} is missing evidence` });
     if (task.reviewRaw === null) defects.push({ kind: "missing-review", task: task.id, message: `${task.id} is missing review estimate` });
     else if (task.review === null) defects.push({ kind: "non-integer-review", task: task.id, message: `${task.id} review estimate is not an integer` });

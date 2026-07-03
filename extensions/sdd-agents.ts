@@ -32,6 +32,32 @@ export type Phase = (typeof PHASES)[number];
  */
 export const SUPPORT_MODULES = ["strict-tdd.md", "strict-tdd-verify.md"] as const;
 
+/**
+ * Phase-specific builtin tool allowlists for generated pi-subagents agents.
+ *
+ * Explore and veredicto are intentionally read-only at the mutation-tool layer:
+ * they can inspect files and run scoped verification commands, but they cannot
+ * edit. Plan can write only SDD artifacts; build is the only phase with the
+ * full mutation set for product code. This is enforced by pi-subagents' `tools:`
+ * frontmatter key, so an accidental phase prompt drift does not silently grant
+ * broad editing power to every child.
+ */
+export const PHASE_TOOLS: Record<Phase, readonly string[]> = {
+  explore: ["read", "bash"],
+  plan: ["read", "bash", "write", "edit"],
+  build: ["read", "bash", "write", "edit"],
+  veredicto: ["read", "bash"],
+};
+
+/** Non-build phases may mention implementation terms while using `bash`; do not
+ *  let pi-subagents' implementation completion guard classify them as writers. */
+export const PHASE_COMPLETION_GUARD: Record<Phase, boolean> = {
+  explore: false,
+  plan: false,
+  build: true,
+  veredicto: false,
+};
+
 /** Absolute path of the runtime support dir the phase prompts reference. */
 export function supportModulesDir(): string {
   return join(homedir(), ".pi", "agent", "agents", "zero", "support");
@@ -75,6 +101,8 @@ export function buildAgentFile(
   // defensive: callers already validate, but the file builder must never write
   // a bad level into agent frontmatter.
   if (thinking && isThinkingLevel(thinking)) front.push(`thinking: ${thinking}`);
+  front.push(`tools: ${PHASE_TOOLS[phase].join(", ")}`);
+  if (!PHASE_COMPLETION_GUARD[phase]) front.push("completionGuard: false");
   front.push(
     "systemPromptMode: replace",
     "inheritProjectContext: true",

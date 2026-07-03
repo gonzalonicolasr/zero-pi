@@ -75,9 +75,12 @@ into `/forge` for you.
 | ------- | ------------ |
 | **Strict TDD** | The build phase drives RED → GREEN → TRIANGULATE → REFACTOR with a TDD Cycle Evidence table; veredicto audits it. On by default, runtime-gated on a test runner; `tdd.mode: "off"` disables it. |
 | **`/zero-models`** | Pick the model + provider + thinking level for each SDD phase — a boxed-window picker, or set one directly. Direct assignments are validated against pi's model registry when available. |
-| **Autotune** | Learns which model fits each phase from your run history and re-tunes itself. |
+| **Phase tool gating** | Generated `zero-*` sub-agents get phase-specific tool allowlists: explore/veredicto are read-only, plan writes SDD artifacts, build edits code. |
+| **Dependency-aware tasks** | `tasks.md` is validated as a task graph with mandatory `depends:` edges, topological ordering, and review workload totals. |
+| **Autotune** | Learns which model fits each phase from your run history and re-tunes itself; optional `autotuneBudget.maxPhaseCostUsd` suppresses costly step-ups. |
 | **`/zero-doctor`** | Preflight diagnostics for zero-pi: package install, Node version, pi-subagents, generated phase agents, model config, `.sdd/config`, run history, git, and `gh` auth. |
 | **`/zero-cost`** | Aggregates a run's sub-agent `meta.json` files into a per-phase token/cost/duration report — no schema change, reads what pi already writes. |
+| **`/zero-checkpoint`** | Writes patch-based worktree checkpoints under `.sdd/<slug>/checkpoints/` before risky build batches. |
 | **`/zero-sync` / `/zero-archive`** | Folds each run's spec delta into a canonical, project-wide spec store and archives approved runs. |
 | **Git / PR / Issues** | `/zero-branch`, `/zero-git-validate`, `/zero-pr`, and `/zero-issue` keep branches and GitHub links audit-ready. |
 | **Run memory** | Every run recalls and saves traces to Cortex, so runs learn from each other. |
@@ -102,6 +105,7 @@ into `/forge` for you.
 | `/zero-validate <slug>` | Validate proposal/spec/design/tasks artifacts, including task schema and per-domain specs. |
 | `/zero-status` | Show each `.sdd/` run's artifact, sync, latest-verdict, and GitHub-link status. |
 | `/zero-cost [<slug>]` | Report tokens (in/out/cache), USD cost, duration, and tool-count per SDD phase for a run — `<slug>` for a specific run, no argument for the most recent. |
+| `/zero-checkpoint [<slug>] [--json]` | Save `diff.patch`, `status.txt`, `head.txt`, `meta.json`, and a review-before-running `restore.sh` under `.sdd/<slug>/checkpoints/<id>/`. |
 | `/zero-branch <slug>` | Create/reuse the configured SDD Git branch and persist `branch`/`baseBranch`. |
 | `/zero-git-validate <slug>` | Check worktree, branch, remote, `gh auth`, and verdict gating before PR/archive. |
 | `/zero-pr <slug>` | Create an audit-ready GitHub PR from a run that already has verdict `pasa`. |
@@ -111,7 +115,7 @@ into `/forge` for you.
 
 ### Git / PR / Issues
 
-Recommended flow: `/zero-branch <slug>` → `/zero-issue <slug>` → `/forge <slug>` → `/zero-git-validate <slug> --for=pr` → `/zero-pr <slug>` → `/zero-archive <slug>`.
+Recommended flow: `/zero-branch <slug>` → `/zero-issue <slug>` → `/forge <slug>` (the orchestrator validates plan artifacts and can create `/zero-checkpoint` before build) → `/zero-git-validate <slug> --for=pr` → `/zero-pr <slug>` → `/zero-archive <slug>`.
 
 `links.json` is forward-compatible and may contain:
 
@@ -182,14 +186,18 @@ conversation-resume note.
   "models":    { "explore": "claude-haiku-4-5", "build": "claude-sonnet-4-6" },
   "providers": { "explore": "anthropic",        "build": "anthropic" },
   "thinking":  { "explore": "low",              "build": "high" },
-  "autotune": "ask"
+  "autotune": "ask",
+  "autotuneBudget": { "maxPhaseCostUsd": 4, "minSamples": 3 }
 }
 ```
 
 The `thinking` map sets each phase's pi effort level — one of `off`, `minimal`,
 `low`, `medium`, `high`, `xhigh`. A phase with no entry gets no `thinking:` line
-in its generated sub-agent (no aggressive default). Set it from the picker's
-after-model thinking screen, or directly:
+in its generated sub-agent (no aggressive default). `autotuneBudget` is optional:
+when `maxPhaseCostUsd` is set, autotune will not step a blamed phase up to a more
+expensive tier if that phase/model is already at or above the average USD
+ceiling with enough cost samples (`minSamples`, default 3). Set thinking from
+the picker's after-model thinking screen, or directly:
 
 ```
 /zero-models build=anthropic/claude-sonnet-4-6 thinking=high

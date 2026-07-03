@@ -265,6 +265,29 @@ export interface PhaseModelStat {
   avgReplantear: number | null;
 }
 
+export interface PhaseCostSample {
+  phase: unknown;
+  model: unknown;
+  usage: unknown;
+}
+
+export interface PhaseCostStat {
+  phase: (typeof RECORD_PHASES)[number];
+  model: string;
+  samples: number;
+  totalCost: number;
+  avgCost: number;
+}
+
+export interface AutotuneCostGuard {
+  /** Optional per-phase average cost ceiling in USD. Absent/invalid disables the guard. */
+  maxPhaseCostUsd?: number;
+  /** Minimum cost samples before the ceiling can suppress a step-up. Default: MIN_COST_SAMPLES. */
+  minSamples?: number;
+}
+
+export const MIN_COST_SAMPLES = 3;
+
 /** Map key for a `(phase, model)` bucket. */
 function statKey(phase: string, model: string): string {
   return `${phase} ${model}`;
@@ -287,6 +310,38 @@ function statKey(phase: string, model: string): string {
  * `avgReplantear` accumulator. `avgCorregir`/`avgReplantear` are `null` when a
  * pair has no v2 evidence. An empty input yields an empty map.
  */
+export function aggregateCostStats(samples: readonly PhaseCostSample[]): Map<string, PhaseCostStat> {
+  const acc = new Map<string, { phase: (typeof RECORD_PHASES)[number]; model: string; samples: number; totalCost: number }>();
+  for (const sample of samples) {
+    const phase = sample.phase;
+    if (typeof phase !== "string" || !(RECORD_PHASES as readonly string[]).includes(phase)) continue;
+    const model = sample.model;
+    if (typeof model !== "string" || model === "") continue;
+    const usage = isObject(sample.usage) ? sample.usage : {};
+    const cost = usage.cost;
+    if (typeof cost !== "number" || !Number.isFinite(cost)) continue;
+    const key = statKey(phase, model);
+    let bucket = acc.get(key);
+    if (!bucket) {
+      bucket = { phase: phase as (typeof RECORD_PHASES)[number], model, samples: 0, totalCost: 0 };
+      acc.set(key, bucket);
+    }
+    bucket.samples += 1;
+    bucket.totalCost += cost;
+  }
+  const stats = new Map<string, PhaseCostStat>();
+  for (const [key, bucket] of acc) {
+    stats.set(key, {
+      phase: bucket.phase,
+      model: bucket.model,
+      samples: bucket.samples,
+      totalCost: bucket.totalCost,
+      avgCost: bucket.samples > 0 ? bucket.totalCost / bucket.samples : 0,
+    });
+  }
+  return stats;
+}
+
 export function aggregate(records: RunRecord[]): Map<string, PhaseModelStat> {
   interface Acc {
     samples: number;
@@ -505,6 +560,8 @@ export function decideAdjustments(
   stats: Map<string, PhaseModelStat>,
   currentModels: Partial<Record<(typeof RECORD_PHASES)[number], string>>,
   knownModels: readonly string[],
+  costStats: Map<string, PhaseCostStat> = new Map(),
+  costGuard: AutotuneCostGuard = {},
 ): Adjustment[] {
   const adjustments: Adjustment[] = [];
 
@@ -521,6 +578,16 @@ export function decideAdjustments(
     const measure = phase === "build" ? stat.avgCorregir : stat.avgReplantear;
     const threshold = phase === "build" ? HIGH_AVG_CORREGIR : HIGH_AVG_REPLANTEAR;
     if (measure === null || !(measure > threshold)) continue;
+
+    const maxPhaseCostUsd = costGuard.maxPhaseCostUsd;
+    if (typeof maxPhaseCostUsd === "number" && Number.isFinite(maxPhaseCostUsd) && maxPhaseCostUsd > 0) {
+      const minCostSamples =
+        typeof costGuard.minSamples === "number" && Number.isFinite(costGuard.minSamples) && costGuard.minSamples > 0
+          ? Math.floor(costGuard.minSamples)
+          : MIN_COST_SAMPLES;
+      const cost = costStats.get(statKey(phase, currentModel));
+      if (cost && cost.samples >= minCostSamples && cost.avgCost >= maxPhaseCostUsd) continue;
+    }
 
     const to = stepUp(currentModel, knownModels);
     if (to === null) continue; // already at top tier, or untierable

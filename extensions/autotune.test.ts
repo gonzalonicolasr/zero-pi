@@ -10,10 +10,12 @@ import { join } from "node:path";
 
 import {
   aggregate,
+  aggregateCostStats,
   decideAdjustments,
   dedupeRunRecords,
   HIGH_AVG_CORREGIR,
   HIGH_AVG_REPLANTEAR,
+  MIN_COST_SAMPLES,
   MIN_V2_SAMPLES,
   parseRunLine,
   readAutotuneMode,
@@ -564,6 +566,26 @@ test("aggregate attributes corregir to build and replantear to plan, not vice ve
 });
 
 // ---------------------------------------------------------------------------
+// aggregateCostStats
+// ---------------------------------------------------------------------------
+
+test("aggregateCostStats computes average cost per phase/model", () => {
+  const stats = aggregateCostStats([
+    { phase: "build", model: "claude-sonnet-4-6", usage: { cost: 2 } },
+    { phase: "build", model: "claude-sonnet-4-6", usage: { cost: 4 } },
+    { phase: "plan", model: "claude-opus-4-7", usage: { cost: 9 } },
+    { phase: "build", model: "", usage: { cost: 99 } },
+    { phase: "other", model: "claude-sonnet-4-6", usage: { cost: 99 } },
+  ]);
+  const build = stats.get("build claude-sonnet-4-6");
+  assert.equal(build?.samples, 2);
+  assert.equal(build?.totalCost, 6);
+  assert.equal(build?.avgCost, 3);
+  assert.equal(stats.get("plan claude-opus-4-7")?.avgCost, 9);
+  assert.equal(stats.size, 2);
+});
+
+// ---------------------------------------------------------------------------
 // tierOf
 // ---------------------------------------------------------------------------
 
@@ -821,6 +843,42 @@ test("decideAdjustments leaves a blamed opus phase unchanged at the tier ceiling
     avgCorregir: HIGH_AVG_CORREGIR + 3, // strong blame, but stepUp returns null
   });
   assert.deepEqual(decideAdjustments(stats, { build: "claude-opus-4-7" }, []), []);
+});
+
+test("decideAdjustments suppresses a step-up when cost guard says the current phase is already expensive", () => {
+  const stats = v2StatsFor("build", "claude-sonnet-4-6", {
+    v2Samples: 12,
+    avgCorregir: HIGH_AVG_CORREGIR + 2,
+  });
+  const costStats = aggregateCostStats([
+    { phase: "build", model: "claude-sonnet-4-6", usage: { cost: 3 } },
+    { phase: "build", model: "claude-sonnet-4-6", usage: { cost: 5 } },
+    { phase: "build", model: "claude-sonnet-4-6", usage: { cost: 4 } },
+  ]);
+  const out = decideAdjustments(
+    stats,
+    { build: "claude-sonnet-4-6" },
+    [],
+    costStats,
+    { maxPhaseCostUsd: 4, minSamples: MIN_COST_SAMPLES },
+  );
+  assert.deepEqual(out, []);
+});
+
+test("decideAdjustments ignores the cost guard below its sample floor", () => {
+  const stats = v2StatsFor("build", "claude-sonnet-4-6", {
+    v2Samples: 12,
+    avgCorregir: HIGH_AVG_CORREGIR + 2,
+  });
+  const costStats = aggregateCostStats([
+    { phase: "build", model: "claude-sonnet-4-6", usage: { cost: 99 } },
+    { phase: "build", model: "claude-sonnet-4-6", usage: { cost: 99 } },
+  ]);
+  const out = decideAdjustments(stats, { build: "claude-sonnet-4-6" }, [], costStats, {
+    maxPhaseCostUsd: 4,
+    minSamples: MIN_COST_SAMPLES,
+  });
+  assert.equal(out.length, 1, "two cost samples are not enough to suppress a step-up");
 });
 
 // ---------------------------------------------------------------------------

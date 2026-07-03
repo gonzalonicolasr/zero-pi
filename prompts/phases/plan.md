@@ -73,6 +73,7 @@ Use this exact checklist shape so build/validate/review can parse it without red
   - `<root>/src/example.ts`
   - `<root>/src/example.test.ts` (new)
 - detail: concrete implementation notes and boundaries.
+- depends: []
 - evidence: `npm test -- example` passes, or the exact manual check expected.
 - review: ~120 changed lines
 ```
@@ -81,8 +82,13 @@ Rules:
 - Task ids are monotonic `T###`; keep existing completed ids stable on resume.
 - Add `[P]` only for tasks that are truly parallel-safe, and `[Story:S1]`/`[Story:S2]` when the plan has independently testable stories.
 - `files:` is mandatory and uses exact paths; append `(new)` for created files.
+- `depends:` is mandatory. Use `depends: []` for root tasks, or a comma-separated list of earlier task ids (`depends: T001, T002`) for prerequisites. Dependencies must point only backward so the written task order is already a valid topological order.
 - `evidence:` is mandatory and names a concrete verification command or artifact.
 - Keep `## Review Workload` present and synchronized with the task list.
+
+## Dependency graph discipline
+
+Treat `tasks.md` as a dependency-aware task graph, not just a checklist. Split work so every task has explicit prerequisites, no self-dependencies, no unknown dependencies, and no dependency on a later task. Use the graph to mark real parallelism: a task can get `[P]` only when all of its dependencies are complete and it does not touch the same files as another candidate parallel task.
 
 ## TDD-shaped tasks
 
@@ -108,6 +114,8 @@ This is guidance for the task shape only; the build phase owns the actual RED â†
 GREEN cycle and the TDD Cycle Evidence table.
 
 ## Constitution / Steering check
+
+Before finalizing tasks, run `/zero-validate <slug>` when available, or manually apply the same checks: all four artifacts present, every task has `files`, `depends`, `evidence`, and `review`, dependency edges point backward to known task ids, review workload totals match, and the spec delta passes guardrails. Fix the artifacts before returning if the validation fails.
 
 Before finalizing tasks, check project steering/constitution files when present (`.sdd/constitution.md`, `.sdd/steering.md`, `.kiro/steering/*`, or project equivalents). If absent, mark `n/a`; absence is not a blocker. Include this table in `design.md` or `tasks.md`:
 

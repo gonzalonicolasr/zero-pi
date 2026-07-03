@@ -112,6 +112,14 @@ findings, file dumps — into a brief; reference them by path. Re-passing contex
 the sub-agent can read for itself is wasted tokens on every invocation, and a
 batched build issues many briefs.
 
+## Plan quality gate
+
+After **plan** returns, run `/zero-validate <slug>` when the command is available. Treat structural validation errors as a plan failure: summarize the defects, re-run **plan** with those exact defects once, and validate again before entering build. Warnings (for example an intentionally-missing optional proposal) can proceed only when you name the warning in the phase summary. The gate specifically protects the dependency graph: every task must carry `files`, `depends`, `evidence`, and `review`; dependencies must point backward to known task ids; and the review workload total must match.
+
+## Pre-build checkpoint
+
+Before the first **build** batch of every round, run `/zero-checkpoint <slug>` when available. It writes a patch-based checkpoint under `.sdd/<slug>/checkpoints/<id>/` so a risky build has a concrete restore trail. If the command is missing or reports untracked files that were not captured, continue only after surfacing that risk in the build phase-start summary. Do not run destructive restore commands automatically; the checkpoint only records evidence and a reviewed `restore.sh`.
+
 ## Build batching
 
 The **build** phase is not one monolithic sub-agent that implements every
@@ -122,23 +130,30 @@ bounded batches, each a fresh `zero-build` sub-agent.
 Before delegating build — a fresh build phase, or a `corregir`/`replantear`
 re-run — drive this loop:
 
-1. Read the unchecked (`[ ]`) tasks from `tasks.md` in listed order and their
-   `review: ~N changed lines` estimates from the `## Review Workload` section.
-2. Group the unchecked tasks into ordered batches with this exact, deterministic
-   rule:
+1. Read the unchecked (`[ ]`) tasks from `tasks.md` in listed order, their
+   `depends:` edges, and their `review: ~N changed lines` estimates from the
+   `## Review Workload` section.
+2. Treat the task order as a validated topological order. A task is eligible for
+   the next batch only when every dependency in its `depends:` list is already
+   checked `[x]` or is also included earlier in the same contiguous batch. If an
+   unchecked task depends on a later/unknown/unchecked-outside-batch task, stop
+   and re-run **plan** — do not improvise a new order in build.
+3. Group the eligible unchecked tasks into ordered batches with this exact,
+   deterministic rule:
    - Walk the unchecked tasks in order, accumulating into the current batch.
    - Start a new batch when adding the next task would push the batch's summed
      estimate over **800 changed lines**, or when the current batch already
      holds **4 tasks** — whichever comes first.
    - A single task whose own estimate exceeds 800 is its own batch.
    - If estimates are missing or unparseable, group by the 4-task cap alone.
-3. Invoke `zero-build` once per batch, in listed order. Each brief is a fresh
+4. Invoke `zero-build` once per batch, in listed order. Each brief is a fresh
    sub-agent (no carried conversation) and names the batch's task numbers
-   explicitly (for example, "implement tasks 4–6 only, then return"). Emit the
-   build phase-start line for each batch, noting the batch as `lote <i>/<n>`, so
-   the loop stays visible. Wait for each batch to return before starting the
-   next.
-4. Repeat until `tasks.md` has no `[ ]` task left, then run **veredicto** once.
+   explicitly (for example, "implement tasks 4–6 only, then return"). Include the
+   dependency constraint in the brief: "do not start a task until its `depends:`
+   entries are `[x]`." Emit the build phase-start line for each batch, noting
+   the batch as `lote <i>/<n>`, so the loop stays visible. Wait for each batch to
+   return before starting the next.
+5. Repeat until `tasks.md` has no `[ ]` task left, then run **veredicto** once.
    Never run veredicto between batches.
 
 **Single-batch features behave exactly like before:** when every unchecked task

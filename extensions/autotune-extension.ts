@@ -19,17 +19,20 @@
 // dependency-free: `node:fs`/`node:os`/`node:path`
 // only, plus minimal local interfaces for the pi API.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import {
   aggregate,
+  aggregateCostStats,
   decideAdjustments,
   readAutotuneMode,
   readRunRecords,
   type Adjustment,
+  type AutotuneCostGuard,
 } from "./autotune.ts";
+import { parseMeta, type PhaseMeta } from "./zero-cost.ts";
 
 /** The SDD phases, in pipeline order. Mirrors `zero-models.ts`. */
 const PHASES = ["explore", "plan", "build", "veredicto"] as const;
@@ -102,6 +105,39 @@ function readCurrentModels(data: Record<string, unknown>): Partial<Record<Phase,
     if (typeof value === "string" && value !== "") models[phase] = value;
   }
   return models;
+}
+
+function readCostGuard(data: Record<string, unknown>): AutotuneCostGuard {
+  const raw = isObject(data.autotuneBudget) ? data.autotuneBudget : {};
+  const guard: AutotuneCostGuard = {};
+  if (typeof raw.maxPhaseCostUsd === "number" && Number.isFinite(raw.maxPhaseCostUsd) && raw.maxPhaseCostUsd > 0) {
+    guard.maxPhaseCostUsd = raw.maxPhaseCostUsd;
+  }
+  if (typeof raw.minSamples === "number" && Number.isFinite(raw.minSamples) && raw.minSamples > 0) {
+    guard.minSamples = raw.minSamples;
+  }
+  return guard;
+}
+
+function readAllPhaseMetas(): PhaseMeta[] {
+  const root = join(homedir(), ".pi", "agent", "sessions");
+  if (!existsSync(root)) return [];
+  const out: PhaseMeta[] = [];
+  for (const session of readdirSync(root, { withFileTypes: true })) {
+    if (!session.isDirectory()) continue;
+    const artifacts = join(root, session.name, "subagent-artifacts");
+    if (!existsSync(artifacts)) continue;
+    for (const f of readdirSync(artifacts)) {
+      if (!f.endsWith("_meta.json")) continue;
+      try {
+        const meta = parseMeta(JSON.parse(readFileSync(join(artifacts, f), "utf8")));
+        if (meta) out.push(meta);
+      } catch {
+        // skip unreadable / malformed meta
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -177,7 +213,9 @@ function evaluateAndTune(ctx: PiSessionContext): void {
   const knownModels = deriveKnownModels(currentModels, loggedModels);
 
   const stats = aggregate(records);
-  const adjustments: Adjustment[] = decideAdjustments(stats, currentModels, knownModels);
+  const costGuard = readCostGuard(data);
+  const costStats = costGuard.maxPhaseCostUsd ? aggregateCostStats(readAllPhaseMetas()) : new Map();
+  const adjustments: Adjustment[] = decideAdjustments(stats, currentModels, knownModels, costStats, costGuard);
   if (adjustments.length === 0) return; // nothing to do — return silently.
 
   if (mode === "auto") {

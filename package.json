@@ -1,6 +1,6 @@
 {
   "name": "@gonrocca/zero-pi",
-  "version": "0.1.58",
+  "version": "0.1.59",
   "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow (explore → plan → build → veredicto) with per-phase model autotune and token-efficient batched builds. Adds capability to pi without modifying pi.",
   "type": "module",
   "keywords": [
@@ -37,6 +37,7 @@
       "./extensions/zero-status-extension.ts",
       "./extensions/zero-doctor-extension.ts",
       "./extensions/zero-cost-extension.ts",
+      "./extensions/zero-checkpoint-extension.ts",
       "./extensions/zero-pr-extension.ts",
       "./extensions/zero-branch-extension.ts",
       "./extensions/zero-git-validate-extension.ts",
@@ -72,6 +73,8 @@
     "extensions/zero-doctor-extension.ts",
     "extensions/zero-cost.ts",
     "extensions/zero-cost-extension.ts",
+    "extensions/zero-checkpoint.ts",
+    "extensions/zero-checkpoint-extension.ts",
     "extensions/format-tokens.ts",
     "extensions/pr-body.ts",
     "extensions/sdd-links.ts",

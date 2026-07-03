@@ -7,6 +7,37 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.59] - 2026-07-03
+
+### Added — phase safety, dependency graph, cost-aware autotune, checkpoints
+
+- Generated `zero-*` sub-agent definitions now include phase-specific
+  `tools:` frontmatter. `zero-explore` and `zero-veredicto` get read-only
+  builtin tools (`read`, `bash`), `zero-plan` can write SDD artifacts, and
+  `zero-build` remains the only phase with the full code-editing tool set.
+  Non-build phases also set `completionGuard: false` so bash-enabled validators
+  are not treated as implementation agents by pi-subagents.
+- `tasks.md` is now validated as a dependency-aware task graph. Every task must
+  include `depends: []` or earlier task ids; `/zero-validate` catches missing,
+  unknown, self, and forward dependencies. The plan and build prompts now use
+  those edges to keep task ordering, batching, and `[P]` parallel markers honest.
+- Autotune can now be cost-aware. Optional `~/.pi/zero.json` key
+  `autotuneBudget.maxPhaseCostUsd` uses the `/zero-cost` meta stream to suppress
+  a model step-up when the current phase/model is already above the configured
+  average USD ceiling with enough samples (`minSamples`, default 3).
+- New command **`/zero-checkpoint [slug] [--json]`** writes patch-based
+  checkpoints to `.sdd/<slug>/checkpoints/<id>/` (`diff.patch`, `status.txt`,
+  `head.txt`, `meta.json`, and a review-before-running `restore.sh`). The
+  orchestrator prompt now creates a checkpoint before risky build batches when
+  the command is available.
+
+### Changed — stronger orchestration gates
+
+- The orchestrator now runs `/zero-validate <slug>` after plan and treats
+  structural defects as a plan failure before build. Build batching is now
+  dependency-aware: tasks are eligible only when their `depends:` prerequisites
+  are already checked or included earlier in the same contiguous batch.
+
 ## [0.1.58] - 2026-07-03
 
 ### Added — `/zero-doctor` preflight diagnostics
