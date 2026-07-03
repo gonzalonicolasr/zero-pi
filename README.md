@@ -37,7 +37,17 @@ pi install npm:@gonrocca/zero-pi
 pi install npm:pi-subagents      # required — the pipeline delegates to sub-agents
 ```
 
-Needs Node ≥ 20.6. Restart pi after an upgrade.
+Needs Node ≥ 20.6. Restart pi after an install or upgrade so pi regenerates
+the `zero-*` phase agents.
+
+### Quick start
+
+1. Run `/zero-doctor` to catch missing `pi-subagents`, stale generated agents,
+   invalid model config, or GitHub CLI auth before spending tokens.
+2. Run `/zero-models` (or set direct assignments) when you want a different
+   model/thinking profile per phase; otherwise the package defaults are used.
+3. Run `/forge <feature>` and let the automatic gates drive the flow.
+4. Run `/zero-cost [slug]` after the run to see cost/tokens by phase.
 
 ## 🛠 `/forge` — the SDD pipeline
 
@@ -54,6 +64,10 @@ to its own sub-agent:
 | **analyze** | Review plan readiness after `/zero-validate`; decide continue or replan. |
 | **build** | Implement the plan. |
 | **veredicto** | Review it adversarially and record a verdict. |
+
+Each run keeps its paper trail under `.sdd/<slug>/`: `clarifications.md`,
+`findings.md`, `proposal.md`, `spec.md`, `design.md`, `tasks.md`,
+`checklist.md`, and (when Strict TDD engages) `tdd-evidence.md`.
 
 The **clarify** and **analyze** gates are automatic inside `/forge` — no extra
 slash command in the normal flow. `clarify` writes `.sdd/<slug>/clarifications.md`
@@ -96,7 +110,7 @@ into `/forge` for you.
 | **Git / PR / Issues** | `/zero-branch`, `/zero-git-validate`, `/zero-pr`, and `/zero-issue` keep branches and GitHub links audit-ready. |
 | **Run memory** | Every run recalls and saves traces to Cortex, so runs learn from each other. |
 | **Provider guard** | Warns when the `anthropic` provider runs on a metered API key instead of your subscription. |
-| **Startup banner** | The violet ANSI-Shadow `ZERO` wordmark, drawn once at pi startup — `ZERO_HEADER=off` to disable. |
+| **Startup banner** | The sunset ANSI-Shadow `ZERO` wordmark, drawn once at pi startup — `ZERO_HEADER=off` to disable. |
 | **Working-phrase ticker** | Swaps pi's `Working...` for a context-aware Spanish phrase + spinner. |
 | **Conversation resume** | Writes `.pi/zero-resume.md` on exit — the restore command + a conversation tail. |
 | **Windows tree-kill** | Aborting a turn kills the whole process tree — no orphaned `claude`. |
@@ -248,11 +262,12 @@ tool-call budget with a mid-budget stop check. The heavy lifting happens inside
 the sub-agents on their own models — leave the session that runs `/forge` on
 your cheap default model.
 
-## Continuous integration
+## Release checks
 
-The `.github/workflows/zero-pi-ci.yml` workflow runs on every push to `main` and
-on every pull request that touches `packages/zero-pi/**`. It enforces `npm test`
-and `npm run pack-check` for the package.
+Before publishing, run `npm test` and `npm run pack-check` from
+`packages/zero-pi`. `prepublishOnly` also runs the test suite, but `pack-check`
+confirms the npm tarball still contains the prompts, skills, themes, assets, and
+extension support modules pi needs.
 
 ## 🔗 Relationship to `zero`
 

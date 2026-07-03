@@ -5,6 +5,20 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.62] - 2026-07-03
+
+### Changed — README/docs sync for the six-phase pipeline
+
+- Added a README quick start that reflects the current recommended path after
+  install: `/zero-doctor` preflight, optional `/zero-models` tuning,
+  `/forge <feature>`, then `/zero-cost [slug]` for the cost report.
+- Documented the predictable `.sdd/<slug>/` paper trail for six-phase runs:
+  `clarifications.md`, `findings.md`, plan artifacts, `checklist.md`, and
+  `tdd-evidence.md` when Strict TDD engages.
+- Corrected stale README copy: the startup banner is sunset-themed now, and the
+  unpublished CI workflow claim was replaced with explicit local release checks
+  (`npm test` + `npm run pack-check`).
+
 ## [0.1.61] - 2026-07-03
 
 ### Changed — token diet for phase sub-agents
