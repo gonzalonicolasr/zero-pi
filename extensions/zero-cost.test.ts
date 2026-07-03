@@ -27,13 +27,32 @@ function meta(over: Partial<PhaseMeta> & { phase: PhaseMeta["phase"] }): PhaseMe
 }
 
 test("phaseFromAgent: maps zero-<phase> and rejects everything else", () => {
+  assert.equal(phaseFromAgent("zero-clarify"), "clarify");
   assert.equal(phaseFromAgent("zero-explore"), "explore");
   assert.equal(phaseFromAgent("zero-plan"), "plan");
+  assert.equal(phaseFromAgent("zero-analyze"), "analyze");
   assert.equal(phaseFromAgent("zero-build"), "build");
   assert.equal(phaseFromAgent("zero-veredicto"), "veredicto");
   assert.equal(phaseFromAgent("zero-other"), null);
   assert.equal(phaseFromAgent("explore"), null);
   assert.equal(phaseFromAgent(""), null);
+});
+
+test("aggregateRun: gate phases sort in pipeline order (clarify first, analyze after plan)", () => {
+  const metas = [
+    meta({ phase: "veredicto", slug: "f", timestamp: 6 }),
+    meta({ phase: "analyze", slug: "f", timestamp: 4 }),
+    meta({ phase: "build", slug: "f", timestamp: 5 }),
+    meta({ phase: "plan", slug: "f", timestamp: 3 }),
+    meta({ phase: "explore", slug: "f", timestamp: 2 }),
+    meta({ phase: "clarify", slug: "f", timestamp: 1 }),
+  ];
+  const run = aggregateRun(metas, "f");
+  assert.deepEqual(
+    run.phases.map((p) => p.phase),
+    ["clarify", "explore", "plan", "analyze", "build", "veredicto"],
+    "the six phases are ordered by the pipeline, gates in place",
+  );
 });
 
 test("extractSlug: first .sdd/<slug>/ wins, specs/archive rejected", () => {

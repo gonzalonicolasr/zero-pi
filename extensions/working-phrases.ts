@@ -65,8 +65,10 @@ const THINKING_SDD = [
 
 /** SDD phase labels keyed by the zero sub-agent that owns the phase. */
 const SDD_PHASE: Record<string, string> = {
+  "zero-clarify": "Aclarando supuestos",
   "zero-explore": "Explorando el código",
   "zero-plan": "Planeando la solución",
+  "zero-analyze": "Analizando el plan",
   "zero-build": "Construyendo la implementación",
   "zero-veredicto": "Revisando el veredicto",
 };

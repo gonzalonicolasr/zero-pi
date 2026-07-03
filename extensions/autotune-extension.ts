@@ -34,7 +34,13 @@ import {
 } from "./autotune.ts";
 import { parseMeta, type PhaseMeta } from "./zero-cost.ts";
 
-/** The SDD phases, in pipeline order. Mirrors `zero-models.ts`. */
+/** The four core SDD phases autotune reads models for and attributes blame to,
+ *  in pipeline order. This is deliberately NOT the full six-phase list in
+ *  `zero-models.ts`: the `clarify`/`analyze` gates are never verdict-attributable
+ *  (only `corregir`→build and `replantear`→plan drive adjustments), and the
+ *  run-record schema keeps these four as its required phases. Reading only these
+ *  four means a configured gate model in `zero.json` is never turned into a
+ *  pending adjustment. */
 const PHASES = ["explore", "plan", "build", "veredicto"] as const;
 type Phase = (typeof PHASES)[number];
 

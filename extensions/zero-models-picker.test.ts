@@ -26,8 +26,10 @@ import type { AutotunePending } from "./autotune-extension.ts";
 /** A well-formed per-phase model map, the fallback defaults. */
 function makeModels(over: Partial<PhaseModels> = {}): PhaseModels {
   return {
+    clarify: "claude-haiku-4-5",
     explore: "claude-haiku-4-5",
     plan: "claude-opus-4-7",
+    analyze: "claude-opus-4-8",
     build: "claude-sonnet-4-6",
     veredicto: "claude-opus-4-7",
     ...over,
@@ -36,7 +38,7 @@ function makeModels(over: Partial<PhaseModels> = {}): PhaseModels {
 
 /** A per-phase provider map — empty providers by default. */
 function makeProviders(over: Partial<PhaseProviders> = {}): PhaseProviders {
-  return { explore: "", plan: "", build: "", veredicto: "", ...over };
+  return { clarify: "", explore: "", plan: "", analyze: "", build: "", veredicto: "", ...over };
 }
 
 /** A per-phase thinking map — empty (no levels configured) by default. */
@@ -82,13 +84,13 @@ test("createPickerState starts on the main screen with cursor at 0", () => {
   assert.equal(state.textPrompt, null);
 });
 
-test("createPickerState main screen has the four phase rows in PHASES order", () => {
+test("createPickerState main screen has the six phase rows in PHASES order", () => {
   const state = makeState();
   const phaseRows = state.entries.filter((e) => e.kind === "phase");
   assert.deepEqual(
     phaseRows.map((e) => e.value),
-    ["explore", "plan", "build", "veredicto"],
-    "phase rows appear in pipeline order",
+    ["clarify", "explore", "plan", "analyze", "build", "veredicto"],
+    "phase rows appear in pipeline order, gates included",
   );
 });
 
@@ -390,11 +392,11 @@ test("enter on a phase row drills into the provider screen with drillPhase set",
   const state = makeState({
     groups: new Map([["anthropic", ["claude-opus-4-7"]]]),
   });
-  cursorTo(state, "phase"); // first phase row → explore
+  cursorTo(state, "phase"); // first phase row → clarify (the pre-explore gate)
   const result = enter(state);
   assert.equal(result.type, "state");
   assert.equal(state.screen, "provider");
-  assert.equal(state.drillPhase, "explore");
+  assert.equal(state.drillPhase, "clarify");
   assert.equal(state.cursor, 0);
   assert.ok(
     state.entries.some((e) => e.kind === "provider"),

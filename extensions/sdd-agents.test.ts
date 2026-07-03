@@ -103,16 +103,42 @@ test("buildAgentFile makes non-build phases read-only and disables completion gu
 });
 
 test("PHASE_TOOLS and completion guard profiles are complete", () => {
+  assert.deepEqual(PHASE_TOOLS.clarify, ["read", "bash", "write", "edit"]);
   assert.deepEqual(PHASE_TOOLS.explore, ["read", "bash"]);
   assert.deepEqual(PHASE_TOOLS.plan, ["read", "bash", "write", "edit"]);
+  assert.deepEqual(PHASE_TOOLS.analyze, ["read", "bash", "write", "edit"]);
   assert.deepEqual(PHASE_TOOLS.build, ["read", "bash", "write", "edit"]);
   assert.deepEqual(PHASE_TOOLS.veredicto, ["read", "bash"]);
+  // Only build carries the implementation completion guard; every gate/read
+  // phase disables it.
+  assert.equal(PHASE_COMPLETION_GUARD.clarify, false);
+  assert.equal(PHASE_COMPLETION_GUARD.explore, false);
+  assert.equal(PHASE_COMPLETION_GUARD.plan, false);
+  assert.equal(PHASE_COMPLETION_GUARD.analyze, false);
   assert.equal(PHASE_COMPLETION_GUARD.build, true);
   assert.equal(PHASE_COMPLETION_GUARD.veredicto, false);
 });
 
-test("PHASES are the four SDD phases", () => {
-  assert.deepEqual([...PHASES], ["explore", "plan", "build", "veredicto"]);
+test("PHASES are the six SDD phases in pipeline order", () => {
+  assert.deepEqual(
+    [...PHASES],
+    ["clarify", "explore", "plan", "analyze", "build", "veredicto"],
+  );
+});
+
+test("buildAgentFile generates the clarify gate as a .sdd-artifact writer, no completion guard", () => {
+  const file = buildAgentFile("clarify", "body", "Clarify desc", undefined);
+  assert.ok(file.includes("name: zero-clarify"));
+  assert.ok(file.includes("tools: read, bash, write, edit"), "clarify can write its .sdd artifact");
+  assert.ok(file.includes("completionGuard: false"), "clarify is not an implementation phase");
+});
+
+test("buildAgentFile generates the analyze gate as a .sdd-artifact writer, no completion guard", () => {
+  const file = buildAgentFile("analyze", "body", "Analyze desc", "claude-opus-4-8");
+  assert.ok(file.includes("name: zero-analyze"));
+  assert.ok(file.includes("model: claude-opus-4-8"));
+  assert.ok(file.includes("tools: read, bash, write, edit"), "analyze can write its .sdd artifact");
+  assert.ok(file.includes("completionGuard: false"), "analyze is not an implementation phase");
 });
 
 test("SUPPORT_MODULES names the two Strict TDD modules", () => {

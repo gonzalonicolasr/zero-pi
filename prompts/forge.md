@@ -3,13 +3,20 @@ description: Run the zero spec-driven development pipeline for a feature request
 ---
 
 Run the zero SDD pipeline for the feature request below — you are the
-orchestrator. Drive it through four phases in order: **explore → plan → build →
-veredicto**, delegating each to its sub-agent (`zero-explore`, `zero-plan`,
-`zero-build`, `zero-veredicto`). A `corregir` verdict re-runs `build`; a
-`replantear` verdict re-runs `plan`; after a few rounds with no `pasa`, stop and
-report the result as not verified. Ask the user for interactive or automatic
-mode up front; in interactive mode pause after each phase for approval. Never
-claim success unless veredicto returned `pasa`.
+orchestrator. Drive it through the phases in order:
+**clarify → explore → plan → analyze → build → veredicto**, delegating each to
+its sub-agent (`zero-clarify`, `zero-explore`, `zero-plan`, `zero-analyze`,
+`zero-build`, `zero-veredicto`). The `clarify` and `analyze` gates run
+**automatically** inside `/forge` — there is no slash command a user must run
+by hand for the normal flow. `clarify` records assumptions in
+`.sdd/<slug>/clarifications.md` and stops only on genuinely blocking ambiguity;
+`analyze` writes `.sdd/<slug>/checklist.md` after `plan`/`/zero-validate` and
+returns `continue` (proceed to build) or `replan` (re-run plan with its
+defects). A `corregir` verdict re-runs `build`; a `replantear` verdict re-runs
+`plan`; after a few rounds with no `pasa`, stop and report the result as not
+verified. Ask the user for interactive or automatic mode up front; in
+interactive mode pause after each phase for approval. Never claim success unless
+veredicto returned `pasa`.
 
 **Parse the arguments first.** If the request begins with `--continue`, this is
 a **resume** run, not a fresh one:
@@ -31,7 +38,7 @@ veredicto audits that evidence and returns `corregir` if it fails. Set
 **Output and language.** Follow the orchestrator's `## Language Boundary` and
 `## Output Contract`: user-facing chat in Spanish (natural Rioplatense voseo),
 the bounded per-phase summary, no raw tool output, no agent listings, no
-step-by-step narration — progress and the final verdict, never a log. The four
+step-by-step narration — progress and the final verdict, never a log. The six
 `zero-*` sub-agents already exist; delegate to them directly without running a
 `subagent` listing.
 

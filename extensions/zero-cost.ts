@@ -13,8 +13,9 @@
 
 import { formatTokens } from "./format-tokens.ts";
 
-/** The SDD phases a run is composed of, in pipeline order. */
-export const COST_PHASES = ["explore", "plan", "build", "veredicto"] as const;
+/** The SDD phases a run is composed of, in pipeline order — the `clarify` and
+ *  `analyze` gate sub-agents write cost meta like any other phase. */
+export const COST_PHASES = ["clarify", "explore", "plan", "analyze", "build", "veredicto"] as const;
 export type CostPhase = (typeof COST_PHASES)[number];
 
 /** Token + cost usage of a single sub-agent run. */
@@ -57,12 +58,12 @@ export interface RunCost {
   total: PhaseUsage & { durationMs: number; toolCount: number; subAgents: number };
 }
 
-const PHASE_INDEX: Record<CostPhase, number> = { explore: 0, plan: 1, build: 2, veredicto: 3 };
+const PHASE_INDEX: Record<CostPhase, number> = { clarify: 0, explore: 1, plan: 2, analyze: 3, build: 4, veredicto: 5 };
 
 /** Map a sub-agent name `zero-<phase>` to its phase, or `null`. */
 export function phaseFromAgent(agent: unknown): CostPhase | null {
   if (typeof agent !== "string") return null;
-  const m = /^zero-(explore|plan|build|veredicto)$/.exec(agent);
+  const m = /^zero-(clarify|explore|plan|analyze|build|veredicto)$/.exec(agent);
   return m ? (m[1] as CostPhase) : null;
 }
 

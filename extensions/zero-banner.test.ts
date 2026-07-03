@@ -33,3 +33,13 @@ test("bannerBlock falls back to a two-line block on a narrow width", () => {
 test("bannerBlock carries 24-bit colour escapes", () => {
   assert.ok(bannerBlock(100).join("\n").includes("\x1b[38;2;"));
 });
+
+test("bannerBlock wide tag advertises the gated pipeline, not the old four-phase-only flow", () => {
+  const joined = bannerBlock(100).join("\n");
+  assert.ok(joined.includes("clarify"), "the clarify gate is named in the pipeline copy");
+  assert.ok(joined.includes("analyze"), "the analyze gate is named in the pipeline copy");
+  assert.ok(
+    !joined.includes("explore → plan → build → veredicto"),
+    "the stale four-phase-only flow string is gone",
+  );
+});

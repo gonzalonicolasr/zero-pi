@@ -51,8 +51,10 @@ import {
   type PickerState,
 } from "./zero-models-picker.ts";
 
-/** The SDD phases, in pipeline order. */
-export const PHASES = ["explore", "plan", "build", "veredicto"] as const;
+/** The SDD phases, in pipeline order. `clarify` is the pre-explore assumption
+ *  gate and `analyze` is the post-plan readiness gate; both are configurable
+ *  here like any other phase. */
+export const PHASES = ["clarify", "explore", "plan", "analyze", "build", "veredicto"] as const;
 export type Phase = (typeof PHASES)[number];
 
 /** The per-phase model map. */
@@ -74,11 +76,14 @@ export function isThinkingLevel(value: unknown): value is ThinkingLevel {
   return typeof value === "string" && (THINKING_LEVELS as readonly string[]).includes(value);
 }
 
-/** Fallback models when `~/.pi/zero.json` has none — cheap to explore, strong
- *  to plan and review. */
+/** Fallback models when `~/.pi/zero.json` has none — cheap to clarify/explore,
+ *  strong to plan, analyze and review. A pre-gates zero.json missing `clarify`/
+ *  `analyze` keeps its four phases and gets these gate defaults in memory. */
 const DEFAULT_MODELS: PhaseModels = {
+  clarify: "claude-haiku-4-5",
   explore: "claude-haiku-4-5",
   plan: "claude-opus-4-8",
+  analyze: "claude-opus-4-8",
   build: "claude-sonnet-4-6",
   veredicto: "claude-opus-4-8",
 };
@@ -144,7 +149,14 @@ function stripThinkingSuffix(model: string): string {
  */
 export function readProviders(data: Record<string, unknown>): PhaseProviders {
   const raw = (data.providers ?? {}) as Record<string, unknown>;
-  const providers: PhaseProviders = { explore: "", plan: "", build: "", veredicto: "" };
+  const providers: PhaseProviders = {
+    clarify: "",
+    explore: "",
+    plan: "",
+    analyze: "",
+    build: "",
+    veredicto: "",
+  };
   for (const phase of PHASES) {
     if (typeof raw[phase] === "string") providers[phase] = raw[phase] as string;
   }
@@ -778,7 +790,7 @@ export default function register(pi?: PiExtensionAPI): void {
           if (!assignment) {
             ctx.ui.notify(
               "uso: /zero-models  —o—  /zero-models <fase>=[<provider>/]<modelo> [thinking=<nivel>] " +
-                "(fase: explore | plan | build | veredicto · " +
+                "(fase: clarify | explore | plan | analyze | build | veredicto · " +
                 "nivel: off | minimal | low | medium | high | xhigh)  —o—  " +
                 "/zero-models autotune=<modo>",
               "warning",

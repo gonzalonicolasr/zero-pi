@@ -156,7 +156,7 @@ export function bannerBlock(width: number): string[] {
   if (width < 64) {
     return [center(fg(PEACH, "ZERO SDD"), width), center(fg(MUTED, "pi.dev · spec-driven work"), width)];
   }
-  const tag = fg(PEACH, "ZERO SDD") + fg(MUTED, "   explore → plan → build → veredicto");
+  const tag = fg(PEACH, "ZERO SDD") + fg(MUTED, "   clarify → explore → plan → analyze → build → veredicto");
   return [ornament(width), ...renderLogo(width), center(tag, width), ornament(width)];
 }
 

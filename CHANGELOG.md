@@ -7,6 +7,44 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.60] - 2026-07-03
+
+### Added — automatic clarify + analyze gates in `/forge`
+
+- `/forge` now drives a six-phase automatic pipeline:
+  **clarify → explore → plan → analyze → build → veredicto**. Both new gates run
+  automatically — no extra slash command in the normal flow (any manual form is
+  a debug override only).
+- **clarify** is the pre-explore gate: the generated `zero-clarify` sub-agent
+  records de-risking assumptions in `.sdd/<slug>/clarifications.md` and stops
+  only on genuinely blocking ambiguity, biasing toward recorded assumptions.
+- **analyze** is the post-plan readiness gate: after the structural
+  `/zero-validate`, the generated `zero-analyze` sub-agent writes
+  `.sdd/<slug>/checklist.md` with `Decision: continue` or `Decision: replan`.
+  A `replan` re-runs plan with concrete defects, re-validates, and re-runs
+  analyze before build. Neither gate counts as a build/veredicto round.
+- Both gate sub-agents may write only their own `.sdd/<slug>/` artifacts and are
+  forbidden from editing product code; their tool profiles are minimal and
+  `completionGuard` stays `false` (build remains the only implementation phase).
+- `/zero-models` now configures all six phases (direct assignment and the
+  interactive picker), in pipeline order, with defaults `clarify:
+  claude-haiku-4-5` and `analyze: claude-opus-4-8`.
+- Diagnostics and reporting follow the expanded pipeline: `/zero-doctor` checks
+  for the generated `zero-clarify.md`/`zero-analyze.md` agents and validates the
+  six-phase model config, `/zero-cost` maps and orders the gate sub-agents, the
+  working-phrase ticker labels `zero-clarify`/`zero-analyze`, and the startup
+  banner no longer advertises the old four-phase-only flow.
+
+### Compatibility
+
+- Existing `~/.pi/zero.json` files that list only the original four phases stay
+  valid — the gates fall back to defaults in memory until a value is saved.
+- Run-metrics stay backward-compatible: `~/.pi/zero-runs.jsonl` keeps `explore`,
+  `plan`, `build`, and `veredicto` as its required phases. Old v1/v2 records
+  still parse, and records carrying extra `phases.clarify`/`phases.analyze`
+  keys are tolerated. Autotune attribution stays limited to `build`
+  (`corregir`) and `plan` (`replantear`); the gates are never adjusted.
+
 ## [0.1.59] - 2026-07-03
 
 ### Added — phase safety, dependency graph, cost-aware autotune, checkpoints

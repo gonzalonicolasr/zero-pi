@@ -185,6 +185,53 @@ test("parseRunLine returns null for a non-integer rounds", () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseRunLine — clarify/analyze gate backward-compatibility
+// ---------------------------------------------------------------------------
+
+test("parseRunLine still parses a legacy four-phase v1 record after the gates land", () => {
+  // The clarify/analyze gates must NOT be added as required run-record phases:
+  // an old v1 log with only the four core phases stays valid.
+  const record = parseRunLine(JSON.stringify(rawRecord()));
+  assert.notEqual(record, null);
+  assert.deepEqual(Object.keys(record!.phases).sort(), ["build", "explore", "plan", "veredicto"]);
+});
+
+test("parseRunLine tolerates extra phases.clarify / phases.analyze keys on a v1 record", () => {
+  const raw = rawRecord();
+  (raw.phases as Record<string, unknown>).clarify = { model: "claude-haiku-4-5" };
+  (raw.phases as Record<string, unknown>).analyze = { model: "claude-opus-4-8" };
+  const record = parseRunLine(JSON.stringify(raw));
+  assert.notEqual(record, null, "extra gate keys do not reject the record");
+  // The parsed record keeps only the four required core phases for aggregation.
+  assert.deepEqual(Object.keys(record!.phases).sort(), ["build", "explore", "plan", "veredicto"]);
+  assert.equal(record!.phases.build.model, "claude-sonnet-4-6");
+});
+
+test("parseRunLine tolerates extra gate keys on a v2 record", () => {
+  const raw = rawV2Record();
+  (raw.phases as Record<string, unknown>).clarify = { model: "claude-haiku-4-5" };
+  (raw.phases as Record<string, unknown>).analyze = { model: "claude-opus-4-8" };
+  const record = parseRunLine(JSON.stringify(raw));
+  assert.notEqual(record, null, "extra gate keys do not reject a v2 record");
+  assert.deepEqual(record!.verdicts, ["pasa"]);
+  assert.deepEqual(Object.keys(record!.phases).sort(), ["build", "explore", "plan", "veredicto"]);
+});
+
+test("aggregate ignores extra gate phase keys and only buckets the core four", () => {
+  const raw = rawRecord();
+  (raw.phases as Record<string, unknown>).clarify = { model: "claude-haiku-4-5" };
+  (raw.phases as Record<string, unknown>).analyze = { model: "claude-opus-4-8" };
+  const record = parseRunLine(JSON.stringify(raw));
+  const stats = aggregate([record!]);
+  // No stat bucket is ever keyed to a gate phase.
+  for (const stat of stats.values()) {
+    assert.notEqual(stat.phase as string, "clarify");
+    assert.notEqual(stat.phase as string, "analyze");
+  }
+  assert.ok(stats.has("build claude-sonnet-4-6"), "the core build bucket is still aggregated");
+});
+
+// ---------------------------------------------------------------------------
 // parseRunLine — v2 records (verdicts sequence)
 // ---------------------------------------------------------------------------
 
@@ -835,6 +882,27 @@ test("decideAdjustments does not act on a blame measure exactly at threshold", (
 
 test("decideAdjustments makes no change when the stat is absent", () => {
   assert.deepEqual(decideAdjustments(new Map(), { build: "claude-sonnet-4-6" }, []), []);
+});
+
+test("decideAdjustments never proposes a clarify or analyze gate adjustment", () => {
+  // Even with configured gate models and gate-keyed stats that would otherwise
+  // qualify, the gates are structurally excluded from attribution.
+  const stats = new Map<string, PhaseModelStat>([
+    [
+      "clarify claude-haiku-4-5",
+      { phase: "clarify" as PhaseModelStat["phase"], model: "claude-haiku-4-5", samples: 9, passRate: 0.2, avgRounds: 3, v2Samples: 9, avgCorregir: 5, avgReplantear: 5 },
+    ],
+    [
+      "analyze claude-opus-4-8",
+      { phase: "analyze" as PhaseModelStat["phase"], model: "claude-opus-4-8", samples: 9, passRate: 0.2, avgRounds: 3, v2Samples: 9, avgCorregir: 5, avgReplantear: 5 },
+    ],
+  ]);
+  const out = decideAdjustments(
+    stats,
+    { clarify: "claude-haiku-4-5", analyze: "claude-opus-4-8" } as Partial<Record<PhaseModelStat["phase"], string>>,
+    ["claude-haiku-4-5", "claude-opus-4-8"],
+  );
+  assert.deepEqual(out, [], "no gate phase is ever adjusted");
 });
 
 test("decideAdjustments leaves a blamed opus phase unchanged at the tier ceiling", () => {

@@ -1,12 +1,13 @@
 // zero-pi — SDD sub-agent provisioning.
 //
-// `/forge` delegates each phase to a dedicated sub-agent — `zero-explore`,
-// `zero-plan`, `zero-build`, `zero-veredicto`. pi-subagents discovers agents
-// from `~/.pi/agent/agents/**/*.md`, but a `pi install` of zero-pi ships only
-// the phase *prompts* (`prompts/phases/*.md`), never the agent definitions —
-// so `/forge` had nothing to delegate to and stalled.
+// `/forge` delegates each phase to a dedicated sub-agent — `zero-clarify`,
+// `zero-explore`, `zero-plan`, `zero-analyze`, `zero-build`, `zero-veredicto`.
+// pi-subagents discovers agents from `~/.pi/agent/agents/**/*.md`, but a
+// `pi install` of zero-pi ships only the phase *prompts* (`prompts/phases/*.md`),
+// never the agent definitions — so `/forge` had nothing to delegate to and
+// stalled.
 //
-// This extension closes that gap: at load it generates the four agent files
+// This extension closes that gap: at load it generates the six agent files
 // under `~/.pi/agent/agents/zero/` from the package's own phase prompts and
 // the per-phase models in `~/.pi/zero.json`. The files are regenerated every
 // load, so they stay in sync with the prompts and with `/zero-models`.
@@ -19,8 +20,10 @@ import { fileURLToPath } from "node:url";
 import { isThinkingLevel } from "./zero-models.ts";
 import type { ThinkingLevel } from "./zero-models.ts";
 
-/** The four SDD phases, each backed by a `prompts/phases/<phase>.md`. */
-export const PHASES = ["explore", "plan", "build", "veredicto"] as const;
+/** The six SDD phases, in pipeline order, each backed by a
+ *  `prompts/phases/<phase>.md`. `clarify` is the pre-explore assumption gate and
+ *  `analyze` is the post-plan readiness gate; both write only `.sdd` artifacts. */
+export const PHASES = ["clarify", "explore", "plan", "analyze", "build", "veredicto"] as const;
 export type Phase = (typeof PHASES)[number];
 
 /**
@@ -37,23 +40,32 @@ export const SUPPORT_MODULES = ["strict-tdd.md", "strict-tdd-verify.md"] as cons
  *
  * Explore and veredicto are intentionally read-only at the mutation-tool layer:
  * they can inspect files and run scoped verification commands, but they cannot
- * edit. Plan can write only SDD artifacts; build is the only phase with the
- * full mutation set for product code. This is enforced by pi-subagents' `tools:`
+ * edit. The `clarify` and `analyze` gates can write — but only their own
+ * `.sdd/<slug>/` artifacts (`clarifications.md`, `checklist.md`); the tool
+ * allowlist cannot enforce paths, so their prompts state the `.sdd`-only write
+ * boundary. Plan can write SDD artifacts; build is the only phase with the full
+ * mutation set for product code. This is enforced by pi-subagents' `tools:`
  * frontmatter key, so an accidental phase prompt drift does not silently grant
  * broad editing power to every child.
  */
 export const PHASE_TOOLS: Record<Phase, readonly string[]> = {
+  clarify: ["read", "bash", "write", "edit"],
   explore: ["read", "bash"],
   plan: ["read", "bash", "write", "edit"],
+  analyze: ["read", "bash", "write", "edit"],
   build: ["read", "bash", "write", "edit"],
   veredicto: ["read", "bash"],
 };
 
 /** Non-build phases may mention implementation terms while using `bash`; do not
- *  let pi-subagents' implementation completion guard classify them as writers. */
+ *  let pi-subagents' implementation completion guard classify them as writers.
+ *  Only `build` is a real implementation phase — the gates and read phases all
+ *  disable the guard. */
 export const PHASE_COMPLETION_GUARD: Record<Phase, boolean> = {
+  clarify: false,
   explore: false,
   plan: false,
+  analyze: false,
   build: true,
   veredicto: false,
 };

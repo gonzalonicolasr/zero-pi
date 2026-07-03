@@ -38,6 +38,16 @@ test("sddPhase recognises a single zero sub-agent invocation", () => {
   assert.equal(sddPhase({ agent: "zero-build", task: "do it" }), "Construyendo la implementación");
 });
 
+test("sddPhase labels the clarify and analyze gate sub-agents in Spanish", () => {
+  const clarify = sddPhase({ agent: "zero-clarify" });
+  const analyze = sddPhase({ agent: "zero-analyze" });
+  assert.equal(typeof clarify, "string");
+  assert.equal(typeof analyze, "string");
+  assert.ok(clarify && clarify.length > 0, "clarify has a non-empty label");
+  assert.ok(analyze && analyze.length > 0, "analyze has a non-empty label");
+  assert.notEqual(clarify, analyze, "the two gates get distinct labels");
+});
+
 test("sddPhase recognises packaged (dotted) and chain/parallel shapes", () => {
   assert.equal(sddPhase({ agent: "zero-pi.zero-plan" }), "Planeando la solución");
   assert.equal(

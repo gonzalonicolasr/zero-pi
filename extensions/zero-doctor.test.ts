@@ -52,7 +52,7 @@ function seedHealthy(h: DoctorHost & { files?: Map<string, string>; existsSet?: 
   h.files?.set("/home/gon/.pi/zero-runs.jsonl", '{"feature":"x","verdict":"pasa"}\n');
   h.existsSet?.add("/home/gon/.pi/agent/npm/node_modules/pi-subagents/package.json");
   h.existsSet?.add("/repo/.git");
-  for (const phase of ["explore", "plan", "build", "veredicto"]) h.existsSet?.add(`/home/gon/.pi/agent/agents/zero/zero-${phase}.md`);
+  for (const phase of ["clarify", "explore", "plan", "analyze", "build", "veredicto"]) h.existsSet?.add(`/home/gon/.pi/agent/agents/zero/zero-${phase}.md`);
   h.existsSet?.add("/home/gon/.pi/agent/agents/zero/support/strict-tdd.md");
   h.existsSet?.add("/home/gon/.pi/agent/agents/zero/support/strict-tdd-verify.md");
   return h;
@@ -103,6 +103,17 @@ test("runDoctor warns when generated agents are missing", () => {
   assert.equal(report.ok, true);
   assert.equal(c?.level, "warn");
   assert.match(c?.hint ?? "", /reiniciá pi/);
+});
+
+test("runDoctor checks for the clarify and analyze gate agents", () => {
+  const h = seedHealthy(host()) as DoctorHost & { existsSet?: Set<string> };
+  h.existsSet?.delete("/home/gon/.pi/agent/agents/zero/zero-clarify.md");
+  h.existsSet?.delete("/home/gon/.pi/agent/agents/zero/zero-analyze.md");
+  const report = runDoctor(h);
+  const c = report.checks.find((x) => x.name === "agents");
+  assert.equal(c?.level, "warn");
+  assert.match(c?.message ?? "", /zero-clarify\.md/);
+  assert.match(c?.message ?? "", /zero-analyze\.md/);
 });
 
 test("formatDoctorReport summarizes counts and renders hints", () => {

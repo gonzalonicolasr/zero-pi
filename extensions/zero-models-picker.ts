@@ -18,8 +18,8 @@ import type { AutotunePending } from "./autotune-extension.ts";
 
 /** The SDD phases, in pipeline order — re-stated locally so the pure module
  *  carries no value import. Must stay in lockstep with `PHASES` in
- *  `zero-models.ts`. */
-const PHASES = ["explore", "plan", "build", "veredicto"] as const;
+ *  `zero-models.ts` (the `clarify` gate leads, `analyze` sits after `plan`). */
+const PHASES = ["clarify", "explore", "plan", "analyze", "build", "veredicto"] as const;
 
 /** The three autotune modes offered on the autotune screen. */
 const AUTOTUNE_MODES = ["auto", "ask", "off"] as const;

@@ -85,10 +85,60 @@ test("readThinking: an explicit thinking map wins over a legacy suffix", () => {
   assert.deepEqual(out, { build: "low" });
 });
 
-test("isPhase recognises the four SDD phases and nothing else", () => {
+test("isPhase recognises the six SDD phases and nothing else", () => {
   for (const phase of PHASES) assert.ok(isPhase(phase));
+  assert.ok(isPhase("clarify"));
+  assert.ok(isPhase("analyze"));
   assert.ok(!isPhase("bogus"));
   assert.ok(!isPhase("Explore"));
+});
+
+test("PHASES lists the six SDD phases in pipeline order", () => {
+  assert.deepEqual(
+    [...PHASES],
+    ["clarify", "explore", "plan", "analyze", "build", "veredicto"],
+  );
+});
+
+test("readModels supplies gate defaults for clarify and analyze", () => {
+  const models = readModels({});
+  assert.equal(models.clarify, "claude-haiku-4-5", "clarify is a cheap/fast gate");
+  assert.equal(models.analyze, "claude-opus-4-8", "analyze is a strong pre-build reviewer");
+});
+
+test("readModels keeps a four-phase zero.json valid, defaulting the new gates", () => {
+  // A pre-gates zero.json that lists only the original four phases stays valid.
+  const models = readModels({
+    models: {
+      explore: "claude-haiku-4-5",
+      plan: "claude-opus-4-8",
+      build: "claude-sonnet-4-6",
+      veredicto: "claude-opus-4-8",
+    },
+  });
+  assert.equal(models.build, "claude-sonnet-4-6", "existing phase preserved");
+  assert.equal(models.clarify, "claude-haiku-4-5", "missing clarify falls back to default");
+  assert.equal(models.analyze, "claude-opus-4-8", "missing analyze falls back to default");
+});
+
+test("readProviders includes clarify and analyze, empty by default", () => {
+  const providers = readProviders({ providers: { analyze: "anthropic" } });
+  assert.equal(providers.analyze, "anthropic");
+  assert.equal(providers.clarify, "", "unset gate provider defaults to empty");
+  for (const phase of PHASES) assert.equal(typeof providers[phase], "string");
+});
+
+test("parseAssignment accepts clarify and analyze phases", () => {
+  assert.deepEqual(parseAssignment("clarify=claude-haiku-4-5"), {
+    phase: "clarify",
+    model: "claude-haiku-4-5",
+  });
+  assert.deepEqual(parseAssignment("analyze=anthropic/claude-opus-4-8 thinking=high"), {
+    phase: "analyze",
+    provider: "anthropic",
+    model: "claude-opus-4-8",
+    thinking: "high",
+  });
 });
 
 test("parseAssignment accepts <phase>=<model> and <phase> <model>", () => {
@@ -307,8 +357,8 @@ test("validateAssignment keeps old permissive behavior when registry is unavaila
 });
 
 test("formatPhases shows provider/model when a provider is set, model alone otherwise", () => {
-  const models: PhaseModels = { explore: "m-e", plan: "m-p", build: "m-b", veredicto: "m-v" };
-  const providers: PhaseProviders = { explore: "anthropic", plan: "", build: "codex", veredicto: "" };
+  const models: PhaseModels = { clarify: "m-c", explore: "m-e", plan: "m-p", analyze: "m-a", build: "m-b", veredicto: "m-v" };
+  const providers: PhaseProviders = { clarify: "", explore: "anthropic", plan: "", analyze: "", build: "codex", veredicto: "" };
   const out = formatPhases(models, providers, {});
   for (const phase of PHASES) assert.ok(out.includes(phase));
   assert.ok(out.includes("anthropic/m-e"));
@@ -317,16 +367,16 @@ test("formatPhases shows provider/model when a provider is set, model alone othe
 });
 
 test("formatPhases appends the thinking level beside provider/model when set", () => {
-  const models: PhaseModels = { explore: "m-e", plan: "m-p", build: "m-b", veredicto: "m-v" };
-  const providers: PhaseProviders = { explore: "anthropic", plan: "", build: "codex", veredicto: "" };
+  const models: PhaseModels = { clarify: "m-c", explore: "m-e", plan: "m-p", analyze: "m-a", build: "m-b", veredicto: "m-v" };
+  const providers: PhaseProviders = { clarify: "", explore: "anthropic", plan: "", analyze: "", build: "codex", veredicto: "" };
   const thinking: PhaseThinking = { build: "high" };
   const out = formatPhases(models, providers, thinking);
   assert.ok(out.includes("codex/m-b · thinking high"), "thinking shown beside the model");
 });
 
 test("formatPhases shows no thinking artifact for a phase without a level", () => {
-  const models: PhaseModels = { explore: "m-e", plan: "m-p", build: "m-b", veredicto: "m-v" };
-  const providers: PhaseProviders = { explore: "anthropic", plan: "", build: "codex", veredicto: "" };
+  const models: PhaseModels = { clarify: "m-c", explore: "m-e", plan: "m-p", analyze: "m-a", build: "m-b", veredicto: "m-v" };
+  const providers: PhaseProviders = { clarify: "", explore: "anthropic", plan: "", analyze: "", build: "codex", veredicto: "" };
   const out = formatPhases(models, providers, { build: "high" });
   const planLine = out.split("\n").find((l) => l.includes("plan"))!;
   assert.ok(!planLine.includes("· thinking"), "unset phase has no · thinking text");

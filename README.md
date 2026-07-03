@@ -42,14 +42,25 @@ Needs Node ≥ 20.6. Restart pi after an upgrade.
 ## 🛠 `/forge` — the SDD pipeline
 
 The core of zero-pi. Run **`/forge <feature>`** and the orchestrator drives the
-work through four phases, each delegated to its own sub-agent:
+work through six phases — the automatic
+**clarify → explore → plan → analyze → build → veredicto** flow — each delegated
+to its own sub-agent:
 
 | Phase | Does |
 | ----- | ---- |
+| **clarify** | Record de-risking assumptions before exploration; stop only on blocking ambiguity. |
 | **explore** | Investigate the codebase read-only; produce findings. |
 | **plan** | Write requirements, design, and an ordered task list. |
+| **analyze** | Review plan readiness after `/zero-validate`; decide continue or replan. |
 | **build** | Implement the plan. |
 | **veredicto** | Review it adversarially and record a verdict. |
+
+The **clarify** and **analyze** gates are automatic inside `/forge` — no extra
+slash command in the normal flow. `clarify` writes `.sdd/<slug>/clarifications.md`
+and asks only when proceeding would risk the wrong product; `analyze` writes
+`.sdd/<slug>/checklist.md` after the structural `/zero-validate` gate and returns
+`continue` (build) or `replan` (re-run plan with concrete defects). Neither gate
+counts as a build/veredicto round.
 
 The verdict is `pasa` (done), `corregir` (re-run build), or `replantear`
 (re-run plan). A hard iteration cap bounds the build↔veredicto loop — reached
@@ -74,8 +85,8 @@ into `/forge` for you.
 | Feature | What it does |
 | ------- | ------------ |
 | **Strict TDD** | The build phase drives RED → GREEN → TRIANGULATE → REFACTOR with a TDD Cycle Evidence table; veredicto audits it. On by default, runtime-gated on a test runner; `tdd.mode: "off"` disables it. |
-| **`/zero-models`** | Pick the model + provider + thinking level for each SDD phase — a boxed-window picker, or set one directly. Direct assignments are validated against pi's model registry when available. |
-| **Phase tool gating** | Generated `zero-*` sub-agents get phase-specific tool allowlists: explore/veredicto are read-only, plan writes SDD artifacts, build edits code. |
+| **`/zero-models`** | Pick the model + provider + thinking level for each of the six SDD phases — a boxed-window picker, or set one directly. Direct assignments are validated against pi's model registry when available. |
+| **Phase tool gating** | Generated `zero-*` sub-agents get phase-specific tool allowlists: explore/veredicto are read-only, clarify/analyze/plan write only `.sdd` artifacts, build edits code. |
 | **Dependency-aware tasks** | `tasks.md` is validated as a task graph with mandatory `depends:` edges, topological ordering, and review workload totals. |
 | **Autotune** | Learns which model fits each phase from your run history and re-tunes itself; optional `autotuneBudget.maxPhaseCostUsd` suppresses costly step-ups. |
 | **`/zero-doctor`** | Preflight diagnostics for zero-pi: package install, Node version, pi-subagents, generated phase agents, model config, `.sdd/config`, run history, git, and `gh` auth. |
@@ -179,13 +190,17 @@ zero-pi keeps its state in `~/.pi/zero.json` (per-phase `models`, `providers`,
 per-project artifacts live under `.sdd/`. Set `ZERO_RESUME=off` to disable the
 conversation-resume note.
 
-`~/.pi/zero.json` stores three parallel per-phase maps plus the autotune mode:
+`~/.pi/zero.json` stores three parallel per-phase maps plus the autotune mode.
+The configurable phases are `clarify`, `explore`, `plan`, `analyze`, `build`,
+and `veredicto`; a pre-gates file that lists only the original four stays valid
+and the missing `clarify`/`analyze` fall back to defaults (cheap/fast clarify,
+strong analyze):
 
 ```json
 {
-  "models":    { "explore": "claude-haiku-4-5", "build": "claude-sonnet-4-6" },
-  "providers": { "explore": "anthropic",        "build": "anthropic" },
-  "thinking":  { "explore": "low",              "build": "high" },
+  "models":    { "clarify": "claude-haiku-4-5", "analyze": "claude-opus-4-8", "build": "claude-sonnet-4-6" },
+  "providers": { "clarify": "anthropic",         "analyze": "anthropic",       "build": "anthropic" },
+  "thinking":  { "analyze": "high",              "build": "high" },
   "autotune": "ask",
   "autotuneBudget": { "maxPhaseCostUsd": 4, "minSamples": 3 }
 }
