@@ -476,6 +476,30 @@ verdict" above). If the push fails for any reason, or zero runs with `--no-mcp`
 or Cortex is down — emit a non-blocking warning and continue, never block the
 run. The local line already stands.
 
+## Run cost report
+
+At the end of every run that reached a terminal verdict (`pasa` or
+`cap-reached`), invoke `/zero-cost <slug>` automatically and include its result
+in the final summary under `Costo:`. The user should not have to remember a
+second command after `/forge`; `/zero-cost` remains available only as a manual
+re-run/debug command.
+
+Rules:
+
+- Run it **after** the final veredicto/iteration-cap outcome is known and after
+  the `~/.pi/zero-runs.jsonl` metric append above. Do not run it for an aborted
+  invocation that never reached veredicto.
+- Pass the feature slug explicitly: `/zero-cost <slug>`. Never rely on the
+  command's "latest run" default from inside `/forge`.
+- Treat cost reporting as best-effort and non-blocking. If the command is
+  missing, errors, or reports no metadata, keep the verdict intact and summarize
+  the reason plainly: the run may not have been executed by native `/forge`, pi
+  may not have written `*_meta.json`, or project-local `.pi-subagents/` artifacts
+  may live under a different cwd.
+- If the command returns a cost table, relay the table compactly in the final
+  summary. Do not invent costs from `~/.pi/zero-runs.jsonl`; that file records
+  outcomes/models only, not usage.
+
 ## Git/PR/archive commands
 
 Recommended command order for an audit-ready SDD change is: `/zero-branch <slug>` → `/zero-issue <slug>` → `/forge <slug>` (plan/build/veredicto) → `/zero-git-validate <slug> --for=pr` → `/zero-pr <slug>` → `/zero-archive <slug>` after `pasa`.

@@ -5,6 +5,21 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.63] - 2026-07-03
+
+### Fixed — `/forge` final cost report and clearer `/zero-cost` misses
+
+- The `/forge` orchestration prompt now invokes `/zero-cost <slug>`
+  automatically at terminal run end and includes the best-effort cost table in
+  the final summary. Users no longer need to remember a second command after a
+  successful or capped SDD run.
+- `/zero-cost` now also reads project-local `.pi-subagents/artifacts/` from the
+  current cwd and its parents, so manually delegated zero phase runs can be
+  reported when their metadata did not land under pi's native session folder.
+- Missing-cost messages now explain what was searched and the common causes:
+  wrong slug, run executed outside native `/forge`, missing `*_meta.json`, or
+  manual artifacts living under another cwd.
+
 ## [0.1.62] - 2026-07-03
 
 ### Changed — README/docs sync for the six-phase pipeline

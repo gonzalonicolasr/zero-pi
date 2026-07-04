@@ -77,7 +77,9 @@ export function extractSlug(task: unknown): string | null {
     const slug = m[1];
     if (slug && slug !== "specs" && slug !== "archive") return slug;
   }
-  return null;
+  const label = /(?:^|\n)\s*Slug:\s*([A-Za-z0-9._-]+)/i.exec(task);
+  const slug = label?.[1];
+  return slug && slug !== "specs" && slug !== "archive" ? slug : null;
 }
 
 function num(v: unknown): number {

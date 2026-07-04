@@ -60,6 +60,8 @@ test("extractSlug: first .sdd/<slug>/ wins, specs/archive rejected", () => {
   assert.equal(extractSlug("read .sdd/my-feature/request.md"), "my-feature");
   assert.equal(extractSlug("touch .sdd/specs/requirements.md"), null);
   assert.equal(extractSlug("see .sdd/archive/2026-01-01-x/"), null);
+  assert.equal(extractSlug("Slug: looply-provider-compat-improvements\nProject root: /tmp/x"), "looply-provider-compat-improvements");
+  assert.equal(extractSlug("Slug: archive"), null);
   assert.equal(extractSlug("no slug here"), null);
 });
 

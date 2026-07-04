@@ -15,8 +15,10 @@ returns `continue` (proceed to build) or `replan` (re-run plan with its
 defects). A `corregir` verdict re-runs `build`; a `replantear` verdict re-runs
 `plan`; after a few rounds with no `pasa`, stop and report the result as not
 verified. Ask the user for interactive or automatic mode up front; in
-interactive mode pause after each phase for approval. Never claim success unless
-veredicto returned `pasa`.
+interactive mode pause after each phase for approval. At terminal run end,
+invoke `/zero-cost <slug>` automatically and include the best-effort cost table
+in the final summary; the user should not have to run a second command. Never
+claim success unless veredicto returned `pasa`.
 
 **Parse the arguments first.** If the request begins with `--continue`, this is
 a **resume** run, not a fresh one:
