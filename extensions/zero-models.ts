@@ -44,6 +44,7 @@ import type { AutotunePending } from "./autotune-extension.ts";
 import {
   back,
   createPickerState,
+  decodeKey,
   enter,
   navigate,
   submitText,
@@ -521,14 +522,6 @@ const PICKER_TITLE = "zero · modelos SDD";
 /** The dim help line shown at the foot of the boxed panel. */
 const PICKER_HELP = "↑↓ navegar · enter elegir · esc volver";
 
-/** ANSI arrow-key escape sequences. */
-const KEY_UP = "\x1b[A";
-const KEY_DOWN = "\x1b[B";
-const KEY_ESC = "\x1b";
-/** Enter — CR or LF, depending on the terminal. */
-const KEY_ENTER = new Set(["\r", "\n", "\r\n"]);
-/** Backspace — DEL or BS. */
-const KEY_BACKSPACE = new Set(["\x7f", "\x08"]);
 
 /**
  * Clamp a rendered line to `width` columns so it never overflows the box
@@ -678,7 +671,8 @@ function createPickerComponent(
 
   /** Route a keystroke while the inline text buffer is open. */
   function handleTextInput(data: string): void {
-    if (data === KEY_ESC) {
+    const key = decodeKey(data);
+    if (key === "esc") {
       // Esc abandons the typed value and returns to the current list screen
       // unchanged. `submitText` with an empty string is exactly that no-op:
       // it clears `textPrompt` and rebuilds the list without committing.
@@ -687,13 +681,13 @@ function createPickerComponent(
       tui.requestRender();
       return;
     }
-    if (KEY_ENTER.has(data)) {
+    if (key === "enter") {
       state = submitText(state, buffer ?? "");
       buffer = null;
       tui.requestRender();
       return;
     }
-    if (KEY_BACKSPACE.has(data)) {
+    if (key === "backspace") {
       buffer = (buffer ?? "").slice(0, -1);
       tui.requestRender();
       return;
@@ -714,24 +708,25 @@ function createPickerComponent(
         return;
       }
 
-      if (data === KEY_UP) {
+      const key = decodeKey(data);
+      if (key === "up") {
         state = navigate(state, -1);
         tui.requestRender();
         return;
       }
-      if (data === KEY_DOWN) {
+      if (key === "down") {
         state = navigate(state, 1);
         tui.requestRender();
         return;
       }
-      if (KEY_ENTER.has(data)) {
+      if (key === "enter") {
         const result = enter(state);
         // `enter` on a custom-* row opens `textPrompt`; arm the buffer.
         if (result.type === "state" && result.state.textPrompt) buffer = "";
         applyResult(result);
         return;
       }
-      if (data === KEY_ESC) {
+      if (key === "esc") {
         applyResult(back(state));
         return;
       }

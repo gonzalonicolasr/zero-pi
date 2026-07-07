@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 
 import {
   createPickerState,
+  decodeKey,
   navigate,
   rebuildEntries,
   enter,
@@ -868,4 +869,75 @@ test("submitText: a whitespace-only typed model is a no-op that returns to the m
     state.entries.some((e) => e.kind === "model"),
     "the model list is shown again",
   );
+});
+
+// ---------------------------------------------------------------------------
+// decodeKey — legacy + kitty-keyboard-protocol sequences
+// ---------------------------------------------------------------------------
+//
+// pi-tui negotiates kitty keyboard protocol flags 7 with the terminal; Ghostty
+// grants them and then encodes arrows as `CSI 1;1:1 A/B` (press), `:2`
+// (repeat), `:3` (release) and Esc as `CSI 27 u` — never the legacy `\x1b[A`
+// forms. The kitty sequences below were captured live from Ghostty. The picker
+// must navigate on press AND repeat (holding the arrow scrolls) and must
+// ignore releases.
+
+test("decodeKey: legacy CSI arrows decode to up/down", () => {
+  assert.equal(decodeKey("\x1b[A"), "up");
+  assert.equal(decodeKey("\x1b[B"), "down");
+});
+
+test("decodeKey: SS3 application-cursor-mode arrows decode to up/down", () => {
+  assert.equal(decodeKey("\x1bOA"), "up");
+  assert.equal(decodeKey("\x1bOB"), "down");
+});
+
+test("decodeKey: kitty-protocol arrow presses (Ghostty, flags 7) decode to up/down", () => {
+  assert.equal(decodeKey("\x1b[1;1:1A"), "up");
+  assert.equal(decodeKey("\x1b[1;1:1B"), "down");
+  // Terminals may omit the event sub-field on press.
+  assert.equal(decodeKey("\x1b[1;1A"), "up");
+  assert.equal(decodeKey("\x1b[1;1B"), "down");
+});
+
+test("decodeKey: kitty-protocol arrow repeats navigate — holding the key scrolls", () => {
+  assert.equal(decodeKey("\x1b[1;1:2A"), "up");
+  assert.equal(decodeKey("\x1b[1;1:2B"), "down");
+});
+
+test("decodeKey: kitty-protocol releases are ignored", () => {
+  assert.equal(decodeKey("\x1b[1;1:3A"), null);
+  assert.equal(decodeKey("\x1b[1;1:3B"), null);
+  assert.equal(decodeKey("\x1b[27;1:3u"), null);
+  assert.equal(decodeKey("\x1b[13;1:3u"), null);
+});
+
+test("decodeKey: modified arrows do not navigate", () => {
+  assert.equal(decodeKey("\x1b[1;2B"), null); // shift+down
+  assert.equal(decodeKey("\x1b[1;5A"), null); // ctrl+up
+});
+
+test("decodeKey: Esc decodes from the bare byte and the kitty CSI-u forms", () => {
+  assert.equal(decodeKey("\x1b"), "esc");
+  assert.equal(decodeKey("\x1b[27u"), "esc");
+  assert.equal(decodeKey("\x1b[27;1:1u"), "esc");
+});
+
+test("decodeKey: Enter decodes from CR/LF and the kitty CSI-u form", () => {
+  assert.equal(decodeKey("\r"), "enter");
+  assert.equal(decodeKey("\n"), "enter");
+  assert.equal(decodeKey("\r\n"), "enter");
+  assert.equal(decodeKey("\x1b[13u"), "enter");
+});
+
+test("decodeKey: Backspace decodes from DEL/BS and the kitty CSI-u form", () => {
+  assert.equal(decodeKey("\x7f"), "backspace");
+  assert.equal(decodeKey("\x08"), "backspace");
+  assert.equal(decodeKey("\x1b[127u"), "backspace");
+});
+
+test("decodeKey: printable characters and unknown sequences decode to null", () => {
+  assert.equal(decodeKey("q"), null);
+  assert.equal(decodeKey("\x1b[C"), null); // right arrow — not a picker key
+  assert.equal(decodeKey(""), null);
 });

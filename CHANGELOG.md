@@ -5,6 +5,21 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.64] - 2026-07-07
+
+### Fixed — `/zero-models` picker dead arrows/Esc under the kitty keyboard protocol
+
+- The interactive `/zero-models` picker compared raw stdin bytes against the
+  legacy ANSI sequences only (`\x1b[A`, `\x1b[B`, bare `\x1b`). pi-tui
+  negotiates kitty keyboard protocol flags 7, and a granting terminal
+  (Ghostty, kitty, …) then encodes arrows as `CSI 1;1:1 A/B` and Esc as
+  `CSI 27 u` — so navigation and Esc were completely dead there while Enter
+  kept working. Keystroke decoding now lives in the pure module as
+  `decodeKey()`, which accepts the legacy, SS3 (application cursor mode) and
+  kitty forms, navigates on kitty repeats (holding an arrow scrolls), and
+  ignores key releases. Captured-from-Ghostty sequences are pinned in the
+  unit tests.
+
 ## [0.1.63] - 2026-07-03
 
 ### Fixed — `/forge` final cost report and clearer `/zero-cost` misses

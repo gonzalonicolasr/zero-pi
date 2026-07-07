@@ -347,6 +347,49 @@ export function navigate(state: PickerState, dir: -1 | 1): PickerState {
 }
 
 // ---------------------------------------------------------------------------
+// decodeKey — keystroke decoding
+// ---------------------------------------------------------------------------
+
+/** The picker's five meaningful keys, as decoded from a raw stdin sequence. */
+export type PickerKey = "up" | "down" | "enter" | "esc" | "backspace";
+
+/**
+ * Kitty-keyboard-protocol matcher for one functional key: `CSI <code>` +
+ * optional `;1` (no modifiers) + optional `:1` (press) / `:2` (repeat) +
+ * `<final>`. A `:3` (release) or any real modifier does NOT match — releases
+ * must be ignored and modified keys are not picker keys.
+ */
+function kittyPressOrRepeat(code: string, final: string): RegExp {
+  return new RegExp(`^\\x1b\\[${code}(?:;1(?::[12])?)?${final}$`);
+}
+
+const KITTY_UP = kittyPressOrRepeat("1", "A");
+const KITTY_DOWN = kittyPressOrRepeat("1", "B");
+const KITTY_ENTER = kittyPressOrRepeat("13", "u");
+const KITTY_ESC = kittyPressOrRepeat("27", "u");
+const KITTY_BACKSPACE = kittyPressOrRepeat("127", "u");
+
+/**
+ * Decode one raw stdin sequence into a picker key, or `null` when it is not
+ * one (printable characters, releases, modified keys, unknown sequences).
+ *
+ * pi-tui negotiates kitty keyboard protocol flags 7 with the terminal, and a
+ * granting terminal (Ghostty, kitty, …) then encodes arrows as
+ * `CSI 1;1:1 A/B` and Esc as `CSI 27 u` — never the legacy `\x1b[A` / bare
+ * `\x1b` forms. A non-granting terminal keeps the legacy (or SS3
+ * application-cursor-mode) forms. Both worlds are accepted here; kitty
+ * repeats (`:2`) navigate too so holding an arrow scrolls the list.
+ */
+export function decodeKey(data: string): PickerKey | null {
+  if (data === "\x1b[A" || data === "\x1bOA" || KITTY_UP.test(data)) return "up";
+  if (data === "\x1b[B" || data === "\x1bOB" || KITTY_DOWN.test(data)) return "down";
+  if (data === "\r" || data === "\n" || data === "\r\n" || KITTY_ENTER.test(data)) return "enter";
+  if (data === "\x1b" || KITTY_ESC.test(data)) return "esc";
+  if (data === "\x7f" || data === "\x08" || KITTY_BACKSPACE.test(data)) return "backspace";
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // enter / back — Enter/Esc dispatch
 // ---------------------------------------------------------------------------
 
