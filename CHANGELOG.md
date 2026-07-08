@@ -5,6 +5,13 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.68] - 2026-07-08
+
+### Added — live activity panel
+
+- Added `extensions/zero-activity-panel.ts`, a compact widget above the prompt with `/forge` phase progress (`clarify → explore → plan → analyze → build → veredicto`) and recent tool cards.
+- The panel uses pi's public `ctx.ui.setWidget()` API: it tracks `tool_execution_start` / `tool_execution_end`, highlights the active SDD phase, and summarizes recent tools with running/ok/error glyphs.
+
 ## [0.1.67] - 2026-07-08
 
 ### Changed — more working phrases

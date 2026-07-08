@@ -116,6 +116,7 @@ into `/forge` for you.
 | **ZERO HUD** | OMP-inspired segmented footer for SDD work: phase, model, tokens, cache, cost, diff, context %, and branch. Switch presets with `/zero-hud compact\|minimal\|full\|ascii\|off` or `ZERO_HUD_PRESET`. |
 | **Pretty input box** | OMP-style prompt chrome with rounded corners, side borders, ZERO chips, and compact keyboard hints. |
 | **Pretty code fences** | Markdown code blocks render as bordered panels with language badges instead of raw ```txt / ```json fence lines. |
+| **Live activity panel** | Shows `/forge` phase progress and recent tool cards above the prompt while work is running. |
 | **Working-phrase ticker** | Swaps pi's static `Working...` / `Procesando...` for a large pool of context-aware Spanish/ZERO/SDD phrases + spinner. |
 | **Conversation resume** | Writes `.pi/zero-resume.md` on exit — the restore command + a conversation tail. |
 | **Windows tree-kill** | Aborting a turn kills the whole process tree — no orphaned `claude`. |
