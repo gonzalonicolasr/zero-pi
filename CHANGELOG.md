@@ -5,6 +5,13 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.70] - 2026-07-08
+
+### Changed — richer `zero-omp-neon` theme colours
+
+- Added the packaged `themes/zero-omp-neon.json` theme and updated the active local copy.
+- Rebalanced the palette so tool cards, prose, links/paths, titles, code, borders, and status glyphs no longer collapse into the same green/gold range: navy/violet panels, cyan links, gold titles, mint code/success, rose errors, and lila-grey prose.
+
 ## [0.1.69] - 2026-07-08
 
 ### Fixed — working spinner survives UI resets

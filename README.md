@@ -123,6 +123,7 @@ into `/forge` for you.
 | **SDD routing skill** | Natural-language requests that say "hacelo con sdd" route into `/forge` without remembering the slash command. |
 | **`zero-sdd` theme** | A dark, high-contrast pi theme tuned for SDD work. |
 | **`zero-sunset` theme** | A warm sunset variant — gold/coral/magenta accents over warm-dark panels, with one cool tone kept for syntax legibility. Activate with `/theme zero-sunset`. |
+| **`zero-omp-neon` theme** | A high-contrast OMP-inspired neon theme with separated colour roles: cyan links/paths, gold titles, mint code/success, violet borders, and navy tool cards. Activate with `/theme zero-omp-neon`. |
 
 ## ⌨️ Commands
 
