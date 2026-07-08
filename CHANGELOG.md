@@ -11,6 +11,7 @@ uses [semantic versioning](https://semver.org/).
 
 - Added `extensions/zero-activity-panel.ts`, a compact widget above the prompt with `/forge` phase progress (`clarify → explore → plan → analyze → build → veredicto`) and recent tool cards.
 - The panel uses pi's public `ctx.ui.setWidget()` API: it tracks `tool_execution_start` / `tool_execution_end`, highlights the active SDD phase, and summarizes recent tools with running/ok/error glyphs.
+- Documented the visual chrome surfaces in README: bottom ZERO HUD vs transient activity panel vs prompt box vs code fences vs working phrases, including `/zero-hud` presets and reload instructions.
 
 ## [0.1.67] - 2026-07-08
 

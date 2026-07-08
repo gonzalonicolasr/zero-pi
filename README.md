@@ -145,6 +145,69 @@ into `/forge` for you.
 | `/zero-diff <slug>` | Preview the logical spec-store merge without writing files. |
 | `/zero-resume` | Write the session handoff note now. |
 
+## 🎛️ Visual chrome: HUD, activity panel, prompt box
+
+zero-pi ships several visual extensions. They are related, but each one owns a different part of pi's TUI:
+
+| Surface | File | Where it appears | Purpose |
+| ------- | ---- | ---------------- | ------- |
+| **ZERO HUD** | `extensions/zero-hud.ts` | Footer/status line at the bottom | Persistent model/tokens/cost/diff/context/branch telemetry. |
+| **Activity panel** | `extensions/zero-activity-panel.ts` | Widget above the prompt while work is running | Live `/forge` phase progress plus recent tool cards. |
+| **Prompt box** | `extensions/zero-pretty-input-box.ts` | The input/editor box | OMP-like rounded box with ZERO chips and key hints. |
+| **Code fences** | `extensions/zero-pretty-code-fences.ts` | Markdown code blocks in chat | Bordered panels with language badges instead of raw ```txt / ```json lines. |
+| **Working phrases** | `extensions/working-phrases.ts` | Tiny loading row (`Procesando… (esc)`) | Rotating ZERO/SDD/Star Wars/DBZ phrases and themed spinner. |
+
+### ZERO HUD presets
+
+The HUD is the **bottom footer**. It is not the activity panel. Control it with:
+
+```txt
+/zero-hud preview
+/zero-hud compact
+/zero-hud minimal
+/zero-hud full
+/zero-hud ascii
+/zero-hud off
+/zero-hud on
+```
+
+Example compact HUD:
+
+```txt
+ZERO ▸ gpt-5.5 ▸ tok ↑1.1M ↓42K ▸ cost $16.22 ▸ diff +0/-0 ▸ ctx 11%
+```
+
+Startup preset can be set with:
+
+```bash
+ZERO_HUD_PRESET=full pi
+```
+
+Supported presets: `compact` (default), `minimal`, `full`, `ascii`, `off`.
+
+### Activity panel vs HUD
+
+During `/forge`, the activity panel appears **above the prompt** and summarizes the live run:
+
+```txt
+╭─ ZERO activity ───────────────────────────────────────────────────────╮
+│ SDD   ✓ clarify › ✓ explore › ⠋ plan › · analyze › · build › · veredicto
+│ Tools ⠋ subagent · ✓ read zero-hud.ts · ✓ bash npm test
+╰────────────────────────────────────────────────────────────────────────╯
+```
+
+The activity panel is transient: it clears after the agent finishes. The HUD stays in the footer across normal work.
+
+### Applying visual changes after install
+
+After `pi install npm:@gonrocca/zero-pi@<version>`, reload the active session:
+
+```txt
+/reload
+```
+
+If a visual monkeypatch was already loaded in the current process, restarting pi is the safest way to force all visual extensions to reinitialize.
+
 ### Git / PR / Issues
 
 Recommended flow: `/zero-branch <slug>` → `/zero-issue <slug>` → `/forge <slug>` (the orchestrator validates plan artifacts and can create `/zero-checkpoint` before build) → `/zero-git-validate <slug> --for=pr` → `/zero-pr <slug>` → `/zero-archive <slug>`.
