@@ -5,6 +5,14 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.66] - 2026-07-08
+
+### Added — prettier pi chrome
+
+- Added `extensions/zero-pretty-input-box.ts`, an OMP-inspired prompt box with rounded Unicode corners, side borders, and ZERO-themed chips (`π • ZERO • prompt`, `Enter ↵`, `ctrl+j newline`).
+- Added `extensions/zero-pretty-code-fences.ts`, replacing raw markdown fences like ```txt / ```json with bordered code panels and language badges.
+- Expanded `extensions/working-phrases.ts` with a larger ZERO/SDD/rioplatense phrase pool for the tiny working indicator (`Procesando… (esc)`), plus more tool-aware labels for tests, package work, git, browser, memory, and screenshots.
+
 ## [0.1.65] - 2026-07-08
 
 ### Added — ZERO HUD segmented footer

@@ -114,7 +114,9 @@ into `/forge` for you.
 | **Provider guard** | Warns when the `anthropic` provider runs on a metered API key instead of your subscription. |
 | **Startup banner** | The sunset ANSI-Shadow `ZERO` wordmark, drawn once at pi startup — `ZERO_HEADER=off` to disable. |
 | **ZERO HUD** | OMP-inspired segmented footer for SDD work: phase, model, tokens, cache, cost, diff, context %, and branch. Switch presets with `/zero-hud compact\|minimal\|full\|ascii\|off` or `ZERO_HUD_PRESET`. |
-| **Working-phrase ticker** | Swaps pi's `Working...` for a context-aware Spanish phrase + spinner. |
+| **Pretty input box** | OMP-style prompt chrome with rounded corners, side borders, ZERO chips, and compact keyboard hints. |
+| **Pretty code fences** | Markdown code blocks render as bordered panels with language badges instead of raw ```txt / ```json fence lines. |
+| **Working-phrase ticker** | Swaps pi's static `Working...` / `Procesando...` for a large pool of context-aware Spanish/ZERO/SDD phrases + spinner. |
 | **Conversation resume** | Writes `.pi/zero-resume.md` on exit — the restore command + a conversation tail. |
 | **Windows tree-kill** | Aborting a turn kills the whole process tree — no orphaned `claude`. |
 | **SDD routing skill** | Natural-language requests that say "hacelo con sdd" route into `/forge` without remembering the slash command. |
