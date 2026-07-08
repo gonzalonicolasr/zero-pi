@@ -113,6 +113,7 @@ into `/forge` for you.
 | **Run memory** | Every run recalls and saves traces to Cortex, so runs learn from each other. |
 | **Provider guard** | Warns when the `anthropic` provider runs on a metered API key instead of your subscription. |
 | **Startup banner** | The sunset ANSI-Shadow `ZERO` wordmark, drawn once at pi startup — `ZERO_HEADER=off` to disable. |
+| **ZERO HUD** | OMP-inspired segmented footer for SDD work: phase, model, tokens, cache, cost, diff, context %, and branch. Switch presets with `/zero-hud compact\|minimal\|full\|ascii\|off` or `ZERO_HUD_PRESET`. |
 | **Working-phrase ticker** | Swaps pi's `Working...` for a context-aware Spanish phrase + spinner. |
 | **Conversation resume** | Writes `.pi/zero-resume.md` on exit — the restore command + a conversation tail. |
 | **Windows tree-kill** | Aborting a turn kills the whole process tree — no orphaned `claude`. |
@@ -131,6 +132,7 @@ into `/forge` for you.
 | `/zero-archive <slug>` | Merge an approved run into `.sdd/specs/`, move it to `.sdd/archive/YYYY-MM-DD-<slug>/`, and persist `archivePath`. |
 | `/zero-validate <slug>` | Validate proposal/spec/design/tasks artifacts, including task schema and per-domain specs. |
 | `/zero-status` | Show each `.sdd/` run's artifact, sync, latest-verdict, and GitHub-link status. |
+| `/zero-hud [compact\|minimal\|full\|ascii\|off\|on\|preview]` | Preview or switch the segmented ZERO footer for this pi session. Default preset: `compact`. |
 | `/zero-cost [<slug>]` | Report tokens (in/out/cache), USD cost, duration, and tool-count per SDD phase for a run — reads native pi session metas and project-local `.pi-subagents/artifacts`; `<slug>` for a specific run, no argument for the most recent. |
 | `/zero-checkpoint [<slug>] [--json]` | Save `diff.patch`, `status.txt`, `head.txt`, `meta.json`, and a review-before-running `restore.sh` under `.sdd/<slug>/checkpoints/<id>/`. |
 | `/zero-branch <slug>` | Create/reuse the configured SDD Git branch and persist `branch`/`baseBranch`. |

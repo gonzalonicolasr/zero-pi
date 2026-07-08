@@ -5,6 +5,15 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.65] - 2026-07-08
+
+### Added — ZERO HUD segmented footer
+
+- Added `extensions/zero-hud.ts`, an OMP-inspired segmented footer for pi: `ZERO ▸ phase ▸ model ▸ tokens ▸ cost ▸ diff ▸ ctx ▸ git`.
+- The HUD detects `/forge`/SDD input plus `zero-*` subagent calls and surfaces the current SDD phase in the footer.
+- New `/zero-hud` command previews or switches runtime presets: `compact`, `minimal`, `full`, `ascii`, `off`, and `on`; `ZERO_HUD_PRESET` sets the startup default.
+- Package loading now uses `zero-hud.ts` instead of the older one-piece `zero-statusline.ts` extension; the old file remains shipped for backwards-compatible imports/tests.
+
 ## [0.1.64] - 2026-07-07
 
 ### Fixed — `/zero-models` picker dead arrows/Esc under the kitty keyboard protocol
