@@ -5,6 +5,12 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.67] - 2026-07-08
+
+### Changed — more working phrases
+
+- Expanded the working-phrase ticker with Star Wars and Dragon Ball Z flavored lines: Force/saber/hyperspace/Jedi council plus ki/Super Saiyajin/Genkidama/Kamehameha/Shenlong variants.
+
 ## [0.1.66] - 2026-07-08
 
 ### Added — prettier pi chrome
