@@ -325,6 +325,13 @@ export default function register(pi?: PiAPI): void {
     installSpinner();
   });
 
+  // Pi can reset extension-owned UI during reload/session rebinds. Reinstall the
+  // spinner at the start of every run so the symbol survives those resets.
+  pi.on("before_agent_start", (_event, ctx) => {
+    capture(ctx);
+    installSpinner();
+  });
+
   pi.on("input", (event, ctx) => {
     capture(ctx);
     const text = (event as { text?: string })?.text ?? "";
@@ -333,6 +340,7 @@ export default function register(pi?: PiAPI): void {
 
   pi.on("agent_start", (_event, ctx) => {
     capture(ctx);
+    installSpinner();
     start();
   });
 

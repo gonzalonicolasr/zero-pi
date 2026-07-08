@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import {
+import registerWorkingPhrases, {
   looksLikeSdd,
   pickThinking,
   sddPhase,
@@ -98,4 +98,28 @@ test("spinnerFrames degrades gracefully when the theme throws", () => {
   const frames = spinnerFrames(theme);
   assert.equal(frames.length, 10);
   assert.deepEqual(frames, ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]);
+});
+
+test("register reinstalls the spinner before and during each agent run", () => {
+  const handlers = new Map<string, Function>();
+  const pi = { on: (event: string, handler: Function) => handlers.set(event, handler) };
+  const indicatorCalls: unknown[] = [];
+  const messages: Array<string | undefined> = [];
+  const ui = {
+    theme: { fg: (_color: string, text: string) => text },
+    setWorkingIndicator: (options?: unknown) => indicatorCalls.push(options),
+    setWorkingMessage: (message?: string) => messages.push(message),
+  };
+
+  registerWorkingPhrases(pi as any);
+
+  handlers.get("session_start")?.({}, { ui });
+  handlers.get("before_agent_start")?.({}, { ui });
+  handlers.get("agent_start")?.({}, { ui });
+  handlers.get("agent_end")?.({}, { ui });
+
+  assert.equal(indicatorCalls.length, 3);
+  assert.ok(indicatorCalls.every((call) => Array.isArray((call as { frames?: unknown[] }).frames)));
+  assert.ok(messages.some((message) => message?.includes("… (esc)")));
+  assert.equal(messages.at(-1), undefined);
 });

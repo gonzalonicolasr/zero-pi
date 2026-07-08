@@ -5,6 +5,13 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.69] - 2026-07-08
+
+### Fixed — working spinner survives UI resets
+
+- Reinstalled the themed working spinner on `before_agent_start` and `agent_start`, not only on `session_start`, so the ZERO/OMP-style symbol survives pi UI resets, reloads, and session rebinds.
+- Added a regression test that verifies the working-phrase extension reinstalls the spinner before and during each agent run.
+
 ## [0.1.68] - 2026-07-08
 
 ### Added — live activity panel
