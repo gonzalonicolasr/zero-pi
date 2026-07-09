@@ -104,13 +104,17 @@ export const DEFAULT_THINKING: Record<Phase, ThinkingLevel> = {
   veredicto: "xhigh",
 };
 
-/** Model list used only when pi's model registry is unavailable. */
+/** Model list used only when pi's model registry is unavailable. Includes
+ *  OpenAI's GPT‑5.6 family (Sol/Terra/Luna, GA 2026‑07‑09) available via Codex. */
 const FALLBACK_MODELS = [
   "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-opus-4-6",
   "claude-sonnet-4-6",
   "claude-haiku-4-5",
+  "gpt-5.6-sol",
+  "gpt-5.6-terra",
+  "gpt-5.6-luna",
 ];
 
 /** Absolute path of pi's `zero.json` marker. */

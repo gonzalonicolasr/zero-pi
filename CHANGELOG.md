@@ -5,6 +5,22 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added — local visual experiments
+
+- Added `extensions/zero-pretty-tool-cards.ts`, a local/unpublished visual pass that wraps pi tool executions in ZERO-styled cards with status glyphs, title metadata, violet borders, and padded content.
+- Added `extensions/zero-theme.ts` and draft theme files `zero-sith`, `zero-saiyan`, `zero-matrix`, and `zero-cyberpunk` for quick switching with `/zero-theme <alias>`.
+- Fixed the activity panel experiment so ordinary tool calls do not show SDD phases unless `/forge`/SDD is active or a `zero-*` subagent is running.
+- Kept these changes local for review; this section should be moved into a versioned release only when publishing.
+
+## [0.1.71] - 2026-07-09
+
+### Added — GPT‑5.6 (Codex) model support
+
+- Autotune's tier ladder is now family-aware: OpenAI's GPT‑5.6 family (GA 2026‑07‑09) classifies as `luna` < `terra` < `sol`, and `stepUp` never crosses families — a Codex phase steps up to a bigger GPT model, never onto a Claude one (and vice versa).
+- `/zero-models` fallback list (used when pi's registry is unavailable) now offers `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`.
+
 ## [0.1.70] - 2026-07-08
 
 ### Changed — richer `zero-omp-neon` theme colours

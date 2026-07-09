@@ -429,24 +429,55 @@ export function aggregate(records: RunRecord[]): Map<string, PhaseModelStat> {
 // Model tier ladder
 // ---------------------------------------------------------------------------
 
-/** Three Claude tiers, ordered `haiku < sonnet < opus`. */
+/** Three tiers per model family, ordered cheap < balanced < flagship. */
 const TIER = { haiku: 0, sonnet: 1, opus: 2 } as const;
 
 /** A model's tier index, or `null` for an unrecognized (untierable) model. */
 export type Tier = (typeof TIER)[keyof typeof TIER];
 
-/** A single hardcoded representative model id per tier, used as the fallback
- *  step-up target when the user has no known model at the next tier. */
-const TIER_REPRESENTATIVE: Record<Tier, string> = {
-  [TIER.haiku]: "claude-haiku-4-5",
-  [TIER.sonnet]: "claude-sonnet-4-6",
-  [TIER.opus]: "claude-opus-4-8",
+/** Model families the tier ladder understands. Step-ups never cross families:
+ *  a Codex/GPT phase steps up to a bigger GPT model, never to a Claude one. */
+export type ModelFamily = "claude" | "gpt";
+
+/** A single hardcoded representative model id per (family, tier), used as the
+ *  fallback step-up target when the user has no known model at the next tier.
+ *  GPT tiers map OpenAI's GPT‑5.6 family (2026‑07‑09): Luna (cost‑efficient) <
+ *  Terra (balanced) < Sol (flagship). */
+const TIER_REPRESENTATIVE: Record<ModelFamily, Record<Tier, string>> = {
+  claude: {
+    [TIER.haiku]: "claude-haiku-4-5",
+    [TIER.sonnet]: "claude-sonnet-4-6",
+    [TIER.opus]: "claude-opus-4-8",
+  },
+  gpt: {
+    [TIER.haiku]: "gpt-5.6-luna",
+    [TIER.sonnet]: "gpt-5.6-terra",
+    [TIER.opus]: "gpt-5.6-sol",
+  },
 };
+
+/** Match a GPT‑5.6 variant name as its own dash/dot separated segment, so
+ *  `gpt-5.6-sol` matches but an unrelated id like `solar-pro` does not. */
+function gptVariant(id: string, variant: string): boolean {
+  return new RegExp(`(^|[-._])${variant}($|[-._])`).test(id);
+}
+
+/**
+ * Classify a model id into its family, or `null` when unrecognized.
+ * GPT/Codex ids are recognized by the `gpt` or `codex` marker.
+ */
+export function familyOf(modelId: string): ModelFamily | null {
+  if (typeof modelId !== "string") return null;
+  const id = modelId.toLowerCase();
+  if (id.includes("claude") || id.includes("haiku") || id.includes("sonnet") || id.includes("opus")) return "claude";
+  if (id.includes("gpt") || id.includes("codex")) return "gpt";
+  return null;
+}
 
 /**
  * Classify a model id into a tier by substring match — deliberate so future
- * point releases (`claude-sonnet-4-7`, etc.) classify with no code change.
- * Returns `null` for any id that is not recognizably haiku/sonnet/opus.
+ * point releases (`claude-sonnet-4-7`, `gpt-5.7-luna`, etc.) classify with no
+ * code change. Returns `null` for any id without a recognizable tier marker.
  */
 export function tierOf(modelId: string): Tier | null {
   if (typeof modelId !== "string") return null;
@@ -454,6 +485,9 @@ export function tierOf(modelId: string): Tier | null {
   if (id.includes("haiku")) return TIER.haiku;
   if (id.includes("sonnet")) return TIER.sonnet;
   if (id.includes("opus")) return TIER.opus;
+  if (gptVariant(id, "luna")) return TIER.haiku;
+  if (gptVariant(id, "terra")) return TIER.sonnet;
+  if (gptVariant(id, "sol")) return TIER.opus;
   return null;
 }
 
@@ -467,22 +501,24 @@ export function tierOf(modelId: string): Tier | null {
  * hardcoded representative for that tier. Never returns an arbitrary id, and
  * never steps more than one tier.
  *
- * Returns `null` when `model` is already at `opus` (no higher tier) or is
- * untierable (an unrecognized model id).
+ * Returns `null` when `model` is already at the top tier (no higher tier) or
+ * is untierable (an unrecognized model id). Candidates are restricted to the
+ * same model family, so a Codex phase never steps up onto a Claude model.
  */
 export function stepUp(model: string, knownModels: readonly string[]): string | null {
   const tier = tierOf(model);
-  if (tier === null) return null;
+  const family = familyOf(model);
+  if (tier === null || family === null) return null;
   if (tier === TIER.opus) return null;
 
   const nextTier = (tier + 1) as Tier;
 
   const candidates = knownModels
-    .filter((m) => typeof m === "string" && tierOf(m) === nextTier)
+    .filter((m) => typeof m === "string" && tierOf(m) === nextTier && familyOf(m) === family)
     .sort();
   if (candidates.length > 0) return candidates[0];
 
-  return TIER_REPRESENTATIVE[nextTier];
+  return TIER_REPRESENTATIVE[family][nextTier];
 }
 
 // ---------------------------------------------------------------------------

@@ -680,6 +680,25 @@ test("stepUp falls back to the fixed representative when no known model qualifie
   assert.equal(stepUp("claude-haiku-4-5", ["claude-haiku-other"]), "claude-sonnet-4-6");
 });
 
+test("stepUp climbs the GPT-5.6 ladder without crossing into Claude", () => {
+  assert.equal(stepUp("gpt-5.6-luna", []), "gpt-5.6-terra");
+  assert.equal(stepUp("gpt-5.6-terra", []), "gpt-5.6-sol");
+  assert.equal(stepUp("gpt-5.6-sol", []), null, "sol is the family ceiling");
+  assert.equal(
+    stepUp("gpt-5.6-luna", ["claude-sonnet-4-6"]),
+    "gpt-5.6-terra",
+    "a known Claude model at the next tier must not hijack a GPT step-up",
+  );
+});
+
+test("stepUp keeps Claude step-ups inside the Claude family", () => {
+  assert.equal(
+    stepUp("claude-haiku-4-5", ["gpt-5.6-terra"]),
+    "claude-sonnet-4-6",
+    "a known GPT model at the next tier must not hijack a Claude step-up",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // decideAdjustments — v2 surgical phase attribution
 // ---------------------------------------------------------------------------
