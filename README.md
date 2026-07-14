@@ -124,6 +124,7 @@ into `/forge` for you.
 | **`zero-sdd` theme** | A dark, high-contrast pi theme tuned for SDD work. |
 | **`zero-sunset` theme** | A warm sunset variant — gold/coral/magenta accents over warm-dark panels, with one cool tone kept for syntax legibility. Activate with `/theme zero-sunset`. |
 | **`zero-omp-neon` theme** | A high-contrast OMP-inspired neon theme with separated colour roles: cyan links/paths, gold titles, mint code/success, violet borders, and navy tool cards. Activate with `/theme zero-omp-neon`. |
+| **ZERO theme pack** | Extra visual variants: `zero-sith`, `zero-saiyan`, `zero-matrix`, and `zero-cyberpunk`. Switch quickly with `/zero-theme sith|saiyan|matrix|cyberpunk`. |
 
 ## ⌨️ Commands
 
@@ -137,6 +138,7 @@ into `/forge` for you.
 | `/zero-validate <slug>` | Validate proposal/spec/design/tasks artifacts, including task schema and per-domain specs. |
 | `/zero-status` | Show each `.sdd/` run's artifact, sync, latest-verdict, and GitHub-link status. |
 | `/zero-hud [compact\|minimal\|full\|ascii\|off\|on\|preview]` | Preview or switch the segmented ZERO footer for this pi session. Default preset: `compact`. |
+| `/zero-theme [neon\|sunset\|sdd\|sith\|saiyan\|matrix\|cyberpunk]` | Switch between packaged ZERO theme variants without remembering full `zero-*` names. |
 | `/zero-cost [<slug>]` | Report tokens (in/out/cache), USD cost, duration, and tool-count per SDD phase for a run — reads native pi session metas and project-local `.pi-subagents/artifacts`; `<slug>` for a specific run, no argument for the most recent. |
 | `/zero-checkpoint [<slug>] [--json]` | Save `diff.patch`, `status.txt`, `head.txt`, `meta.json`, and a review-before-running `restore.sh` under `.sdd/<slug>/checkpoints/<id>/`. |
 | `/zero-branch <slug>` | Create/reuse the configured SDD Git branch and persist `branch`/`baseBranch`. |
@@ -154,6 +156,7 @@ zero-pi ships several visual extensions. They are related, but each one owns a d
 | ------- | ---- | ---------------- | ------- |
 | **ZERO HUD** | `extensions/zero-hud.ts` | Footer/status line at the bottom | Persistent model/tokens/cost/diff/context/branch telemetry. |
 | **Activity panel** | `extensions/zero-activity-panel.ts` | Widget above the prompt while work is running | Live `/forge` phase progress plus recent tool cards. |
+| **Tool cards** | `extensions/zero-pretty-tool-cards.ts` | Each tool execution/result in chat | ZERO-styled bordered cards with status glyphs, title metadata, and padded content. |
 | **Prompt box** | `extensions/zero-pretty-input-box.ts` | The input/editor box | OMP-like rounded box with ZERO chips and key hints. |
 | **Code fences** | `extensions/zero-pretty-code-fences.ts` | Markdown code blocks in chat | Bordered panels with language badges instead of raw ```txt / ```json lines. |
 | **Working phrases** | `extensions/working-phrases.ts` | Tiny loading row (`Procesando… (esc)`) | Rotating ZERO/SDD/Star Wars/DBZ phrases and themed spinner. |

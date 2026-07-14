@@ -72,6 +72,8 @@ test("upsertTool keeps newest first, updates existing, and caps at five", () => 
 test("renderActivityPanel is empty when inactive and renders phase/tool lines when active", () => {
   const inactive = createActivityState();
   assert.deepEqual(renderActivityPanel(inactive), []);
+  upsertTool(inactive, { id: "ordinary", name: "read", label: "read foo.ts", state: "ok" });
+  assert.deepEqual(renderActivityPanel(inactive), [], "ordinary tools must not show the SDD panel");
 
   const state = createActivityState();
   markPhaseActive(state, "analyze");

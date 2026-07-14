@@ -7,12 +7,20 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added — local visual experiments
+## [0.1.72] - 2026-07-13
 
-- Added `extensions/zero-pretty-tool-cards.ts`, a local/unpublished visual pass that wraps pi tool executions in ZERO-styled cards with status glyphs, title metadata, violet borders, and padded content.
-- Added `extensions/zero-theme.ts` and draft theme files `zero-sith`, `zero-saiyan`, `zero-matrix`, and `zero-cyberpunk` for quick switching with `/zero-theme <alias>`.
-- Fixed the activity panel experiment so ordinary tool calls do not show SDD phases unless `/forge`/SDD is active or a `zero-*` subagent is running.
-- Kept these changes local for review; this section should be moved into a versioned release only when publishing.
+### Added — ZERO tool cards + theme pack
+
+- Published `extensions/zero-pretty-tool-cards.ts`: pi tool executions render as ZERO-styled cards with status glyphs, title metadata, violet borders, and padded content.
+- Added `extensions/zero-theme.ts` and packaged themes `zero-sith`, `zero-saiyan`, `zero-matrix`, and `zero-cyberpunk` for quick switching with `/zero-theme <alias>`.
+- Code fences hide empty HTML comment separators via the shared `extensions/markdown-cleanup.ts` helper — now included in `files` (its absence broke the published code-fences extension import in 0.1.71).
+- The activity panel only tracks tools while `/forge`/SDD work is active, so ordinary tool calls no longer show SDD phases.
+
+### Fixed — tool cards crashed pi on emoji/CJK content
+
+- Tool cards now measure and truncate with pi-tui's real `visibleWidth`/`truncateToWidth` (injected at register time) instead of counting UTF-16 code units. Wide glyphs (✅, ❌, CJK) count 1 code unit but render 2 cells, so padded lines could exceed the terminal width and crash pi's renderer with `Rendered line N exceeds terminal width`.
+- Card titles wider than the terminal are clamped for the same reason.
+- Regression tests cover emoji/CJK content and oversized titles measured with a pi-tui-like double-width rule.
 
 ## [0.1.71] - 2026-07-09
 

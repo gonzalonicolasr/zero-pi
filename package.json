@@ -1,6 +1,6 @@
 {
   "name": "@gonrocca/zero-pi",
-  "version": "0.1.71",
+  "version": "0.1.72",
   "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow (clarify → explore → plan → analyze → build → veredicto) with automatic clarify/analyze gates, per-phase model autotune, and token-efficient batched builds. Adds capability to pi without modifying pi.",
   "type": "module",
   "keywords": [
@@ -26,8 +26,10 @@
     "extensions": [
       "./extensions/zero-banner.ts",
       "./extensions/zero-hud.ts",
+      "./extensions/zero-theme.ts",
       "./extensions/zero-pretty-code-fences.ts",
       "./extensions/zero-pretty-input-box.ts",
+      "./extensions/zero-pretty-tool-cards.ts",
       "./extensions/zero-activity-panel.ts",
       "./extensions/working-phrases.ts",
       "./extensions/win-tree-kill.ts",
@@ -58,8 +60,11 @@
     "assets/preview.png",
     "extensions/zero-banner.ts",
     "extensions/zero-hud.ts",
+    "extensions/zero-theme.ts",
     "extensions/zero-pretty-code-fences.ts",
+    "extensions/markdown-cleanup.ts",
     "extensions/zero-pretty-input-box.ts",
+    "extensions/zero-pretty-tool-cards.ts",
     "extensions/zero-activity-panel.ts",
     "extensions/zero-statusline.ts",
     "extensions/working-phrases.ts",

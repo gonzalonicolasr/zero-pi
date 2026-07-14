@@ -1,5 +1,6 @@
 import { Markdown, visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { isEmptyHtmlComment, type MarkdownToken } from "./markdown-cleanup.ts";
 
 type MarkdownInstance = {
 	theme: {
@@ -8,10 +9,10 @@ type MarkdownInstance = {
 		codeBlockIndent?: string;
 		highlightCode?: (code: string, lang?: string) => string[];
 	};
-	renderToken: (token: { type?: string; text?: string; lang?: string }, width: number, nextTokenType?: string, styleContext?: unknown) => string[];
+	renderToken: (token: MarkdownToken, width: number, nextTokenType?: string, styleContext?: unknown) => string[];
 };
 
-const PATCHED = Symbol.for("gon.pi.pretty-code-fences.patched");
+const PATCHED = Symbol.for("gon.pi.pretty-code-fences.patched.v2");
 
 function displayLang(lang?: string): string {
 	const raw = (lang ?? "").trim().toLowerCase();
@@ -42,6 +43,8 @@ function patchMarkdownRenderer(): void {
 
 	const original = proto.renderToken;
 	proto.renderToken = function prettyRenderToken(token, width, nextTokenType, styleContext): string[] {
+		if (isEmptyHtmlComment(token)) return [];
+
 		if (token?.type !== "code") {
 			return original.call(this, token, width, nextTokenType, styleContext);
 		}

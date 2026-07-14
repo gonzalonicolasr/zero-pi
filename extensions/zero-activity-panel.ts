@@ -165,7 +165,7 @@ function toolGlyph(state: ToolState): string {
 }
 
 export function renderActivityPanel(state: ActivityState): string[] {
-  if (!state.sddActive && state.tools.length === 0) return [];
+  if (!state.sddActive) return [];
   const rule = (n: number) => color.coral("─".repeat(n));
   const border = rule(72);
   const header = `${color.coral("╭─")} ${color.gold("ZERO activity")} ${rule(54)}${color.coral("╮")}`;
@@ -232,13 +232,15 @@ export default function register(pi?: PiAPI): void {
     const e = event as { toolCallId?: string; toolName?: string; args?: unknown };
     const phase = e.toolName === "subagent" ? phaseFromSubagentArgs(e.args) : undefined;
     if (phase) markPhaseActive(state, phase);
-    upsertTool(state, {
-      id: e.toolCallId ?? `${Date.now()}`,
-      name: e.toolName ?? "tool",
-      label: toolLabel(e.toolName ?? "tool", e.args),
-      state: "running",
-    });
-    draw();
+    if (state.sddActive || phase) {
+      upsertTool(state, {
+        id: e.toolCallId ?? `${Date.now()}`,
+        name: e.toolName ?? "tool",
+        label: toolLabel(e.toolName ?? "tool", e.args),
+        state: "running",
+      });
+      draw();
+    }
   });
 
   pi.on("tool_execution_end", (event, ctx) => {
@@ -248,7 +250,7 @@ export default function register(pi?: PiAPI): void {
     const idx = state.tools.findIndex((tool) => tool.id === id);
     if (idx >= 0) state.tools[idx].state = e.isError ? "error" : "ok";
     if (e.toolName === "subagent") finishActivePhase(state, Boolean(e.isError));
-    draw();
+    if (state.sddActive) draw();
   });
 
   pi.on("agent_end", (_event, ctx) => {
