@@ -289,6 +289,7 @@ strong analyze):
   "models":    { "clarify": "claude-haiku-4-5", "analyze": "claude-opus-4-8", "build": "claude-sonnet-4-6" },
   "providers": { "clarify": "anthropic",         "analyze": "anthropic",       "build": "anthropic" },
   "thinking":  { "analyze": "high",              "build": "high" },
+  "inheritProjectContext": { "build": true, "veredicto": true },
   "autotune": "ask",
   "autotuneBudget": { "maxPhaseCostUsd": 4, "minSamples": 3 }
 }
@@ -299,7 +300,16 @@ The `thinking` map sets each phase's pi effort level — one of `off`, `minimal`
 entry (or an invalid level) falls back to the package default — `clarify:
 medium`, `explore: high`, `plan: high`, `analyze: high`, `build: high`,
 `veredicto: xhigh` — so no phase inherits your session-wide
-`defaultThinkingLevel`. `autotuneBudget` is optional:
+The `inheritProjectContext` map is an optional per-phase opt-in: when a phase
+is set to `true`, its generated sub-agent inherits the user's global
+`AGENTS.md`/`CLAUDE.md` project instructions (pi-subagents frontmatter
+`inheritProjectContext: true`); the default is `false` so the global AGENTS.md
+stays out of every phase sub-agent — it is heavy (re-sent to each phase) and
+may carry personal data or credentials no phase needs. Project conventions
+still reach the phases regardless: `explore`/`build` skim the repo's own
+`AGENTS.md`/`CLAUDE.md`. Flip `build` and `veredicto` to `true` when you want
+implementers and reviewers to follow repository conventions automatically.
+`autotuneBudget` is optional:
 when `maxPhaseCostUsd` is set, autotune will not step a blamed phase up to a more
 expensive tier if that phase/model is already at or above the average USD
 ceiling with enough cost samples (`minSamples`, default 3). Set thinking from
@@ -327,9 +337,12 @@ leave it empty to let the build/veredicto phases detect it from the project.
 ### Token efficiency
 
 The phase sub-agents run **without** your global project context
-(`inheritProjectContext: false`): a global `AGENTS.md` is heavy and may carry
-personal data or credentials no phase needs — project conventions still reach
-the phases, because explore/build skim the repo's own `AGENTS.md`/`CLAUDE.md`.
+(`inheritProjectContext: false`) by default: a global `AGENTS.md` is heavy and
+may carry personal data or credentials no phase needs — project conventions
+still reach the phases, because explore/build skim the repo's own
+`AGENTS.md`/`CLAUDE.md`. Set `inheritProjectContext[phase]: true` in
+`zero.json` when a phase (e.g. `build`, `veredicto`) should follow the global
+project instructions automatically.
 Every phase runs at an explicit `thinking:` level (your `zero.json` entry wins;
 gaps take the package defaults above), and explore works under a numeric
 tool-call budget with a mid-budget stop check. The heavy lifting happens inside
