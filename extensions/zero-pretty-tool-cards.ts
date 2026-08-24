@@ -5,9 +5,47 @@
 // component and pi-tui's width helpers dynamically at runtime.
 
 const PATCHED = Symbol.for("gon.pi.pretty-tool-cards.patched");
+const FRAME_CACHE = Symbol.for("gon.pi.pretty-tool-cards.frameCache");
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
-interface ExtensionAPI {}
+// Tools whose activity is pi-subagents plumbing (the intercom / supervisor
+// channel), not something to dress up as a card in the user's main terminal.
+const SILENCED_TOOL_NAMES = new Set(["intercom", "contact_supervisor"]);
+
+/** Whether a tool card should be suppressed entirely (kept out of the TUI). */
+export function shouldSilenceToolCard(toolName?: string): boolean {
+	return SILENCED_TOOL_NAMES.has((toolName ?? "").toLowerCase());
+}
+
+// Quiet mode: during a long run (a /forge pipeline, a big refactor) the framed
+// cards bury the few lines that matter — phase summaries and the verdict. Quiet
+// mode collapses every card to a single line; ctrl+o still expands one card.
+let quietMode = false;
+
+/** Parse ZERO_QUIET from an env bag. Anything other than 1/true/on/yes is off. */
+export function readQuietEnv(env: Record<string, string | undefined>): boolean {
+	const raw = (env.ZERO_QUIET ?? "").trim().toLowerCase();
+	return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+}
+
+export function setQuietMode(on: boolean): void {
+	quietMode = on;
+}
+
+export function isQuietMode(): boolean {
+	return quietMode;
+}
+
+interface CommandContext {
+	ui?: { notify?: (message: string, level?: "info" | "warning" | "error") => void };
+}
+
+interface ExtensionAPI {
+	registerCommand?: (
+		name: string,
+		options: { description?: string; handler: (args: string, ctx: CommandContext) => void },
+	) => void;
+}
 
 type ToolExecutionClass = {
 	prototype: {
@@ -15,8 +53,10 @@ type ToolExecutionClass = {
 		toolName?: string;
 		args?: unknown;
 		isPartial?: boolean;
+		expanded?: boolean;
 		result?: { isError?: boolean };
 		[PATCHED]?: boolean;
+		[FRAME_CACHE]?: { key: string; lines: string[] };
 	};
 };
 
@@ -98,6 +138,17 @@ export function toolCardStatus(isPartial: boolean, isError: boolean): { glyph: s
 	return { glyph: "✓", color: c.mint, label: "ok" };
 }
 
+/** One-line stand-in for a framed card: status glyph, title, and what it hides. */
+export function quietToolCardLine(
+	title: string,
+	status: ReturnType<typeof toolCardStatus>,
+	rawLines: string[],
+	width: number,
+): string {
+	const meta = rawLines.length > 1 ? `(${status.label} · ${rawLines.length} lines · ctrl+o)` : `(${status.label})`;
+	return widthFns.truncateToWidth(`${status.color(status.glyph)} ${c.gold(title)} ${c.dim(meta)}`, width, "…");
+}
+
 export function frameToolCard(lines: string[], width: number, title: string, status = toolCardStatus(false, false)): string[] {
 	if (width < 28) return lines;
 	const inner = Math.max(8, width - 4);
@@ -128,15 +179,49 @@ export function patchToolCards(ToolExecutionComponent: ToolExecutionClass): bool
 
 	const originalRender = proto.render;
 	proto.render = function prettyToolCardRender(width: number): string[] {
+		// Intercom / supervisor-channel chatter is pi-subagents plumbing, not our
+		// tool — keep it out of the main terminal instead of framing it.
+		if (shouldSilenceToolCard(this.toolName)) return [];
+
 		const raw = originalRender.call(this, Math.max(24, width - 4));
 		if (raw.length === 0) return raw;
 		const status = toolCardStatus(Boolean(this.isPartial), Boolean(this.result?.isError));
-		return frameToolCard(raw, width, toolCardTitle(this.toolName ?? "tool", this.args), status);
+		const title = toolCardTitle(this.toolName ?? "tool", this.args);
+
+		// pi-tui re-invokes render() on every visible component each frame with no
+		// upstream memoization, and framing costs visibleWidth() per line — which
+		// scales with terminal height. Reuse the framed output while the underlying
+		// render is unchanged so static cards cost ~nothing per frame.
+		const quiet = quietMode && !this.expanded;
+		const cache = this[FRAME_CACHE];
+		const key = JSON.stringify([width, status.label, title, raw, quiet]);
+		if (cache && cache.key === key) return cache.lines;
+		const lines = quiet ? [quietToolCardLine(title, status, raw, width)] : frameToolCard(raw, width, title, status);
+		this[FRAME_CACHE] = { key, lines };
+		return lines;
 	};
 	return true;
 }
 
-export default function (_pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
+	setQuietMode(readQuietEnv(process.env));
+	try {
+		pi?.registerCommand?.("zero-quiet", {
+			description: "Colapsa cada tool card a una línea (on|off, sin argumento alterna)",
+			handler: (args: string, ctx: CommandContext): void => {
+				const arg = (args ?? "").trim().toLowerCase();
+				const next = arg === "" || arg === "toggle" ? !isQuietMode() : readQuietEnv({ ZERO_QUIET: arg });
+				setQuietMode(next);
+				ctx?.ui?.notify?.(
+					next ? "zero-quiet: on — una línea por tool card, ctrl+o expande" : "zero-quiet: off — tool cards completas",
+					"info",
+				);
+			},
+		});
+	} catch {
+		// Older pi builds without registerCommand keep the env-var control only.
+	}
+
 	void Promise.all([
 		import("@earendil-works/pi-coding-agent"),
 		import("@earendil-works/pi-tui"),

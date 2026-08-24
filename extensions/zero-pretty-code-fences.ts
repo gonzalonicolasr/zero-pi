@@ -13,6 +13,8 @@ type MarkdownInstance = {
 };
 
 const PATCHED = Symbol.for("gon.pi.pretty-code-fences.patched.v2");
+const FENCE_CACHE = Symbol.for("gon.pi.pretty-code-fences.cache");
+const MAX_FENCE_CACHE = 256;
 
 function displayLang(lang?: string): string {
 	const raw = (lang ?? "").trim().toLowerCase();
@@ -49,6 +51,21 @@ function patchMarkdownRenderer(): void {
 			return original.call(this, token, width, nextTokenType, styleContext);
 		}
 
+		// pi-tui re-renders visible markdown on every frame with no memoization,
+		// and building a fenced block scans/segments every code line. Cache the
+		// output per (width, lang, nextTokenType, text), scoped to the active theme
+		// object so a /theme switch invalidates it. Bounded to avoid unbounded
+		// growth over a long session.
+		const self = this as MarkdownInstance & { [FENCE_CACHE]?: { theme: unknown; map: Map<string, string[]> } };
+		let store = self[FENCE_CACHE];
+		if (!store || store.theme !== this.theme) {
+			store = { theme: this.theme, map: new Map<string, string[]>() };
+			self[FENCE_CACHE] = store;
+		}
+		const key = JSON.stringify([width, token.lang ?? "", nextTokenType ?? "", token.text ?? ""]);
+		const cached = store.map.get(key);
+		if (cached) return cached;
+
 		const lang = displayLang(token.lang);
 		const lines: string[] = [];
 		const gutter = this.theme.codeBlockBorder("│ ");
@@ -69,6 +86,12 @@ function patchMarkdownRenderer(): void {
 		lines.push(border(this.theme, width, "bottom"));
 		if (nextTokenType && nextTokenType !== "space") {
 			lines.push("");
+		}
+
+		store.map.set(key, lines);
+		if (store.map.size > MAX_FENCE_CACHE) {
+			const oldest = store.map.keys().next().value;
+			if (oldest !== undefined) store.map.delete(oldest);
 		}
 		return lines;
 	};

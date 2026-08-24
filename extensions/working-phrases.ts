@@ -310,7 +310,11 @@ export default function register(pi?: PiAPI): void {
   const installSpinner = (): void => {
     if (!ui) return;
     try {
-      ui.setWorkingIndicator({ frames: spinnerFrames(ui.theme), intervalMs: 90 });
+      // 120ms (~8fps): pi-tui redibuja todo el árbol en cada tick del indicador,
+      // así que una cadencia de redibujo más baja se mantiene fluida bajo carga
+      // (subagentes async streameando) — menos frames caídos que a 90ms. El
+      // spinner sigue leyéndose suave (ciclo braille completo en ~1.2s).
+      ui.setWorkingIndicator({ frames: spinnerFrames(ui.theme), intervalMs: 120 });
     } catch {
       // A spinner failure is harmless — pi keeps its default.
     }
