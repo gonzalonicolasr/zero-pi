@@ -64,9 +64,18 @@ test("frameToolCard wraps content with a border and trims outer blanks", () => {
 	assert.match(framed.at(-1) ?? "", /╰/);
 });
 
-test("frameToolCard leaves narrow renderings untouched", () => {
-	const raw = ["hello"];
-	assert.equal(frameToolCard(raw, 20, "read"), raw);
+test("frameToolCard leaves narrow renderings unframed", () => {
+	assert.deepEqual(frameToolCard(["hello"], 20, "read"), ["hello"]);
+});
+
+test("frameToolCard clamps narrow renderings instead of letting them overflow", () => {
+	// Sin marco no hay padAnsi que recorte: una línea más ancha que la terminal
+	// salía tal cual y doRender mataba pi.
+	setWidthFns(fallbackWidthFns);
+	const framed = frameToolCard(["x".repeat(24)], 15, "bash");
+	for (const line of framed) {
+		assert.ok(fallbackWidthFns.visibleWidth(line) <= 15, `line exceeds width: ${fallbackWidthFns.visibleWidth(line)} > 15`);
+	}
 });
 
 test("frameToolCard never exceeds width for emoji/CJK when measured like pi-tui", () => {
@@ -137,6 +146,23 @@ test("patched render memoizes framed output while the inner render is unchanged"
 	raw = ["alpha", "beta", "gamma"];
 	const third = inst.render(80);
 	assert.equal(third === first, false, "changed content must recompute");
+});
+
+test("patched render never exceeds a narrow terminal", () => {
+	// Regresión del crash "Rendered line 6236 exceeds terminal width (24 > 15)":
+	// el render interno se pedía con Math.max(24, width - 4), así que en un pane
+	// angosto pi dibujaba tarjetas de 24 celdas dentro de 15 y se mataba solo.
+	setWidthFns(fallbackWidthFns);
+	// pi respeta el ancho que le pasan: emula sus líneas llenando el que recibe.
+	const inst = fakeToolComponent((w) => ["x".repeat(w), "y".repeat(w)], "bash");
+	for (const width of [8, 15, 24, 27, 28, 40, 80]) {
+		for (const line of inst.render(width)) {
+			assert.ok(
+				fallbackWidthFns.visibleWidth(line) <= width,
+				`width ${width}: line exceeds width: ${fallbackWidthFns.visibleWidth(line)} > ${width}`,
+			);
+		}
+	}
 });
 
 test("readQuietEnv reads ZERO_QUIET and defaults to off", () => {

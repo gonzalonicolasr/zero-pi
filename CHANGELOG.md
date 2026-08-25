@@ -7,6 +7,18 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.74] - 2026-08-25
+
+### Fixed — tool cards crashed pi in narrow panes
+
+- `patchToolCards` pedía el render interno con `Math.max(24, width - 4)`: ese piso de 24 celdas ignoraba el ancho real, así que en un pane angosto las tarjetas se dibujaban más anchas que la terminal y pi-tui abortaba el proceso entero con `Rendered line 6236 exceeds terminal width (24 > 15)`. Ahora el render interno nunca pide más de lo que mide la terminal (`width - 4` sólo cuando entra el marco).
+- `frameToolCard` recorta también las tarjetas sin marco (`width < 28`). Ese camino devolvía el render crudo sin pasar por `padAnsi`, así que era el único que no garantizaba el ancho.
+- Tests de regresión: render parcheado a 8/15/24/27/28/40/80 columnas y `frameToolCard` angosto.
+
+### Nota
+
+- 0.1.73 (arreglo del borde del input box en terminales angostas) nunca se publicó a npm; sus cambios viajan en esta versión.
+
 ## [0.1.72] - 2026-07-13
 
 ### Added — ZERO tool cards + theme pack

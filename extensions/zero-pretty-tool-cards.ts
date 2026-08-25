@@ -150,7 +150,9 @@ export function quietToolCardLine(
 }
 
 export function frameToolCard(lines: string[], width: number, title: string, status = toolCardStatus(false, false)): string[] {
-	if (width < 28) return lines;
+	// Demasiado angosto para el marco: se devuelve el render crudo, pero recortado
+	// igual — acá no hay padAnsi que garantice el ancho y doRender mata pi entero.
+	if (width < 28) return lines.map((line) => widthFns.truncateToWidth(line, width, "…"));
 	const inner = Math.max(8, width - 4);
 	const cleanLines = [...lines];
 	while (cleanLines.length > 0 && stripAnsi(cleanLines[0] ?? "").trim() === "") cleanLines.shift();
@@ -183,7 +185,11 @@ export function patchToolCards(ToolExecutionComponent: ToolExecutionClass): bool
 		// tool — keep it out of the main terminal instead of framing it.
 		if (shouldSilenceToolCard(this.toolName)) return [];
 
-		const raw = originalRender.call(this, Math.max(24, width - 4));
+		// Las 4 celdas son el marco ("│ " + " │"). Debajo del umbral de
+		// frameToolCard la tarjeta va sin marco, así que el render interno se lleva
+		// el ancho entero. Nunca pedir MÁS de lo que mide la terminal: un piso fijo
+		// acá dibujaba tarjetas de 24 celdas en un pane de 15 y doRender mataba pi.
+		const raw = originalRender.call(this, width >= 28 ? width - 4 : Math.max(1, width));
 		if (raw.length === 0) return raw;
 		const status = toolCardStatus(Boolean(this.isPartial), Boolean(this.result?.isError));
 		const title = toolCardTitle(this.toolName ?? "tool", this.args);
