@@ -41,7 +41,7 @@ export type Screen =
   | "model"
   | "thinking"
   | "autotune"
-  | "profiles" // la lista de perfiles
+  | "phases" // las seis fases del perfil abierto
   | "profile-actions"; // qué hacer con un perfil elegido
 
 /** One selectable row in the current screen. */
@@ -51,11 +51,12 @@ export interface MenuEntry {
     | "apply-pending" // ★ aplicar sugerencia      (main, conditional)
     | "phase" // explore/plan/build/veredicto (main)
     | "autotune" // autotune → <mode>          (main)
-    | "profiles" // perfiles → <activo>        (main)
-    | "profile" // un perfil concreto          (profiles screen)
-    | "new-profile" // — nuevo perfil —         (profiles screen)
+    | "profile" // un perfil concreto          (main)
+    | "new-profile" // — nuevo perfil —         (main)
+    | "edit-loose" // configurar sin perfiles   (main, sólo sin ninguno)
     | "profile-edit" // editar modelos          (profile-actions)
     | "profile-use" // activar                  (profile-actions)
+    | "profile-active-noop" // ya está activo   (profile-actions)
     | "profile-duplicate" // duplicar           (profile-actions)
     | "profile-delete" // borrar                (profile-actions)
     | "save" // — guardar y salir —        (main)
@@ -170,7 +171,9 @@ const CUSTOM_MODEL_LABEL = "— otro modelo (escribir) —";
 /** The save-and-exit row label. */
 const SAVE_LABEL = "— guardar y salir —";
 /** The new-profile escape-row label. */
-const NEW_PROFILE_LABEL = "— nuevo perfil (escribir nombre) —";
+const NEW_PROFILE_LABEL = "— nuevo perfil —";
+/** La fila para editar la config suelta cuando no hay ningún perfil. */
+const LOOSE_LABEL = "— configurar modelos sin perfil —";
 
 /** Render a phase's current `provider/model` (provider omitted when empty),
  *  with ` · thinking <level>` appended when a level is staged — mirroring
@@ -312,18 +315,15 @@ function loadProfileIntoEdits(state: PickerState, name: string): void {
  * o la lista de perfiles. El componente lo usa en vez de un título fijo.
  */
 export function pickerTitle(state: PickerState): string {
-  if (state.screen === "profiles") return "zero · perfiles";
+  if (state.screen === "main") return "zero · perfiles de modelos SDD";
   if (state.screen === "profile-actions") {
     return `zero · perfil «${state.drillProfile ?? ""}»`;
   }
+  // Pantallas de edición: siempre decir de quién son las fases que se tocan.
   const editing = state.edits.editingProfile;
-  if (editing !== null && editing !== state.edits.activeProfile) {
-    return `zero · perfil «${editing}» (no activo) · modelos SDD`;
-  }
-  if (state.edits.activeProfile !== null) {
-    return `zero · perfil «${state.edits.activeProfile}» · modelos SDD`;
-  }
-  return "zero · modelos SDD";
+  if (editing === null) return "zero · modelos sin perfil";
+  const suffix = editing === state.edits.activeProfile ? " · activo" : " · no activo";
+  return `zero · perfil «${editing}»${suffix}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -343,74 +343,82 @@ function mainEntries(state: PickerState): MenuEntry[] {
     });
   }
 
-  // One row per SDD phase, in pipeline order.
-  for (const phase of PHASES) {
+  // Un perfil por fila: es lo que /forge va a usar, así que es lo primero que
+  // hay que ver. Las fases se editan entrando a un perfil, no acá: sin perfil
+  // activo `models` es un cuarto estado invisible que compite con ellos.
+  for (const name of Object.keys(state.edits.profiles).sort()) {
     entries.push({
-      kind: "phase",
-      label: phaseLabel(
-        phase,
-        state.edits.models,
-        state.edits.providers,
-        state.edits.thinking,
-      ),
-      value: phase,
+      kind: "profile",
+      label: profileRowLabel(state, name),
+      value: name,
     });
   }
 
-  // The autotune row, the profiles row, then the save row.
+  entries.push({ kind: "new-profile", label: NEW_PROFILE_LABEL, value: "" });
+
+  // La config suelta sólo se ofrece mientras no haya ningún perfil — es el
+  // estado de quien todavía no migró, y la fila desaparece al crear el primero.
+  if (Object.keys(state.edits.profiles).length === 0) {
+    entries.push({
+      kind: "edit-loose",
+      label: LOOSE_LABEL,
+      value: "loose",
+    });
+  }
+
   entries.push({
     kind: "autotune",
     label: `autotune   →   ${state.edits.autotuneMode}`,
     value: "autotune",
-  });
-  entries.push({
-    kind: "profiles",
-    label: `perfiles   →   ${profilesSummary(state.edits)}`,
-    value: "profiles",
   });
   entries.push({ kind: "save", label: SAVE_LABEL, value: "save" });
 
   return entries;
 }
 
-/** Resumen de la fila `perfiles` del menú principal. */
-function profilesSummary(edits: StagedEdits): string {
-  const count = Object.keys(edits.profiles).length;
-  if (count === 0) return "ninguno todavía";
-  const editing = edits.editingProfile;
-  if (editing !== null && editing !== edits.activeProfile) {
-    return `editando ${editing} · activo ${edits.activeProfile ?? "ninguno"}`;
-  }
-  return edits.activeProfile ?? `${count} guardado${count === 1 ? "" : "s"}`;
+/** La fila de un perfil en el menú: nombre, estado y un resumen de modelos. */
+function profileRowLabel(state: PickerState, name: string): string {
+  const active = name === state.edits.activeProfile;
+  const mark = active ? "●" : "○";
+  const profile = state.edits.profiles[name];
+  const summary = profileSummary(profile);
+  const state_ = active ? "activo" : "";
+  const bits = [state_, summary].filter((s) => s !== "").join(" · ");
+  return `${mark} ${name}${bits ? `   (${bits})` : ""}`;
 }
 
-/** Filas de la pantalla `profiles` — un perfil por fila + crear nuevo. */
-function profileEntries(state: PickerState): MenuEntry[] {
-  const entries: MenuEntry[] = [];
-  for (const name of Object.keys(state.edits.profiles).sort()) {
-    const marks: string[] = [];
-    if (name === state.edits.activeProfile) marks.push("activo");
-    if (name === state.edits.editingProfile && name !== state.edits.activeProfile) {
-      marks.push("editando");
-    }
-    const suffix = marks.length > 0 ? `   (${marks.join(" · ")})` : "";
-    entries.push({ kind: "profile", label: `${name}${suffix}`, value: name });
+/** Resumen corto de un perfil: los providers distintos que usa. */
+function profileSummary(profile: Profile): string {
+  const providers = new Set<string>();
+  for (const phase of PHASES) {
+    const p = profile.providers[phase];
+    if (p) providers.add(p);
   }
-  entries.push({ kind: "new-profile", label: NEW_PROFILE_LABEL, value: "" });
-  return entries;
+  if (providers.size === 0) return "";
+  return [...providers].sort().join(", ");
 }
 
 /** Filas de la pantalla `profile-actions` — qué hacer con el perfil elegido. */
 function profileActionEntries(state: PickerState): MenuEntry[] {
   const name = state.drillProfile ?? "";
   const isActive = name === state.edits.activeProfile;
-  const entries: MenuEntry[] = [
-    { kind: "profile-edit", label: "editar modelos por fase", value: name },
-  ];
-  // Activar el que ya está activo no hace nada: no se ofrece.
-  if (!isActive) {
-    entries.push({ kind: "profile-use", label: "activar (usar en /forge)", value: name });
+  const entries: MenuEntry[] = [];
+  // Activar primero: es la acción más frecuente y la que decide qué corre
+  // /forge. En el que ya está activo no se ofrece, se dice que lo está.
+  if (isActive) {
+    entries.push({
+      kind: "profile-active-noop",
+      label: "● ya es el perfil activo",
+      value: name,
+    });
+  } else {
+    entries.push({
+      kind: "profile-use",
+      label: "activar — /forge va a usar este",
+      value: name,
+    });
   }
+  entries.push({ kind: "profile-edit", label: "editar modelos por fase…", value: name });
   entries.push({
     kind: "profile-duplicate",
     label: "duplicar en un perfil nuevo…",
@@ -422,6 +430,20 @@ function profileActionEntries(state: PickerState): MenuEntry[] {
     value: name,
   });
   return entries;
+}
+
+/** Filas de la pantalla `phases` — las seis fases del perfil abierto. */
+function phaseEntries(state: PickerState): MenuEntry[] {
+  return PHASES.map((phase) => ({
+    kind: "phase" as const,
+    label: phaseLabel(
+      phase,
+      state.edits.models,
+      state.edits.providers,
+      state.edits.thinking,
+    ),
+    value: phase,
+  }));
 }
 
 /** Build the rows for the `provider` screen — sorted provider ids + escape. */
@@ -496,8 +518,8 @@ export function rebuildEntries(state: PickerState): PickerState {
     case "autotune":
       state.entries = autotuneEntries();
       break;
-    case "profiles":
-      state.entries = profileEntries(state);
+    case "phases":
+      state.entries = phaseEntries(state);
       break;
     case "profile-actions":
       state.entries = profileActionEntries(state);
@@ -665,7 +687,7 @@ export function enter(state: PickerState): EnterResult {
         state.edits.changed = true;
         state.dirtySinceLoad = true;
       }
-      state.screen = "main";
+      state.screen = "phases";
       state.drillPhase = null;
       state.drillProvider = null;
       state.drillModel = null;
@@ -701,15 +723,21 @@ export function enter(state: PickerState): EnterResult {
       return { type: "state", state: rebuildEntries(state) };
     }
 
-    case "profiles": {
-      state.screen = "profiles";
+    case "profile": {
+      state.drillProfile = entry.value;
+      state.screen = "profile-actions";
       state.cursor = 0;
       return { type: "state", state: rebuildEntries(state) };
     }
 
-    case "profile": {
-      state.drillProfile = entry.value;
-      state.screen = "profile-actions";
+    case "profile-active-noop":
+      // Fila informativa: no hay nada que activar.
+      return { type: "state", state };
+
+    case "edit-loose": {
+      // La config suelta, para quien todavía no tiene ningún perfil.
+      state.edits.editingProfile = null;
+      state.screen = "phases";
       state.cursor = 0;
       return { type: "state", state: rebuildEntries(state) };
     }
@@ -720,11 +748,10 @@ export function enter(state: PickerState): EnterResult {
     }
 
     case "profile-edit": {
-      // Cargar ese perfil en los mapas en edición y mostrar la pantalla de
-      // fases de siempre. No lo activa: se puede editar uno inactivo.
+      // Cargar ese perfil en los mapas en edición y mostrar sus seis fases.
+      // No lo activa: se puede editar uno inactivo.
       loadProfileIntoEdits(state, entry.value);
-      state.screen = "main";
-      state.drillProfile = null;
+      state.screen = "phases";
       state.cursor = 0;
       return { type: "state", state: rebuildEntries(state) };
     }
@@ -734,10 +761,9 @@ export function enter(state: PickerState): EnterResult {
       // antes de mover el puntero, para no perder cambios sin guardar.
       loadProfileIntoEdits(state, entry.value);
       state.edits.activeProfile = entry.value;
-      state.edits.editingProfile = null;
       state.edits.profilesChanged = true;
       state.edits.changed = true;
-      state.screen = "profiles";
+      state.screen = "main";
       state.drillProfile = null;
       state.cursor = 0;
       state.notice = `perfil «${entry.value}» activo — guardá y reiniciá pi para que /forge lo tome`;
@@ -760,7 +786,7 @@ export function enter(state: PickerState): EnterResult {
       // volcar los cambios.
       if (state.edits.activeProfile === name) state.edits.activeProfile = null;
       if (state.edits.editingProfile === name) state.edits.editingProfile = null;
-      state.screen = "profiles";
+      state.screen = "main";
       state.drillProfile = null;
       state.cursor = 0;
       state.notice = `perfil «${name}» borrado`;
@@ -787,14 +813,23 @@ export function back(state: PickerState): EnterResult {
   if (state.screen === "main") {
     return { type: "quit" };
   }
-  // La pantalla de acciones vuelve a la lista de perfiles, no al menú
-  // principal: es un nivel más adentro.
-  if (state.screen === "profile-actions") {
-    state.screen = "profiles";
-    state.drillProfile = null;
+  // Esc desde una fase vuelve a la lista de fases del perfil, no al menú.
+  if (
+    state.screen === "provider" ||
+    state.screen === "model" ||
+    state.screen === "thinking"
+  ) {
+    state.screen = "phases";
+    state.drillPhase = null;
+    state.drillProvider = null;
+    state.drillModel = null;
     state.textPrompt = null;
     state.cursor = 0;
     return { type: "state", state: rebuildEntries(state) };
+  }
+  // Salir de las fases vuelca lo editado a su perfil antes de volver.
+  if (state.screen === "phases") {
+    flushEdits(state);
   }
   state.screen = "main";
   state.drillPhase = null;
@@ -873,11 +908,19 @@ export function submitText(state: PickerState, typed: string): PickerState {
     if (prompt.for === "new-profile") {
       // Crear entra a editarlo: es lo que se viene a hacer después de nombrarlo.
       loadProfileIntoEdits(state, name);
-      state.screen = "main";
+      // El primer perfil se activa solo. Si no, quedaría guardado pero /forge
+      // seguiría corriendo la config suelta — un perfil que no hace nada.
+      if (state.edits.activeProfile === null) {
+        state.edits.activeProfile = name;
+        state.edits.editingProfile = null;
+        state.notice = `perfil «${name}» creado y activo — elegí los modelos`;
+      } else {
+        state.notice = `perfil «${name}» creado — elegí los modelos (activar es aparte)`;
+      }
+      state.screen = "phases";
       state.cursor = 0;
-      state.notice = `perfil «${name}» creado — elegí los modelos y guardá`;
     } else {
-      state.screen = "profiles";
+      state.screen = "main";
       state.drillProfile = null;
       state.cursor = 0;
       state.notice = `perfil «${name}» duplicado`;

@@ -49,7 +49,7 @@ function makeThinking(over: Partial<PhaseThinking> = {}): PhaseThinking {
 }
 
 /** Build a `PickerState` via `createPickerState`, overriding any input field. */
-function makeState(over: Partial<Parameters<typeof createPickerState>[0]> = {}): PickerState {
+function makeMenu(over: Partial<Parameters<typeof createPickerState>[0]> = {}): PickerState {
   return createPickerState({
     models: makeModels(),
     providers: makeProviders(),
@@ -60,6 +60,21 @@ function makeState(over: Partial<Parameters<typeof createPickerState>[0]> = {}):
     fallbackModels: ["claude-opus-4-7", "claude-sonnet-4-6", "claude-haiku-4-5"],
     ...over,
   });
+}
+
+/**
+ * El picker abierto directamente en la pantalla de fases.
+ *
+ * Las fases dejaron de vivir en el menú principal — que ahora lista perfiles —
+ * y se editan un nivel más adentro. La enorme mayoría de estos tests son sobre
+ * el drill de fase → provider → modelo → thinking, así que arrancan ahí.
+ * Para el menú en sí está {@link makeMenu}.
+ */
+function makeState(over: Partial<Parameters<typeof createPickerState>[0]> = {}): PickerState {
+  const state = makeMenu(over);
+  state.screen = "phases";
+  state.cursor = 0;
+  return rebuildEntries(state);
 }
 
 /** A well-formed pending autotune adjustment. */
@@ -78,7 +93,7 @@ function makePending(over: Partial<AutotunePending> = {}): AutotunePending {
 // ---------------------------------------------------------------------------
 
 test("createPickerState starts on the main screen with cursor at 0", () => {
-  const state = makeState();
+  const state = makeMenu();
   assert.equal(state.screen, "main");
   assert.equal(state.cursor, 0);
   assert.equal(state.drillPhase, null);
@@ -96,28 +111,23 @@ test("createPickerState main screen has the six phase rows in PHASES order", () 
   );
 });
 
-test("createPickerState main screen carries autotune, profiles and save rows", () => {
-  const state = makeState();
-  const autotune = state.entries.filter((e) => e.kind === "autotune");
-  const profiles = state.entries.filter((e) => e.kind === "profiles");
-  const save = state.entries.filter((e) => e.kind === "save");
-  assert.equal(autotune.length, 1, "exactly one autotune row");
-  assert.equal(profiles.length, 1, "exactly one profiles row");
-  assert.equal(save.length, 1, "exactly one save row");
-  // The save row is last, the profiles row before it, then autotune.
+test("createPickerState main screen ends with autotune and save rows", () => {
+  const state = makeMenu();
+  assert.equal(state.entries.filter((e) => e.kind === "autotune").length, 1);
+  assert.equal(state.entries.filter((e) => e.kind === "save").length, 1);
+  // The save row is last; autotune sits just before it.
   assert.equal(state.entries[state.entries.length - 1].kind, "save");
-  assert.equal(state.entries[state.entries.length - 2].kind, "profiles");
-  assert.equal(state.entries[state.entries.length - 3].kind, "autotune");
+  assert.equal(state.entries[state.entries.length - 2].kind, "autotune");
 });
 
 test("createPickerState autotune row label reflects the current mode", () => {
   assert.ok(
-    makeState({ autotuneMode: "off" as AutotuneMode }).entries.some(
+    makeMenu({ autotuneMode: "off" as AutotuneMode }).entries.some(
       (e) => e.kind === "autotune" && e.label.includes("off"),
     ),
   );
   assert.ok(
-    makeState({ autotuneMode: "ask" as AutotuneMode }).entries.some(
+    makeMenu({ autotuneMode: "ask" as AutotuneMode }).entries.some(
       (e) => e.kind === "autotune" && e.label.includes("ask"),
     ),
   );
@@ -222,7 +232,7 @@ test("rebuildEntries on the thinking screen produces exactly the six level rows"
 // ---------------------------------------------------------------------------
 
 test("createPickerState omits the apply-pending row when there is no pending", () => {
-  const state = makeState({ pending: [] });
+  const state = makeMenu({ pending: [] });
   assert.equal(
     state.entries.filter((e) => e.kind === "apply-pending").length,
     0,
@@ -231,14 +241,14 @@ test("createPickerState omits the apply-pending row when there is no pending", (
 });
 
 test("createPickerState prepends the apply-pending row when pending exists", () => {
-  const state = makeState({ pending: [makePending()] });
+  const state = makeMenu({ pending: [makePending()] });
   const apply = state.entries.filter((e) => e.kind === "apply-pending");
   assert.equal(apply.length, 1, "well-formed pending → exactly one apply row");
   assert.equal(state.entries[0].kind, "apply-pending", "the apply row is first");
 });
 
 test("createPickerState apply-pending label lists each phase → to adjustment", () => {
-  const state = makeState({
+  const state = makeMenu({
     pending: [
       makePending({ phase: "build", to: "claude-opus-4-7" }),
       makePending({ phase: "plan", to: "claude-opus-4-6" }),
@@ -255,7 +265,7 @@ test("createPickerState apply-pending label lists each phase → to adjustment",
 // ---------------------------------------------------------------------------
 
 test("rebuildEntries is idempotent on the main screen", () => {
-  const state = makeState();
+  const state = makeMenu();
   const before = state.entries.map((e) => `${e.kind}:${e.value}`);
   rebuildEntries(state);
   const after = state.entries.map((e) => `${e.kind}:${e.value}`);
@@ -338,7 +348,7 @@ test("rebuildEntries clamps an out-of-range cursor into the new row list", () =>
 // ---------------------------------------------------------------------------
 
 test("navigate wraps Up at index 0 to the last row", () => {
-  const state = makeState();
+  const state = makeMenu();
   state.cursor = 0;
   navigate(state, -1);
   assert.equal(
@@ -349,14 +359,14 @@ test("navigate wraps Up at index 0 to the last row", () => {
 });
 
 test("navigate wraps Down at the last row to row 0", () => {
-  const state = makeState();
+  const state = makeMenu();
   state.cursor = state.entries.length - 1;
   navigate(state, 1);
   assert.equal(state.cursor, 0, "Down at the last row lands on row 0");
 });
 
 test("navigate moves by one in the middle of the list", () => {
-  const state = makeState();
+  const state = makeMenu();
   assert.ok(state.entries.length >= 3, "fixture has a mid-list row to move within");
   state.cursor = 1;
   navigate(state, 1);
@@ -366,7 +376,7 @@ test("navigate moves by one in the middle of the list", () => {
 });
 
 test("navigate on a single-entry list is a fixed point", () => {
-  const state = makeState();
+  const state = makeMenu();
   state.entries = [{ kind: "save", label: "— guardar y salir —", value: "save" }];
   state.cursor = 0;
   navigate(state, 1);
@@ -376,7 +386,7 @@ test("navigate on a single-entry list is a fixed point", () => {
 });
 
 test("navigate returns the same state object — mutate-and-return", () => {
-  const state = makeState();
+  const state = makeMenu();
   assert.strictEqual(navigate(state, 1), state);
 });
 
@@ -444,7 +454,7 @@ test("enter on a provider row drills into the model screen with drillProvider se
 });
 
 test("enter on the autotune row drills into the autotune screen", () => {
-  const state = makeState();
+  const state = makeMenu();
   cursorTo(state, "autotune");
   const result = enter(state);
   assert.equal(result.type, "state");
@@ -456,7 +466,7 @@ test("enter on the autotune row drills into the autotune screen", () => {
 });
 
 test("enter on the save row returns a save result", () => {
-  const state = makeState();
+  const state = makeMenu();
   cursorTo(state, "save");
   const result = enter(state);
   assert.equal(result.type, "save");
@@ -492,7 +502,7 @@ test("enter on a custom-model row opens a model text prompt", () => {
 // ---------------------------------------------------------------------------
 
 test("enter on apply-pending mutates models, sets pendingApplied, drops the row", () => {
-  const state = makeState({
+  const state = makeMenu({
     pending: [makePending({ phase: "build", to: "claude-opus-4-7" })],
   });
   cursorTo(state, "apply-pending");
@@ -510,7 +520,7 @@ test("enter on apply-pending mutates models, sets pendingApplied, drops the row"
 });
 
 test("enter on apply-pending applies every pending adjustment", () => {
-  const state = makeState({
+  const state = makeMenu({
     pending: [
       makePending({ phase: "build", to: "claude-opus-4-7" }),
       makePending({ phase: "plan", to: "claude-opus-4-6" }),
@@ -566,7 +576,7 @@ test("choosing a thinking level commits model + provider + thinking atomically",
   cursorToValue(state, "thinking-level", "high");
   const result = enter(state); // commit
   assert.equal(result.type, "state");
-  assert.equal(state.screen, "main", "returns to the main screen after committing");
+  assert.equal(state.screen, "phases", "returns to the main screen after committing");
   assert.equal(state.edits.models.build, "claude-sonnet-4-6", "model committed");
   assert.equal(state.edits.providers.build, "anthropic", "provider committed");
   assert.equal(state.edits.thinking.build, "high", "thinking level committed");
@@ -648,7 +658,7 @@ test("Esc from the thinking screen commits no partial edit and clears drillModel
   assert.equal(state.drillModel, "claude-opus-4-7", "model is staged in drillModel");
   const result = back(state); // Esc
   assert.equal(result.type, "state");
-  assert.equal(state.screen, "main", "Esc returns to main");
+  assert.equal(state.screen, "phases", "Esc returns to main");
   assert.equal(state.edits.changed, false, "no model/provider/thinking change is committed");
   assert.equal(state.edits.models.build, "claude-sonnet-4-6", "model is NOT half-committed (default intact)");
   assert.equal(state.edits.thinking.build, undefined, "no thinking is committed");
@@ -661,7 +671,7 @@ test("Esc from the thinking screen commits no partial edit and clears drillModel
 // back
 // ---------------------------------------------------------------------------
 
-test("back from the provider screen returns to main with the drill context cleared", () => {
+test("back from the provider screen returns to the phase list with the drill context cleared", () => {
   const state = makeState({
     groups: new Map([["anthropic", ["claude-opus-4-7"]]]),
   });
@@ -669,12 +679,12 @@ test("back from the provider screen returns to main with the drill context clear
   enter(state); // → provider screen
   const result = back(state);
   assert.equal(result.type, "state");
-  assert.equal(state.screen, "main");
+  assert.equal(state.screen, "phases");
   assert.equal(state.drillPhase, null);
   assert.equal(state.drillProvider, null);
 });
 
-test("back from the model screen returns to main and commits no edit", () => {
+test("back from the model screen returns to the phase list and commits no edit", () => {
   const state = makeState({
     groups: new Map([["anthropic", ["claude-opus-4-7"]]]),
   });
@@ -683,14 +693,14 @@ test("back from the model screen returns to main and commits no edit", () => {
   cursorTo(state, "provider");
   enter(state); // → model screen
   back(state);
-  assert.equal(state.screen, "main");
+  assert.equal(state.screen, "phases");
   assert.equal(state.edits.changed, false, "Esc mid-drill stages no edit");
   assert.equal(state.drillPhase, null);
   assert.equal(state.drillProvider, null);
 });
 
 test("back from the autotune screen returns to main with autotune unchanged", () => {
-  const state = makeState();
+  const state = makeMenu();
   cursorTo(state, "autotune");
   enter(state); // → autotune screen
   back(state);
@@ -699,7 +709,7 @@ test("back from the autotune screen returns to main with autotune unchanged", ()
 });
 
 test("back at the main screen returns a quit result", () => {
-  const state = makeState();
+  const state = makeMenu();
   const result = back(state);
   assert.equal(result.type, "quit");
 });
@@ -732,7 +742,7 @@ test("a single phase model edit sets edits.changed", () => {
 });
 
 test("selecting a different autotune mode sets autotuneChanged", () => {
-  const state = makeState({ autotuneMode: "auto" as AutotuneMode });
+  const state = makeMenu({ autotuneMode: "auto" as AutotuneMode });
   cursorTo(state, "autotune");
   enter(state); // → autotune screen
   const offIdx = state.entries.findIndex((e) => e.value === "off");
@@ -743,7 +753,7 @@ test("selecting a different autotune mode sets autotuneChanged", () => {
 });
 
 test("selecting the same autotune mode leaves autotuneChanged false", () => {
-  const state = makeState({ autotuneMode: "auto" as AutotuneMode });
+  const state = makeMenu({ autotuneMode: "auto" as AutotuneMode });
   cursorTo(state, "autotune");
   enter(state); // → autotune screen
   const autoIdx = state.entries.findIndex((e) => e.value === "auto");
@@ -797,7 +807,7 @@ test("submitText: custom provider then custom model commits the typed strings to
   // Choose a level to commit model + provider + thinking atomically.
   cursorToValue(state, "thinking-level", "high");
   enter(state); // commit
-  assert.equal(state.screen, "main", "returns to the main screen after committing");
+  assert.equal(state.screen, "phases", "returns to the main screen after committing");
   assert.equal(state.edits.models.build, "my-model", "typed model committed, trimmed");
   assert.equal(
     state.edits.providers.build,
@@ -833,7 +843,7 @@ test("submitText: a typed model with no drilled provider commits an empty provid
   assert.equal(state.edits.providers.plan, "", "null drillProvider → empty provider");
   assert.equal(state.edits.thinking.plan, "medium");
   assert.equal(state.edits.changed, true);
-  assert.equal(state.screen, "main");
+  assert.equal(state.screen, "phases");
 });
 
 test("submitText: an empty typed value is a no-op that returns to the provider list", () => {
@@ -947,7 +957,7 @@ test("decodeKey: printable characters and unknown sequences decode to null", () 
 });
 
 // ---------------------------------------------------------------------------
-// Profiles: the `profiles` / `profile-actions` screens
+// Profiles: the main screen lists them; `profile-actions` acts on one
 // ---------------------------------------------------------------------------
 
 /** Two saved profiles, `premium` active, as read from zero.json. */
@@ -966,9 +976,9 @@ function makeProfiles() {
   };
 }
 
-/** A picker opened with saved profiles and `premium` active. */
+/** The menu, opened with saved profiles and `premium` active. */
 function withProfiles(): PickerState {
-  return makeState({ profiles: makeProfiles(), activeProfile: "premium" });
+  return makeMenu({ profiles: makeProfiles(), activeProfile: "premium" });
 }
 
 /** Move the cursor onto the first row matching `kind`, then enter. */
@@ -991,129 +1001,185 @@ function enterValue(state: PickerState, value: string): PickerState {
   return (result as { type: "state"; state: PickerState }).state;
 }
 
-test("the picker works exactly as before when no profiles exist", () => {
-  const state = makeState();
-  assert.deepEqual(state.edits.profiles, {});
-  assert.equal(state.edits.activeProfile, null);
-  assert.equal(state.edits.editingProfile, null);
-  assert.equal(state.edits.profilesChanged, false);
-  // The profiles row is present but says there are none yet.
-  const row = state.entries.find((e) => e.kind === "profiles");
-  assert.match(row!.label, /ninguno todavía/);
+/** Enter the save row and assert the picker closes with a save result. */
+function save(state: PickerState): PickerState {
+  const index = state.entries.findIndex((e) => e.kind === "save");
+  assert.notEqual(index, -1, "no save row");
+  const result = enter({ ...state, cursor: index });
+  assert.equal(result.type, "save");
+  return (result as { type: "save"; state: PickerState }).state;
+}
+
+test("the main screen lists profiles, not phases", () => {
+  const state = withProfiles();
+  const kinds = state.entries.map((e) => e.kind);
+  assert.equal(kinds.includes("phase"), false, "no phase rows on the menu");
+  assert.deepEqual(
+    state.entries.filter((e) => e.kind === "profile").map((e) => e.value),
+    ["barato", "premium"],
+    "one row per profile, sorted",
+  );
+  // Create, autotune and save close the menu out.
+  assert.deepEqual(kinds.slice(-3), ["new-profile", "autotune", "save"]);
 });
 
-test("the profiles row names the active profile", () => {
-  const row = withProfiles().entries.find((e) => e.kind === "profiles");
-  assert.match(row!.label, /premium/);
+test("the active profile is marked and the others are not", () => {
+  const rows = withProfiles().entries.filter((e) => e.kind === "profile");
+  const active = rows.find((e) => e.value === "premium")!;
+  const inactive = rows.find((e) => e.value === "barato")!;
+  assert.match(active.label, /●/);
+  assert.match(active.label, /activo/);
+  assert.match(inactive.label, /○/);
+  assert.equal(/activo/.test(inactive.label), false);
 });
 
-test("the profiles screen lists every profile plus a create row", () => {
-  const screen = enterRow(withProfiles(), "profiles");
-  assert.equal(screen.screen, "profiles");
-  const names = screen.entries.filter((e) => e.kind === "profile").map((e) => e.value);
-  assert.deepEqual(names, ["barato", "premium"], "sorted");
-  assert.equal(screen.entries[screen.entries.length - 1].kind, "new-profile");
+test("a profile row summarises the providers it uses", () => {
+  const rows = withProfiles().entries.filter((e) => e.kind === "profile");
+  assert.match(rows.find((e) => e.value === "premium")!.label, /anthropic/);
+  assert.match(rows.find((e) => e.value === "barato")!.label, /openai-codex/);
 });
 
-test("the active profile is marked in the listing", () => {
-  const screen = enterRow(withProfiles(), "profiles");
-  const active = screen.entries.find((e) => e.value === "premium");
-  assert.match(active!.label, /activo/);
+test("with no profiles the menu offers the loose-config escape hatch", () => {
+  const state = makeMenu();
+  assert.equal(state.entries.some((e) => e.kind === "edit-loose"), true);
+  // And that row opens the familiar phase screen.
+  const phases = enterRow(state, "edit-loose");
+  assert.equal(phases.screen, "phases");
+  assert.equal(phases.entries.length, 6);
+  assert.equal(phases.edits.editingProfile, null);
 });
 
-test("opening a profile shows edit / activate / duplicate / delete", () => {
-  const actions = enterValue(enterRow(withProfiles(), "profiles"), "barato");
+test("the loose-config row disappears once a profile exists", () => {
+  assert.equal(withProfiles().entries.some((e) => e.kind === "edit-loose"), false);
+});
+
+test("opening a profile shows activate / edit / duplicate / delete", () => {
+  const actions = enterValue(withProfiles(), "barato");
   assert.equal(actions.screen, "profile-actions");
   assert.deepEqual(actions.entries.map((e) => e.kind), [
-    "profile-edit",
     "profile-use",
+    "profile-edit",
     "profile-duplicate",
     "profile-delete",
   ]);
 });
 
-test("the active profile is not offered an activate row", () => {
-  const actions = enterValue(enterRow(withProfiles(), "profiles"), "premium");
+test("the active profile says so instead of offering activate", () => {
+  const actions = enterValue(withProfiles(), "premium");
   assert.equal(actions.entries.some((e) => e.kind === "profile-use"), false);
+  assert.equal(actions.entries[0].kind, "profile-active-noop");
+  // And that row is inert.
+  const after = enterRow(actions, "profile-active-noop");
+  assert.equal(after.screen, "profile-actions");
 });
 
-test("editing a profile loads its models into the phase screen without activating it", () => {
-  const actions = enterValue(enterRow(withProfiles(), "profiles"), "barato");
-  const editing = enterRow(actions, "profile-edit");
-  assert.equal(editing.screen, "main", "lands on the usual phase screen");
+test("editing a profile opens its six phases without activating it", () => {
+  const editing = enterRow(enterValue(withProfiles(), "barato"), "profile-edit");
+  assert.equal(editing.screen, "phases");
+  assert.equal(editing.entries.length, 6, "exactly the six phases");
   assert.equal(editing.edits.editingProfile, "barato");
   assert.equal(editing.edits.activeProfile, "premium", "still active");
   assert.equal(editing.edits.models.plan, "gpt-5.6-luna");
   assert.equal(editing.edits.thinking.plan, "low");
 });
 
-test("the title says which profile is being edited and whether it is active", () => {
+test("the title names the profile being edited and whether it is active", () => {
   const state = withProfiles();
-  assert.match(pickerTitle(state), /«premium»/);
-  const editing = enterRow(
-    enterValue(enterRow(state, "profiles"), "barato"),
-    "profile-edit",
-  );
-  assert.match(pickerTitle(editing), /«barato».*no activo/);
+  assert.match(pickerTitle(state), /perfiles/);
+
+  const inactive = enterRow(enterValue(state, "barato"), "profile-edit");
+  assert.match(pickerTitle(inactive), /«barato».*no activo/);
+
+  const active = enterRow(enterValue(withProfiles(), "premium"), "profile-edit");
+  assert.match(pickerTitle(active), /«premium».*· activo/);
 });
 
 test("a phase edit lands in the profile being edited, not the active one", () => {
-  let state = enterRow(
-    enterValue(enterRow(withProfiles(), "profiles"), "barato"),
-    "profile-edit",
-  );
+  let state = enterRow(enterValue(withProfiles(), "barato"), "profile-edit");
   // Drill: phase → (no registry, so straight to model) → thinking level.
   state = enterValue(state, "plan");
   state = enterValue(state, "claude-opus-4-7");
   state = enterValue(state, "xhigh");
+  assert.equal(state.screen, "phases", "commits back to the phase list");
 
-  const result = enter({ ...state, cursor: state.entries.findIndex((e) => e.kind === "save") });
-  assert.equal(result.type, "save");
-  const edits = (result as { type: "save"; state: PickerState }).state.edits;
+  // Saving happens from the menu, so step back out of the phase screen first.
+  const result = back(state);
+  assert.equal(result.type, "state");
+  const edits = save((result as { type: "state"; state: PickerState }).state).edits;
   assert.equal(edits.profiles.barato.models.plan, "claude-opus-4-7", "edited profile changed");
   assert.equal(edits.profiles.premium.models.plan, "claude-opus-5", "active untouched");
 });
 
-test("activating a profile switches the live maps and flags the change", () => {
-  const activated = enterRow(
-    enterValue(enterRow(withProfiles(), "profiles"), "barato"),
-    "profile-use",
-  );
-  assert.equal(activated.edits.activeProfile, "barato");
-  assert.equal(activated.edits.editingProfile, null);
-  assert.equal(activated.edits.profilesChanged, true);
-  assert.equal(activated.edits.models.plan, "gpt-5.6-luna");
-  assert.equal(activated.screen, "profiles", "stays in the listing");
-  assert.match(activated.notice!, /barato/);
+test("leaving the phase screen folds the edits into the profile", () => {
+  let state = enterRow(enterValue(withProfiles(), "barato"), "profile-edit");
+  state = enterValue(state, "plan");
+  state = enterValue(state, "claude-opus-4-7");
+  state = enterValue(state, "xhigh");
+
+  const result = back(state);
+  assert.equal(result.type, "state");
+  const menu = (result as { type: "state"; state: PickerState }).state;
+  assert.equal(menu.screen, "main");
+  assert.equal(menu.edits.profiles.barato.models.plan, "claude-opus-4-7");
 });
 
-test("creating a profile prompts for a name, then opens it for editing", () => {
-  const prompted = enterRow(enterRow(withProfiles(), "profiles"), "new-profile");
+test("activating a profile switches the live maps and returns to the menu", () => {
+  const activated = enterRow(enterValue(withProfiles(), "barato"), "profile-use");
+  assert.equal(activated.edits.activeProfile, "barato");
+  assert.equal(activated.edits.profilesChanged, true);
+  assert.equal(activated.edits.models.plan, "gpt-5.6-luna");
+  assert.equal(activated.screen, "main");
+  assert.match(activated.notice!, /barato/);
+  // The listing now marks the new active profile.
+  const row = activated.entries.find((e) => e.value === "barato")!;
+  assert.match(row.label, /activo/);
+});
+
+test("what gets saved is what /forge reads: the active profile's maps", () => {
+  const edits = save(enterRow(enterValue(withProfiles(), "barato"), "profile-use")).edits;
+  assert.equal(edits.activeProfile, "barato");
+  assert.equal(edits.models.plan, "gpt-5.6-luna", "flat maps follow the active profile");
+  assert.deepEqual(Object.keys(edits.profiles).sort(), ["barato", "premium"]);
+});
+
+test("creating a profile prompts for a name, then opens its phases", () => {
+  const prompted = enterRow(withProfiles(), "new-profile");
   assert.equal(prompted.textPrompt?.for, "new-profile");
 
   const created = submitText(prompted, "qa");
-  assert.equal(created.screen, "main", "goes straight to picking models");
+  assert.equal(created.screen, "phases");
   assert.equal(created.edits.editingProfile, "qa");
-  assert.equal(created.edits.activeProfile, "premium", "creating does not activate");
   assert.equal(created.edits.profilesChanged, true);
   assert.ok("qa" in created.edits.profiles);
+});
+
+test("creating a profile when one is already active does not steal the activation", () => {
+  const created = submitText(enterRow(withProfiles(), "new-profile"), "qa");
+  assert.equal(created.edits.activeProfile, "premium");
+  assert.match(created.notice!, /activar es aparte/);
+});
+
+test("the very first profile is activated on creation", () => {
+  // Otherwise it would sit there saved while /forge kept running the loose
+  // config — a profile that does nothing.
+  const created = submitText(enterRow(makeMenu(), "new-profile"), "primero");
+  assert.equal(created.edits.activeProfile, "primero");
+  assert.match(created.notice!, /creado y activo/);
 });
 
 test("a new profile starts from what was on screen", () => {
   const state = withProfiles();
   // The live maps are the fixture's, deliberately not equal to `premium` —
-  // which is the shape autotune leaves behind. What is on screen is what the
-  // new profile must capture.
+  // which is the shape autotune leaves behind.
   assert.equal(state.edits.models.plan, "claude-opus-4-7");
 
-  const created = submitText(enterRow(enterRow(state, "profiles"), "new-profile"), "qa");
+  const created = submitText(enterRow(state, "new-profile"), "qa");
   assert.equal(created.edits.profiles.qa.models.plan, "claude-opus-4-7");
-  // And capturing it must not have rewritten the active profile.
-  assert.equal(created.edits.profiles.premium.models.plan, "claude-opus-5");
+  assert.equal(created.edits.profiles.premium.models.plan, "claude-opus-5", "active intact");
 });
 
 test("profile names are lowercased and validated, never silently overwriting", () => {
-  const prompted = enterRow(enterRow(withProfiles(), "profiles"), "new-profile");
+  const prompted = enterRow(withProfiles(), "new-profile");
 
   const upper = submitText({ ...prompted }, "QA");
   assert.ok("qa" in upper.edits.profiles, "uppercase is folded down");
@@ -1128,77 +1194,70 @@ test("profile names are lowercased and validated, never silently overwriting", (
 });
 
 test("an empty name aborts profile creation", () => {
-  const prompted = enterRow(enterRow(withProfiles(), "profiles"), "new-profile");
-  const aborted = submitText(prompted, "   ");
+  const aborted = submitText(enterRow(withProfiles(), "new-profile"), "   ");
   assert.equal(aborted.textPrompt, null);
   assert.deepEqual(Object.keys(aborted.edits.profiles).sort(), ["barato", "premium"]);
 });
 
 test("duplicating clones the chosen profile under a new name", () => {
-  const prompted = enterRow(
-    enterValue(enterRow(withProfiles(), "profiles"), "barato"),
-    "profile-duplicate",
-  );
+  const prompted = enterRow(enterValue(withProfiles(), "barato"), "profile-duplicate");
   assert.equal(prompted.textPrompt?.for, "duplicate-profile");
 
   const done = submitText(prompted, "barato2");
-  assert.equal(done.screen, "profiles");
+  assert.equal(done.screen, "main");
   assert.equal(done.edits.profiles.barato2.models.plan, "gpt-5.6-luna", "clone of barato");
   assert.equal(done.edits.editingProfile, null, "duplicating does not open it");
   assert.equal(done.edits.activeProfile, "premium");
 });
 
 test("deleting a profile removes it and never touches the models in use", () => {
-  const deleted = enterRow(
-    enterValue(enterRow(withProfiles(), "profiles"), "barato"),
-    "profile-delete",
-  );
+  const deleted = enterRow(enterValue(withProfiles(), "barato"), "profile-delete");
   assert.deepEqual(Object.keys(deleted.edits.profiles), ["premium"]);
   assert.equal(deleted.edits.activeProfile, "premium");
   assert.equal(deleted.edits.models.plan, "claude-opus-4-7", "live maps untouched");
-  assert.equal(deleted.screen, "profiles");
+  assert.equal(deleted.screen, "main");
 });
 
 test("deleting the active profile leaves the run with no active profile", () => {
-  const deleted = enterRow(
-    enterValue(enterRow(withProfiles(), "profiles"), "premium"),
-    "profile-delete",
-  );
+  const deleted = enterRow(enterValue(withProfiles(), "premium"), "profile-delete");
   assert.equal(deleted.edits.activeProfile, null);
   assert.deepEqual(Object.keys(deleted.edits.profiles), ["barato"]);
+  // With one profile left, the menu still lists it.
+  assert.equal(deleted.entries.filter((e) => e.kind === "profile").length, 1);
 });
 
-test("esc from the actions screen goes back to the listing, not to main", () => {
-  const actions = enterValue(enterRow(withProfiles(), "profiles"), "barato");
-  const result = back(actions);
+test("esc from the actions screen goes back to the profile list", () => {
+  const result = back(enterValue(withProfiles(), "barato"));
   assert.equal(result.type, "state");
   const state = (result as { type: "state"; state: PickerState }).state;
-  assert.equal(state.screen, "profiles");
+  assert.equal(state.screen, "main");
   assert.equal(state.drillProfile, null);
 });
 
-test("esc from the listing returns to the phase screen", () => {
-  const listing = enterRow(withProfiles(), "profiles");
-  const result = back(listing);
+test("esc from a drill screen returns to the phases, not the menu", () => {
+  const phases = enterRow(enterValue(withProfiles(), "barato"), "profile-edit");
+  const drilled = enterValue(phases, "plan");
+  const result = back(drilled);
   assert.equal(result.type, "state");
-  assert.equal((result as { type: "state"; state: PickerState }).state.screen, "main");
+  const state = (result as { type: "state"; state: PickerState }).state;
+  assert.equal(state.screen, "phases");
+  assert.equal(state.drillPhase, null);
 });
 
-test("saving stages the profile map so the caller can persist it", () => {
-  const state = enterRow(
-    enterValue(enterRow(withProfiles(), "profiles"), "barato"),
-    "profile-use",
-  );
-  const result = enter({ ...state, screen: "main", entries: rebuildEntries({ ...state, screen: "main" }).entries, cursor: rebuildEntries({ ...state, screen: "main" }).entries.findIndex((e) => e.kind === "save") });
-  assert.equal(result.type, "save");
-  const edits = (result as { type: "save"; state: PickerState }).state.edits;
-  assert.equal(edits.activeProfile, "barato");
-  assert.deepEqual(Object.keys(edits.profiles).sort(), ["barato", "premium"]);
+test("opening another profile does not overwrite the active one with stray edits", () => {
+  // The live maps differ from `premium` — exactly what autotune leaves behind.
+  // Merely walking into another profile must not fold that drift into it.
+  const state = withProfiles();
+  assert.equal(state.edits.models.plan, "claude-opus-4-7");
+  assert.equal(state.edits.profiles.premium.models.plan, "claude-opus-5");
+
+  const opened = enterRow(enterValue(state, "barato"), "profile-edit");
+  assert.equal(opened.edits.profiles.premium.models.plan, "claude-opus-5", "untouched");
 });
 
 test("the staged profile map never aliases the caller's objects", () => {
   const original = makeProfiles();
-  const state = makeState({ profiles: original, activeProfile: "premium" });
+  const state = makeMenu({ profiles: original, activeProfile: "premium" });
   state.edits.profiles.premium.models.plan = "mutado";
   assert.equal(original.premium.models.plan, "claude-opus-5", "caller object intact");
 });

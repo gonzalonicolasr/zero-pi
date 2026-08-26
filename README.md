@@ -318,12 +318,18 @@ A profile is a named bundle of the three per-phase maps (`models`, `providers`,
 `thinking`). Profiles live in `~/.pi/zero.json` under `profiles`, and
 `activeProfile` points at the one in use:
 
-From the TUI — run `/zero-models` with no arguments and pick the `perfiles`
-row. That screen lists every profile (the active one marked) plus
-`— nuevo perfil —`; opening one offers **edit models per phase**, **activate**,
-**duplicate** and **delete**. Editing drops you on the usual phase screen, so a
-profile is configured exactly like the live setup — and editing a profile does
-**not** activate it. Nothing is written until `— guardar y salir —`.
+From the TUI — run `/zero-models` with no arguments. The main screen **is** the
+profile list: one row per profile (`●` marks the active one), plus
+`— nuevo perfil —`. Opening a profile offers **activate**, **edit models per
+phase**, **duplicate** and **delete**; editing drops you on the familiar
+six-phase screen. Phases are no longer on the main screen — they belong to a
+profile, and `/forge` runs whichever profile is active.
+
+Editing a profile does **not** activate it, and nothing is written until
+`— guardar y salir —`. The first profile you create is activated automatically;
+otherwise it would sit there saved while `/forge` kept running the loose
+config. Until a profile exists, `— configurar modelos sin perfil —` still edits
+the bare `models`/`providers`/`thinking` keys the way it always did.
 
 Or from the command line:
 
