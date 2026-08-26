@@ -40,6 +40,13 @@ interface Component {
 }
 
 import { readAutotuneMode, type AutotuneMode } from "./autotune.ts";
+import {
+  applyProfileCommand,
+  formatActiveProfile,
+  mirrorToActiveProfile,
+  parseProfileCommand,
+  PROFILE_USAGE,
+} from "./zero-models-profiles.ts";
 import type { AutotunePending } from "./autotune-extension.ts";
 import {
   back,
@@ -757,7 +764,7 @@ export default function register(pi?: PiExtensionAPI): void {
 
   pi.registerCommand("zero-models", {
     description:
-      "Muestra o cambia los modelos SDD por fase — /zero-models [<fase>=[<provider>/]<modelo>]",
+      "Muestra o cambia los modelos SDD por fase — /zero-models [<fase>=[<provider>/]<modelo>] · perfiles con /zero-models profile",
     handler: async (args: string, ctx: PiCommandContext): Promise<void> => {
       try {
         const data = readZeroJson();
@@ -769,6 +776,28 @@ export default function register(pi?: PiExtensionAPI): void {
         // Direct form: /zero-models build=claude-opus-4-7
         const arg = args.trim();
         if (arg) {
+          // Sub-command form: /zero-models profile <verbo> …
+          // Va primero: `profile` no es una fase, así que sin esta rama caería
+          // en la ayuda genérica de asignaciones.
+          const profileCommand = parseProfileCommand(arg);
+          if (profileCommand) {
+            const result = applyProfileCommand(data, profileCommand);
+            if (!result.ok) {
+              ctx.ui.notify(`zero-models: ${result.message}`, "warning");
+              return;
+            }
+            // `list` no modifica nada: se muestra y no se escribe.
+            if (profileCommand.kind !== "list") {
+              writeFileSync(
+                zeroJsonPath(),
+                `${JSON.stringify(result.data, null, 2)}\n`,
+                "utf8",
+              );
+            }
+            ctx.ui.notify(result.message, "info");
+            return;
+          }
+
           // Direct form: /zero-models autotune=<mode>
           const autotuneMatch = arg.match(/^autotune\s*[=\s]\s*(.+)$/i);
           if (autotuneMatch) {
@@ -806,7 +835,8 @@ export default function register(pi?: PiExtensionAPI): void {
               "uso: /zero-models  —o—  /zero-models <fase>=[<provider>/]<modelo> [thinking=<nivel>] " +
                 "(fase: clarify | explore | plan | analyze | build | veredicto · " +
                 "nivel: off | minimal | low | medium | high | xhigh)  —o—  " +
-                "/zero-models autotune=<modo>",
+                "/zero-models autotune=<modo>  —o—  " +
+                PROFILE_USAGE,
               "warning",
             );
             return;
@@ -833,13 +863,17 @@ export default function register(pi?: PiExtensionAPI): void {
           const merged: Record<string, unknown> = { ...data, models, providers };
           if (Object.keys(nextThinking).length > 0) merged.thinking = nextThinking;
           else delete merged.thinking;
-          writeFileSync(zeroJsonPath(), `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+          // Con un perfil activo, editar una fase edita ese perfil.
+          const persisted = mirrorToActiveProfile(merged);
+          writeFileSync(zeroJsonPath(), `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
           const shown = providers[assignment.phase]
             ? `${providers[assignment.phase]}/${assignment.model}`
             : assignment.model;
           const level = nextThinking[assignment.phase];
+          const profileTag = formatActiveProfile(persisted);
           ctx.ui.notify(
-            `zero models: ${assignment.phase} → ${shown}${level ? ` · thinking ${level}` : ""}`,
+            `zero models: ${assignment.phase} → ${shown}${level ? ` · thinking ${level}` : ""}` +
+              (profileTag ? `  [perfil ${profileTag}]` : ""),
             "info",
           );
           return;
@@ -866,13 +900,16 @@ export default function register(pi?: PiExtensionAPI): void {
           createPickerComponent(initialState, theme, tui, done),
         );
 
+        const activeTag = formatActiveProfile(data);
+        const profileLine = activeTag ? `\n  perfil     ${activeTag}` : "";
+
         if (result.type !== "save") {
           // Esc / quit (or a contained UI failure): write nothing, leaving
           // `zero.json` byte-for-byte unchanged, and report the leave-as-is
           // state — the existing "sin cambios" notification text.
           ctx.ui.notify(
             `zero · modelos SDD (sin cambios):\n${formatPhases(models, providers, thinking)}\n` +
-              `  autotune   ${autotuneMode}`,
+              `  autotune   ${autotuneMode}${profileLine}`,
             "info",
           );
           return;
@@ -896,18 +933,22 @@ export default function register(pi?: PiExtensionAPI): void {
           const merged = { ...data, ...patch };
           if (Object.keys(edits.thinking).length === 0) delete merged.thinking;
           if (edits.pendingApplied) delete merged.autotunePending;
-          writeFileSync(zeroJsonPath(), `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+          // Con un perfil activo, guardar en el picker guarda en ese perfil.
+          const persisted = mirrorToActiveProfile(merged);
+          writeFileSync(zeroJsonPath(), `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
 
           const summary = [
             `zero · modelos SDD guardados:\n${formatPhases(edits.models, edits.providers, edits.thinking)}`,
           ];
           summary.push(`  autotune   ${edits.autotuneMode}`);
+          const savedProfile = formatActiveProfile(persisted);
+          if (savedProfile) summary.push(`  perfil     ${savedProfile}`);
           if (edits.pendingApplied) summary.push("sugerencia aplicada");
           ctx.ui.notify(summary.join("\n"), "info");
         } else {
           ctx.ui.notify(
             `zero · modelos SDD (sin cambios):\n${formatPhases(edits.models, edits.providers, edits.thinking)}\n` +
-              `  autotune   ${edits.autotuneMode}`,
+              `  autotune   ${edits.autotuneMode}${profileLine}`,
             "info",
           );
         }

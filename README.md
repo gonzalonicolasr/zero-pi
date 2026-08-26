@@ -102,6 +102,7 @@ into `/forge` for you.
 | ------- | ------------ |
 | **Strict TDD** | The build phase drives RED → GREEN → TRIANGULATE → REFACTOR with a TDD Cycle Evidence table; veredicto audits it. On by default, runtime-gated on a test runner; `tdd.mode: "off"` disables it. |
 | **`/zero-models`** | Pick the model + provider + thinking level for each of the six SDD phases — a boxed-window picker, or set one directly. Direct assignments are validated against pi's model registry when available. |
+| **Model profiles** | Save whole per-phase setups as named profiles and switch between them — `/zero-models profile new <name>`, `use`, `save`, `list`, `delete`. |
 | **Phase tool gating** | Generated `zero-*` sub-agents get phase-specific tool allowlists: explore/veredicto are read-only, clarify/analyze/plan write only `.sdd` artifacts, build edits code. |
 | **Dependency-aware tasks** | `tasks.md` is validated as a task graph with mandatory `depends:` edges, topological ordering, and review workload totals. |
 | **Autotune** | Learns which model fits each phase from your run history and re-tunes itself; optional `autotuneBudget.maxPhaseCostUsd` suppresses costly step-ups. |
@@ -132,6 +133,7 @@ into `/forge` for you.
 | ------- | ---- |
 | `/forge <feature>` | Run the SDD pipeline — `--continue [slug]` resumes. |
 | `/zero-models [<phase>=[<provider>/]<model> [thinking=<level>]]` | Show or set per-phase models, providers, and thinking — `thinking=<level>` (`off\|minimal\|low\|medium\|high\|xhigh`); `autotune=auto\|ask\|off`. Direct assignments fail fast when pi's registry says the provider/model is unknown or ambiguous. |
+| `/zero-models profile [list\|new <name> [from <other>]\|save [<name>]\|use <name>\|delete <name>]` | Manage named per-phase model profiles. `new` and `use` make the profile active; while a profile is active, every model edit lands in it. |
 | `/zero-doctor` | Run zero-pi preflight diagnostics: package, Node, pi-subagents, generated agents/support modules, model config, `.sdd/config`, run history, git, and `gh`. |
 | `/zero-sync <slug>` | Fold a run's spec delta into the canonical spec store; a first all-`## ADDED` delta creates the store lazily. |
 | `/zero-archive <slug>` | Merge an approved run into `.sdd/specs/`, move it to `.sdd/archive/YYYY-MM-DD-<slug>/`, and persist `archivePath`. |
@@ -309,6 +311,30 @@ the picker's after-model thinking screen, or directly:
 /zero-models build=anthropic/claude-sonnet-4-6 thinking=high
 /zero-models build=anthropic/claude-sonnet-4-6 high      # trailing shorthand
 ```
+
+### Model profiles
+
+A profile is a named bundle of the three per-phase maps (`models`, `providers`,
+`thinking`). Profiles live in `~/.pi/zero.json` under `profiles`, and
+`activeProfile` points at the one in use:
+
+```
+/zero-models profile new barato            # snapshot the current setup, activate it
+/zero-models profile new qa from barato    # clone another profile instead
+/zero-models build=anthropic/claude-sonnet-4-6   # edits land in the active profile
+/zero-models profile use premium           # switch
+/zero-models profile list                  # `*` marks the active one
+```
+
+Activating a profile copies its maps onto the flat `models`/`providers`/
+`thinking` keys, which is what the generated `zero-<phase>.md` agents and
+autotune read — so nothing else in the package needs to know profiles exist.
+Because those agent files are regenerated when pi loads, **restart pi after
+switching profiles**.
+
+Autotune writes the flat keys directly. When that drifts from the active
+profile, the profile shows as `premium*`; `/zero-models profile save` (no name)
+folds the drift back into it.
 
 `.sdd/config.json` carries the per-project git and TDD settings:
 
