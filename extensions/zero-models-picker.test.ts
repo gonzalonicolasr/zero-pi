@@ -13,6 +13,7 @@ import {
   rebuildEntries,
   enter,
   back,
+  pickerTitle,
   submitText,
   type PickerState,
 } from "./zero-models-picker.ts";
@@ -95,15 +96,18 @@ test("createPickerState main screen has the six phase rows in PHASES order", () 
   );
 });
 
-test("createPickerState main screen carries an autotune row and a save row", () => {
+test("createPickerState main screen carries autotune, profiles and save rows", () => {
   const state = makeState();
   const autotune = state.entries.filter((e) => e.kind === "autotune");
+  const profiles = state.entries.filter((e) => e.kind === "profiles");
   const save = state.entries.filter((e) => e.kind === "save");
   assert.equal(autotune.length, 1, "exactly one autotune row");
+  assert.equal(profiles.length, 1, "exactly one profiles row");
   assert.equal(save.length, 1, "exactly one save row");
-  // The save row is last; the autotune row sits just before it.
+  // The save row is last, the profiles row before it, then autotune.
   assert.equal(state.entries[state.entries.length - 1].kind, "save");
-  assert.equal(state.entries[state.entries.length - 2].kind, "autotune");
+  assert.equal(state.entries[state.entries.length - 2].kind, "profiles");
+  assert.equal(state.entries[state.entries.length - 3].kind, "autotune");
 });
 
 test("createPickerState autotune row label reflects the current mode", () => {
@@ -940,4 +944,261 @@ test("decodeKey: printable characters and unknown sequences decode to null", () 
   assert.equal(decodeKey("q"), null);
   assert.equal(decodeKey("\x1b[C"), null); // right arrow — not a picker key
   assert.equal(decodeKey(""), null);
+});
+
+// ---------------------------------------------------------------------------
+// Profiles: the `profiles` / `profile-actions` screens
+// ---------------------------------------------------------------------------
+
+/** Two saved profiles, `premium` active, as read from zero.json. */
+function makeProfiles() {
+  return {
+    premium: {
+      models: { plan: "claude-opus-5", build: "claude-opus-5" },
+      providers: { plan: "anthropic", build: "anthropic" },
+      thinking: { plan: "xhigh" as const, build: "high" as const },
+    },
+    barato: {
+      models: { plan: "gpt-5.6-luna", build: "gpt-5.6-luna" },
+      providers: { plan: "openai-codex", build: "openai-codex" },
+      thinking: { plan: "low" as const, build: "low" as const },
+    },
+  };
+}
+
+/** A picker opened with saved profiles and `premium` active. */
+function withProfiles(): PickerState {
+  return makeState({ profiles: makeProfiles(), activeProfile: "premium" });
+}
+
+/** Move the cursor onto the first row matching `kind`, then enter. */
+function enterRow(state: PickerState, kind: string): PickerState {
+  const index = state.entries.findIndex((e) => e.kind === kind);
+  assert.notEqual(index, -1, `no row of kind ${kind}`);
+  state.cursor = index;
+  const result = enter(state);
+  assert.equal(result.type, "state", `entering ${kind} should not close`);
+  return (result as { type: "state"; state: PickerState }).state;
+}
+
+/** Move the cursor onto the row whose value is `value`, then enter. */
+function enterValue(state: PickerState, value: string): PickerState {
+  const index = state.entries.findIndex((e) => e.value === value);
+  assert.notEqual(index, -1, `no row with value ${value}`);
+  state.cursor = index;
+  const result = enter(state);
+  assert.equal(result.type, "state");
+  return (result as { type: "state"; state: PickerState }).state;
+}
+
+test("the picker works exactly as before when no profiles exist", () => {
+  const state = makeState();
+  assert.deepEqual(state.edits.profiles, {});
+  assert.equal(state.edits.activeProfile, null);
+  assert.equal(state.edits.editingProfile, null);
+  assert.equal(state.edits.profilesChanged, false);
+  // The profiles row is present but says there are none yet.
+  const row = state.entries.find((e) => e.kind === "profiles");
+  assert.match(row!.label, /ninguno todavía/);
+});
+
+test("the profiles row names the active profile", () => {
+  const row = withProfiles().entries.find((e) => e.kind === "profiles");
+  assert.match(row!.label, /premium/);
+});
+
+test("the profiles screen lists every profile plus a create row", () => {
+  const screen = enterRow(withProfiles(), "profiles");
+  assert.equal(screen.screen, "profiles");
+  const names = screen.entries.filter((e) => e.kind === "profile").map((e) => e.value);
+  assert.deepEqual(names, ["barato", "premium"], "sorted");
+  assert.equal(screen.entries[screen.entries.length - 1].kind, "new-profile");
+});
+
+test("the active profile is marked in the listing", () => {
+  const screen = enterRow(withProfiles(), "profiles");
+  const active = screen.entries.find((e) => e.value === "premium");
+  assert.match(active!.label, /activo/);
+});
+
+test("opening a profile shows edit / activate / duplicate / delete", () => {
+  const actions = enterValue(enterRow(withProfiles(), "profiles"), "barato");
+  assert.equal(actions.screen, "profile-actions");
+  assert.deepEqual(actions.entries.map((e) => e.kind), [
+    "profile-edit",
+    "profile-use",
+    "profile-duplicate",
+    "profile-delete",
+  ]);
+});
+
+test("the active profile is not offered an activate row", () => {
+  const actions = enterValue(enterRow(withProfiles(), "profiles"), "premium");
+  assert.equal(actions.entries.some((e) => e.kind === "profile-use"), false);
+});
+
+test("editing a profile loads its models into the phase screen without activating it", () => {
+  const actions = enterValue(enterRow(withProfiles(), "profiles"), "barato");
+  const editing = enterRow(actions, "profile-edit");
+  assert.equal(editing.screen, "main", "lands on the usual phase screen");
+  assert.equal(editing.edits.editingProfile, "barato");
+  assert.equal(editing.edits.activeProfile, "premium", "still active");
+  assert.equal(editing.edits.models.plan, "gpt-5.6-luna");
+  assert.equal(editing.edits.thinking.plan, "low");
+});
+
+test("the title says which profile is being edited and whether it is active", () => {
+  const state = withProfiles();
+  assert.match(pickerTitle(state), /«premium»/);
+  const editing = enterRow(
+    enterValue(enterRow(state, "profiles"), "barato"),
+    "profile-edit",
+  );
+  assert.match(pickerTitle(editing), /«barato».*no activo/);
+});
+
+test("a phase edit lands in the profile being edited, not the active one", () => {
+  let state = enterRow(
+    enterValue(enterRow(withProfiles(), "profiles"), "barato"),
+    "profile-edit",
+  );
+  // Drill: phase → (no registry, so straight to model) → thinking level.
+  state = enterValue(state, "plan");
+  state = enterValue(state, "claude-opus-4-7");
+  state = enterValue(state, "xhigh");
+
+  const result = enter({ ...state, cursor: state.entries.findIndex((e) => e.kind === "save") });
+  assert.equal(result.type, "save");
+  const edits = (result as { type: "save"; state: PickerState }).state.edits;
+  assert.equal(edits.profiles.barato.models.plan, "claude-opus-4-7", "edited profile changed");
+  assert.equal(edits.profiles.premium.models.plan, "claude-opus-5", "active untouched");
+});
+
+test("activating a profile switches the live maps and flags the change", () => {
+  const activated = enterRow(
+    enterValue(enterRow(withProfiles(), "profiles"), "barato"),
+    "profile-use",
+  );
+  assert.equal(activated.edits.activeProfile, "barato");
+  assert.equal(activated.edits.editingProfile, null);
+  assert.equal(activated.edits.profilesChanged, true);
+  assert.equal(activated.edits.models.plan, "gpt-5.6-luna");
+  assert.equal(activated.screen, "profiles", "stays in the listing");
+  assert.match(activated.notice!, /barato/);
+});
+
+test("creating a profile prompts for a name, then opens it for editing", () => {
+  const prompted = enterRow(enterRow(withProfiles(), "profiles"), "new-profile");
+  assert.equal(prompted.textPrompt?.for, "new-profile");
+
+  const created = submitText(prompted, "qa");
+  assert.equal(created.screen, "main", "goes straight to picking models");
+  assert.equal(created.edits.editingProfile, "qa");
+  assert.equal(created.edits.activeProfile, "premium", "creating does not activate");
+  assert.equal(created.edits.profilesChanged, true);
+  assert.ok("qa" in created.edits.profiles);
+});
+
+test("a new profile starts from what was on screen", () => {
+  const state = withProfiles();
+  // The live maps are the fixture's, deliberately not equal to `premium` —
+  // which is the shape autotune leaves behind. What is on screen is what the
+  // new profile must capture.
+  assert.equal(state.edits.models.plan, "claude-opus-4-7");
+
+  const created = submitText(enterRow(enterRow(state, "profiles"), "new-profile"), "qa");
+  assert.equal(created.edits.profiles.qa.models.plan, "claude-opus-4-7");
+  // And capturing it must not have rewritten the active profile.
+  assert.equal(created.edits.profiles.premium.models.plan, "claude-opus-5");
+});
+
+test("profile names are lowercased and validated, never silently overwriting", () => {
+  const prompted = enterRow(enterRow(withProfiles(), "profiles"), "new-profile");
+
+  const upper = submitText({ ...prompted }, "QA");
+  assert.ok("qa" in upper.edits.profiles, "uppercase is folded down");
+
+  const dupe = submitText({ ...prompted }, "premium");
+  assert.match(dupe.notice!, /ya existe/);
+  assert.equal(dupe.edits.profiles.premium.models.plan, "claude-opus-5", "untouched");
+
+  const bad = submitText({ ...prompted }, "dos palabras");
+  assert.match(bad.notice!, /inválido/);
+  assert.equal("dos palabras" in bad.edits.profiles, false);
+});
+
+test("an empty name aborts profile creation", () => {
+  const prompted = enterRow(enterRow(withProfiles(), "profiles"), "new-profile");
+  const aborted = submitText(prompted, "   ");
+  assert.equal(aborted.textPrompt, null);
+  assert.deepEqual(Object.keys(aborted.edits.profiles).sort(), ["barato", "premium"]);
+});
+
+test("duplicating clones the chosen profile under a new name", () => {
+  const prompted = enterRow(
+    enterValue(enterRow(withProfiles(), "profiles"), "barato"),
+    "profile-duplicate",
+  );
+  assert.equal(prompted.textPrompt?.for, "duplicate-profile");
+
+  const done = submitText(prompted, "barato2");
+  assert.equal(done.screen, "profiles");
+  assert.equal(done.edits.profiles.barato2.models.plan, "gpt-5.6-luna", "clone of barato");
+  assert.equal(done.edits.editingProfile, null, "duplicating does not open it");
+  assert.equal(done.edits.activeProfile, "premium");
+});
+
+test("deleting a profile removes it and never touches the models in use", () => {
+  const deleted = enterRow(
+    enterValue(enterRow(withProfiles(), "profiles"), "barato"),
+    "profile-delete",
+  );
+  assert.deepEqual(Object.keys(deleted.edits.profiles), ["premium"]);
+  assert.equal(deleted.edits.activeProfile, "premium");
+  assert.equal(deleted.edits.models.plan, "claude-opus-4-7", "live maps untouched");
+  assert.equal(deleted.screen, "profiles");
+});
+
+test("deleting the active profile leaves the run with no active profile", () => {
+  const deleted = enterRow(
+    enterValue(enterRow(withProfiles(), "profiles"), "premium"),
+    "profile-delete",
+  );
+  assert.equal(deleted.edits.activeProfile, null);
+  assert.deepEqual(Object.keys(deleted.edits.profiles), ["barato"]);
+});
+
+test("esc from the actions screen goes back to the listing, not to main", () => {
+  const actions = enterValue(enterRow(withProfiles(), "profiles"), "barato");
+  const result = back(actions);
+  assert.equal(result.type, "state");
+  const state = (result as { type: "state"; state: PickerState }).state;
+  assert.equal(state.screen, "profiles");
+  assert.equal(state.drillProfile, null);
+});
+
+test("esc from the listing returns to the phase screen", () => {
+  const listing = enterRow(withProfiles(), "profiles");
+  const result = back(listing);
+  assert.equal(result.type, "state");
+  assert.equal((result as { type: "state"; state: PickerState }).state.screen, "main");
+});
+
+test("saving stages the profile map so the caller can persist it", () => {
+  const state = enterRow(
+    enterValue(enterRow(withProfiles(), "profiles"), "barato"),
+    "profile-use",
+  );
+  const result = enter({ ...state, screen: "main", entries: rebuildEntries({ ...state, screen: "main" }).entries, cursor: rebuildEntries({ ...state, screen: "main" }).entries.findIndex((e) => e.kind === "save") });
+  assert.equal(result.type, "save");
+  const edits = (result as { type: "save"; state: PickerState }).state.edits;
+  assert.equal(edits.activeProfile, "barato");
+  assert.deepEqual(Object.keys(edits.profiles).sort(), ["barato", "premium"]);
+});
+
+test("the staged profile map never aliases the caller's objects", () => {
+  const original = makeProfiles();
+  const state = makeState({ profiles: original, activeProfile: "premium" });
+  state.edits.profiles.premium.models.plan = "mutado";
+  assert.equal(original.premium.models.plan, "claude-opus-5", "caller object intact");
 });

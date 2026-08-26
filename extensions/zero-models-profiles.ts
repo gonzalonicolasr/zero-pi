@@ -18,8 +18,13 @@
 // Este módulo es puro: recibe y devuelve objetos, nunca toca el filesystem.
 // Todo el I/O vive en `zero-models.ts`.
 
-import { PHASES, type Phase } from "./zero-models.ts";
-import type { PhaseModels, PhaseProviders, PhaseThinking } from "./zero-models.ts";
+import type { Phase, PhaseModels, PhaseProviders, PhaseThinking } from "./zero-models.ts";
+
+/** Las fases SDD, en orden de pipeline — re-declaradas acá para que este
+ *  módulo no tenga imports de valor (sólo de tipo) y el picker pueda usarlo sin
+ *  arrastrar `node:fs`. Debe seguir en lockstep con `PHASES` en
+ *  `zero-models.ts`, igual que la copia de `zero-models-picker.ts`. */
+const PHASES = ["clarify", "explore", "plan", "analyze", "build", "veredicto"] as const;
 
 /** Los tres mapas por fase que componen un perfil. Parciales a propósito: una
  *  fase ausente hereda el default del paquete, igual que hoy. */

@@ -102,7 +102,7 @@ into `/forge` for you.
 | ------- | ------------ |
 | **Strict TDD** | The build phase drives RED → GREEN → TRIANGULATE → REFACTOR with a TDD Cycle Evidence table; veredicto audits it. On by default, runtime-gated on a test runner; `tdd.mode: "off"` disables it. |
 | **`/zero-models`** | Pick the model + provider + thinking level for each of the six SDD phases — a boxed-window picker, or set one directly. Direct assignments are validated against pi's model registry when available. |
-| **Model profiles** | Save whole per-phase setups as named profiles and switch between them — `/zero-models profile new <name>`, `use`, `save`, `list`, `delete`. |
+| **Model profiles** | Save whole per-phase setups as named profiles and switch between them — from the picker's `perfiles` row (create, edit, activate, duplicate, delete) or via `/zero-models profile …`. Editing a profile does not activate it. |
 | **Phase tool gating** | Generated `zero-*` sub-agents get phase-specific tool allowlists: explore/veredicto are read-only, clarify/analyze/plan write only `.sdd` artifacts, build edits code. |
 | **Dependency-aware tasks** | `tasks.md` is validated as a task graph with mandatory `depends:` edges, topological ordering, and review workload totals. |
 | **Autotune** | Learns which model fits each phase from your run history and re-tunes itself; optional `autotuneBudget.maxPhaseCostUsd` suppresses costly step-ups. |
@@ -317,6 +317,15 @@ the picker's after-model thinking screen, or directly:
 A profile is a named bundle of the three per-phase maps (`models`, `providers`,
 `thinking`). Profiles live in `~/.pi/zero.json` under `profiles`, and
 `activeProfile` points at the one in use:
+
+From the TUI — run `/zero-models` with no arguments and pick the `perfiles`
+row. That screen lists every profile (the active one marked) plus
+`— nuevo perfil —`; opening one offers **edit models per phase**, **activate**,
+**duplicate** and **delete**. Editing drops you on the usual phase screen, so a
+profile is configured exactly like the live setup — and editing a profile does
+**not** activate it. Nothing is written until `— guardar y salir —`.
+
+Or from the command line:
 
 ```
 /zero-models profile new barato            # snapshot the current setup, activate it

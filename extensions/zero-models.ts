@@ -46,6 +46,8 @@ import {
   mirrorToActiveProfile,
   parseProfileCommand,
   PROFILE_USAGE,
+  readActiveProfile,
+  readProfiles,
 } from "./zero-models-profiles.ts";
 import type { AutotunePending } from "./autotune-extension.ts";
 import {
@@ -54,6 +56,7 @@ import {
   decodeKey,
   enter,
   navigate,
+  pickerTitle,
   submitText,
   type EnterResult,
   type PickerState,
@@ -645,8 +648,13 @@ function createPickerComponent(
   function render(width: number): string[] {
     const rows: BoxRow[] = [];
 
-    rows.push({ text: PICKER_TITLE });
+    rows.push({ text: pickerTitle(state) });
     rows.push({ text: "" });
+
+    if (state.notice) {
+      rows.push({ text: state.notice, color: "accent" });
+      rows.push({ text: "" });
+    }
 
     if (state.textPrompt) {
       // Inline text-entry mode: show the prompt label and the typed buffer.
@@ -884,6 +892,8 @@ export default function register(pi?: PiExtensionAPI): void {
         const pending = readAutotunePending(data);
 
         const initialState = createPickerState({
+          profiles: readProfiles(data),
+          activeProfile: readActiveProfile(data),
           models,
           providers,
           thinking,
@@ -917,7 +927,7 @@ export default function register(pi?: PiExtensionAPI): void {
 
         // Save: pull the accumulated edits off the final picker state.
         const edits = result.state.edits;
-        if (edits.changed || edits.autotuneChanged) {
+        if (edits.changed || edits.autotuneChanged || edits.profilesChanged) {
           // Build the patch, preserving every other key via the spread. When
           // the pending suggestion was applied, clear the `autotunePending` key.
           const patch: Record<string, unknown> = {
@@ -929,12 +939,39 @@ export default function register(pi?: PiExtensionAPI): void {
           // store stays byte-minimal and backward-compatible.
           if (Object.keys(edits.thinking).length > 0) patch.thinking = edits.thinking;
           if (edits.autotuneChanged) patch.autotune = edits.autotuneMode;
+          // Los perfiles staged viajan enteros: crear, borrar, duplicar y
+          // activar ya se resolvieron dentro del picker.
+          if (Object.keys(edits.profiles).length > 0) patch.profiles = edits.profiles;
 
           const merged = { ...data, ...patch };
           if (Object.keys(edits.thinking).length === 0) delete merged.thinking;
+          if (Object.keys(edits.profiles).length === 0) delete merged.profiles;
+          if (edits.activeProfile !== null) merged.activeProfile = edits.activeProfile;
+          else delete merged.activeProfile;
           if (edits.pendingApplied) delete merged.autotunePending;
-          // Con un perfil activo, guardar en el picker guarda en ese perfil.
-          const persisted = mirrorToActiveProfile(merged);
+          // Editar un perfil que no es el activo no debe tocar la config viva:
+          // en ese caso los mapas planos son de ese perfil, no del activo, y
+          // ya viajaron dentro de `profiles`.
+          const editingOther =
+            edits.editingProfile !== null && edits.editingProfile !== edits.activeProfile;
+          if (editingOther) {
+            const live = edits.activeProfile !== null
+              ? edits.profiles[edits.activeProfile]
+              : undefined;
+            if (live) {
+              merged.models = { ...live.models };
+              merged.providers = { ...live.providers };
+              if (Object.keys(live.thinking).length > 0) merged.thinking = { ...live.thinking };
+              else delete merged.thinking;
+            } else {
+              // Sin perfil activo, la config viva es la que había en disco.
+              merged.models = data.models;
+              merged.providers = data.providers;
+              if (data.thinking !== undefined) merged.thinking = data.thinking;
+              else delete merged.thinking;
+            }
+          }
+          const persisted = editingOther ? merged : mirrorToActiveProfile(merged);
           writeFileSync(zeroJsonPath(), `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
 
           const summary = [
