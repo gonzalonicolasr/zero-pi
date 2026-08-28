@@ -8,9 +8,13 @@ import assert from "node:assert/strict";
 import {
   formatAutotune,
   formatPhases,
+  frameBox,
+  frameTwoBoxes,
   groupByProvider,
   isPhase,
   isThinkingLevel,
+  MIN_BOX_WIDTH,
+  MIN_SPLIT_WIDTH,
   parseAssignment,
   parseAutotuneArg,
   parseThinkingToken,
@@ -20,6 +24,7 @@ import {
   readThinking,
   THINKING_LEVELS,
   validateAssignment,
+  type BoxRow,
   type PhaseModels,
   type PhaseProviders,
   type PhaseThinking,
@@ -410,3 +415,63 @@ test("formatAutotune returns a distinct non-empty label for each mode", () => {
   }
   assert.equal(new Set([auto, ask, off]).size, 3, "the three labels are distinct");
 });
+
+// ---------------------------------------------------------------------------
+// Box and Split-view Frame Rendering
+// ---------------------------------------------------------------------------
+
+const dummyTheme = {
+  fg: (_color: string, text: string) => text,
+};
+
+test("frameBox renders 4-sided Unicode box matching exact width", () => {
+  const rows: BoxRow[] = [
+    { text: "Title" },
+    { text: "Option A" },
+    { text: "Option B" },
+  ];
+  const width = 40;
+  const lines = frameBox(rows, width, dummyTheme);
+  assert.equal(lines.length, 5, "top + 3 rows + bottom = 5 lines");
+  for (const line of lines) {
+    assert.equal(line.length, width, `each line matches width ${width}`);
+  }
+  assert.ok(lines[0].startsWith("┌") && lines[0].endsWith("┐"));
+  assert.ok(lines[4].startsWith("└") && lines[4].endsWith("┘"));
+});
+
+test("frameTwoBoxes renders two side-by-side boxes matching total width", () => {
+  const leftRows: BoxRow[] = [
+    { text: "Left Title" },
+    { text: "Item 1" },
+    { text: "Item 2" },
+  ];
+  const rightRows: BoxRow[] = [
+    { text: "Right Preview" },
+    { text: "Step clarify" },
+    { text: "Step build" },
+    { text: "Step veredicto" },
+  ];
+  const totalWidth = 100;
+  const lines = frameTwoBoxes(leftRows, rightRows, totalWidth, dummyTheme);
+  assert.ok(lines.length >= 6);
+  for (const line of lines) {
+    assert.equal(line.length, totalWidth, `each combined line matches totalWidth ${totalWidth}`);
+  }
+  // Check that left and right borders are present
+  assert.ok(lines[0].includes("┌") && lines[0].includes("┐"));
+  assert.ok(lines[lines.length - 1].includes("└") && lines[lines.length - 1].includes("┘"));
+});
+
+test("frameTwoBoxes falls back to single frameBox when width is below MIN_SPLIT_WIDTH", () => {
+  const leftRows: BoxRow[] = [{ text: "Left Only" }];
+  const rightRows: BoxRow[] = [{ text: "Right Preview" }];
+  const narrowWidth = 50;
+  const lines = frameTwoBoxes(leftRows, rightRows, narrowWidth, dummyTheme);
+  for (const line of lines) {
+    assert.equal(line.length, narrowWidth);
+  }
+  assert.ok(lines[1].includes("Left Only"));
+  assert.ok(!lines[1].includes("Right Preview"));
+});
+

@@ -13,6 +13,8 @@ import {
   rebuildEntries,
   enter,
   back,
+  buildPreviewRows,
+  getPreviewTarget,
   pickerTitle,
   submitText,
   type PickerState,
@@ -1261,3 +1263,121 @@ test("the staged profile map never aliases the caller's objects", () => {
   state.edits.profiles.premium.models.plan = "mutado";
   assert.equal(original.premium.models.plan, "claude-opus-5", "caller object intact");
 });
+
+// ---------------------------------------------------------------------------
+// Preview pane tests (side-by-side inspection)
+// ---------------------------------------------------------------------------
+
+test("getPreviewTarget on main screen previews the hovered profile", () => {
+  const state = withProfiles();
+  cursorToValue(state, "profile", "barato");
+  const target = getPreviewTarget(state);
+  assert.ok(target !== null);
+  assert.equal(target.name, "barato");
+  assert.equal(target.isActive, false);
+  assert.equal(target.models.plan, "gpt-5.6-luna");
+});
+
+test("getPreviewTarget on main screen marks the active profile as active", () => {
+  const state = withProfiles();
+  cursorToValue(state, "profile", "premium");
+  const target = getPreviewTarget(state);
+  assert.ok(target !== null);
+  assert.equal(target.name, "premium");
+  assert.equal(target.isActive, true);
+  assert.equal(target.models.plan, "claude-opus-5");
+});
+
+test("getPreviewTarget when cursor is on save or autotune falls back to active profile", () => {
+  const state = withProfiles();
+  cursorTo(state, "save");
+  const target = getPreviewTarget(state);
+  assert.ok(target !== null);
+  assert.equal(target.name, "premium");
+  assert.equal(target.isActive, true);
+});
+
+test("getPreviewTarget on profile-actions screen previews the drilled profile", () => {
+  const state = enterValue(withProfiles(), "barato");
+  assert.equal(state.screen, "profile-actions");
+  const target = getPreviewTarget(state);
+  assert.ok(target !== null);
+  assert.equal(target.name, "barato");
+  assert.equal(target.isActive, false);
+});
+
+test("getPreviewTarget on phases and drill screens returns null", () => {
+  const state = enterRow(enterValue(withProfiles(), "barato"), "profile-edit");
+  assert.equal(state.screen, "phases");
+  assert.equal(getPreviewTarget(state), null);
+
+  const drilled = enterValue(state, "plan");
+  assert.ok(drilled.screen === "provider" || drilled.screen === "model");
+  assert.equal(getPreviewTarget(drilled), null);
+});
+
+test("getPreviewTarget with no profiles returns loose models preview", () => {
+  const state = makeMenu({ profiles: {}, activeProfile: null });
+  const target = getPreviewTarget(state);
+  assert.ok(target !== null);
+  assert.equal(target.name, "sin perfil");
+  assert.equal(target.isActive, false);
+});
+
+test("buildPreviewRows formats all 6 phases with models, providers and thinking", () => {
+  const rows = buildPreviewRows({
+    name: "test-profile",
+    models: {
+      clarify: "gpt-5.6-luna",
+      explore: "gpt-5.6-terra",
+      plan: "claude-opus-5",
+      analyze: "claude-sonnet-5",
+      build: "claude-opus-5",
+      veredicto: "claude-opus-5",
+    },
+    providers: {
+      clarify: "cliproxy",
+      explore: "cliproxy",
+      plan: "cliproxy",
+      analyze: "cliproxy",
+      build: "cliproxy",
+      veredicto: "cliproxy",
+    },
+    thinking: {
+      clarify: "medium",
+      explore: "high",
+      plan: "xhigh",
+      analyze: "high",
+      build: "high",
+      veredicto: "xhigh",
+    },
+    isActive: true,
+  });
+
+  assert.equal(rows[0].text, "vista previa · test-profile (activo)");
+  assert.equal(rows[1].text, "");
+  assert.match(rows[2].text, /clarify\s+→ cliproxy\/gpt-5\.6-luna · medium/);
+  assert.match(rows[3].text, /explore\s+→ cliproxy\/gpt-5\.6-terra · high/);
+  assert.match(rows[4].text, /plan\s+→ cliproxy\/claude-opus-5 · xhigh/);
+  assert.match(rows[5].text, /analyze\s+→ cliproxy\/claude-sonnet-5 · high/);
+  assert.match(rows[6].text, /build\s+→ cliproxy\/claude-opus-5 · high/);
+  assert.match(rows[7].text, /veredicto\s+→ cliproxy\/claude-opus-5 · xhigh/);
+  assert.equal(rows[8].text, "");
+  assert.equal(rows[9].text, "proveedores: cliproxy");
+});
+
+test("buildPreviewRows uses default models when a phase model is missing", () => {
+  const rows = buildPreviewRows({
+    name: "parcial",
+    models: { build: "my-custom-build" },
+    providers: {},
+    thinking: {},
+    isActive: false,
+  });
+
+  assert.equal(rows[0].text, "vista previa · parcial");
+  assert.match(rows[2].text, /clarify\s+→ claude-haiku-4-5 · medium/);
+  assert.match(rows[6].text, /build\s+→ my-custom-build · high/);
+  assert.match(rows[7].text, /veredicto\s+→ claude-opus-4-8 · xhigh/);
+});
+

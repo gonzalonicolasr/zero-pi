@@ -52,9 +52,11 @@ import {
 import type { AutotunePending } from "./autotune-extension.ts";
 import {
   back,
+  buildPreviewRows,
   createPickerState,
   decodeKey,
   enter,
+  getPreviewTarget,
   navigate,
   pickerTitle,
   submitText,
@@ -560,14 +562,16 @@ const BOX = {
 /** The theme color used for the picker's box frame. */
 const FRAME_COLOR = "accent";
 /** Below this `width` a real frame cannot be drawn — render unframed instead. */
-const MIN_BOX_WIDTH = 10;
+export const MIN_BOX_WIDTH = 10;
+/** Minimum width to render the side-by-side preview panel next to the menu. */
+export const MIN_SPLIT_WIDTH = 76;
 
 /**
  * One content row of the boxed panel, given as *plain* text plus an optional
  * theme color. {@link frameBox} measures the plain `text`, then sizes and
  * colorizes it — so an ANSI escape is never fed to `clampLine`/`padEnd`.
  */
-interface BoxRow {
+export interface BoxRow {
   text: string;
   color?: string;
 }
@@ -582,7 +586,7 @@ interface BoxRow {
  * themed separately. When `width` is too small to frame, the plain rows are
  * returned unframed (defensive — never produce garbage).
  */
-function frameBox(rows: readonly BoxRow[], width: number, theme: PiTheme): string[] {
+export function frameBox(rows: readonly BoxRow[], width: number, theme: PiTheme): string[] {
   if (width < MIN_BOX_WIDTH) {
     return rows.map((row) => clampLine(row.text, Math.max(0, width)));
   }
@@ -600,6 +604,51 @@ function frameBox(rows: readonly BoxRow[], width: number, theme: PiTheme): strin
     return `${side} ${content} ${side}`;
   });
   return [top, ...body, bottom];
+}
+
+/**
+ * Render two boxed panels side-by-side with equal row heights.
+ *
+ * Left panel holds the menu navigation; right panel holds the live profile preview.
+ * Both panels are rendered via {@link frameBox} to guarantee consistent border styling.
+ */
+export function frameTwoBoxes(
+  leftRows: readonly BoxRow[],
+  rightRows: readonly BoxRow[],
+  width: number,
+  theme: PiTheme,
+): string[] {
+  const GAP = "  "; // 2 spaces between panels
+  const leftWidth = Math.min(52, Math.max(36, Math.floor((width - GAP.length) * 0.44)));
+  const rightWidth = width - leftWidth - GAP.length;
+
+  if (leftWidth < MIN_BOX_WIDTH || rightWidth < MIN_BOX_WIDTH) {
+    return frameBox(leftRows, width, theme);
+  }
+
+  // Equalize content row count so top and bottom frames align perfectly
+  const maxRows = Math.max(leftRows.length, rightRows.length);
+  const paddedLeft: BoxRow[] = [...leftRows];
+  while (paddedLeft.length < maxRows) {
+    paddedLeft.push({ text: "" });
+  }
+
+  const paddedRight: BoxRow[] = [...rightRows];
+  while (paddedRight.length < maxRows) {
+    paddedRight.push({ text: "" });
+  }
+
+  const leftLines = frameBox(paddedLeft, leftWidth, theme);
+  const rightLines = frameBox(paddedRight, rightWidth, theme);
+
+  const out: string[] = [];
+  const linesCount = Math.max(leftLines.length, rightLines.length);
+  for (let i = 0; i < linesCount; i++) {
+    const left = leftLines[i] ?? "".padEnd(leftWidth, " ");
+    const right = rightLines[i] ?? "".padEnd(rightWidth, " ");
+    out.push(`${left}${GAP}${right}`);
+  }
+  return out;
 }
 
 /**
@@ -675,6 +724,13 @@ function createPickerComponent(
 
     rows.push({ text: "" });
     rows.push({ text: PICKER_HELP, color: "dim" });
+
+    const preview = getPreviewTarget(state);
+    if (preview && width >= MIN_SPLIT_WIDTH) {
+      const rightRows = buildPreviewRows(preview);
+      return frameTwoBoxes(rows, rightRows, width, theme);
+    }
+
     return frameBox(rows, width, theme);
   }
 

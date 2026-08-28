@@ -22,6 +22,26 @@ import { isValidProfileName, type Profile } from "./zero-models-profiles.ts";
  *  `zero-models.ts` (the `clarify` gate leads, `analyze` sits after `plan`). */
 const PHASES = ["clarify", "explore", "plan", "analyze", "build", "veredicto"] as const;
 
+/** Fallback models when a profile phase is unset. */
+const DEFAULT_MODELS: Record<Phase, string> = {
+  clarify: "claude-haiku-4-5",
+  explore: "claude-haiku-4-5",
+  plan: "claude-opus-4-8",
+  analyze: "claude-opus-4-8",
+  build: "claude-sonnet-4-6",
+  veredicto: "claude-opus-4-8",
+};
+
+/** Fallback thinking level when a profile phase is unset. */
+const DEFAULT_THINKING: Record<Phase, ThinkingLevel> = {
+  clarify: "medium",
+  explore: "high",
+  plan: "high",
+  analyze: "high",
+  build: "high",
+  veredicto: "xhigh",
+};
+
 /** The three autotune modes offered on the autotune screen. */
 const AUTOTUNE_MODES = ["auto", "ask", "off"] as const;
 
@@ -944,3 +964,146 @@ export function submitText(state: PickerState, typed: string): PickerState {
   state.textPrompt = null;
   return rebuildEntries(state);
 }
+
+// ---------------------------------------------------------------------------
+// Preview pane — side-by-side live profile inspection
+// ---------------------------------------------------------------------------
+
+/** Target profile data extracted for the side-by-side preview panel. */
+export interface PreviewTarget {
+  name: string;
+  models: Partial<Record<Phase, string>>;
+  providers: Partial<Record<Phase, string>>;
+  thinking: PhaseThinking;
+  isActive: boolean;
+}
+
+/** One content row of the preview box. */
+export interface PreviewRow {
+  text: string;
+  color?: "accent" | "dim" | "muted";
+}
+
+/**
+ * Deduce el perfil que se debe mostrar en la vista previa lateral.
+ *
+ * En la pantalla principal (`main`):
+ * - Si el cursor está sobre un perfil ('profile'), previsualiza ESE perfil.
+ * - Si el cursor está sobre otra opción (nuevo perfil, autotune, guardar),
+ *   previsualiza el perfil activo actual (si existe), o el primer perfil disponible.
+ * - Si no hay perfiles creados, previsualiza la configuración de modelos suelta.
+ *
+ * En la pantalla de acciones de perfil (`profile-actions`):
+ * - Previsualiza el perfil seleccionado (`state.drillProfile`).
+ *
+ * En cualquier otra pantalla, devuelve `null` (la vista previa no se muestra).
+ */
+export function getPreviewTarget(state: PickerState): PreviewTarget | null {
+  if (state.screen === "profile-actions" && state.drillProfile) {
+    const profile = state.edits.profiles[state.drillProfile];
+    if (profile) {
+      return {
+        name: state.drillProfile,
+        models: profile.models,
+        providers: profile.providers,
+        thinking: profile.thinking,
+        isActive: state.drillProfile === state.edits.activeProfile,
+      };
+    }
+  }
+
+  if (state.screen === "main") {
+    const entry = state.entries[state.cursor];
+    if (entry && entry.kind === "profile") {
+      const profile = state.edits.profiles[entry.value];
+      if (profile) {
+        return {
+          name: entry.value,
+          models: profile.models,
+          providers: profile.providers,
+          thinking: profile.thinking,
+          isActive: entry.value === state.edits.activeProfile,
+        };
+      }
+    }
+
+    // Si el cursor no está sobre un perfil concreto, mostrar el perfil activo si existe:
+    if (state.edits.activeProfile && state.edits.profiles[state.edits.activeProfile]) {
+      const profile = state.edits.profiles[state.edits.activeProfile];
+      return {
+        name: state.edits.activeProfile,
+        models: profile.models,
+        providers: profile.providers,
+        thinking: profile.thinking,
+        isActive: true,
+      };
+    }
+
+    // Si no hay perfil activo pero hay perfiles creados:
+    const profileNames = Object.keys(state.edits.profiles);
+    if (profileNames.length > 0) {
+      const first = profileNames.sort()[0];
+      const profile = state.edits.profiles[first];
+      if (profile) {
+        return {
+          name: first,
+          models: profile.models,
+          providers: profile.providers,
+          thinking: profile.thinking,
+          isActive: false,
+        };
+      }
+    }
+
+    // Si no hay perfiles en absoluto:
+    return {
+      name: "sin perfil",
+      models: state.edits.models,
+      providers: state.edits.providers,
+      thinking: state.edits.thinking,
+      isActive: false,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Construye las filas de contenido para la ventanita lateral de vista previa.
+ *
+ * Muestra el nombre del perfil, las 6 fases alineadas con su modelo, proveedor
+ * y nivel de thinking, y un resumen de proveedores al pie.
+ */
+export function buildPreviewRows(target: PreviewTarget): PreviewRow[] {
+  const rows: PreviewRow[] = [];
+  const statusSuffix = target.isActive ? " (activo)" : "";
+  rows.push({ text: `vista previa · ${target.name}${statusSuffix}` });
+  rows.push({ text: "" });
+
+  for (const phase of PHASES) {
+    const rawModel = target.models[phase];
+    const model = rawModel && rawModel.trim() !== "" ? rawModel.trim() : DEFAULT_MODELS[phase];
+    const provider = target.providers[phase]?.trim();
+    const thinking = target.thinking[phase] ?? DEFAULT_THINKING[phase];
+    const modelWithProvider = provider ? `${provider}/${model}` : model;
+    const thinkingPart = thinking ? ` · ${thinking}` : "";
+    const phasePadded = phase.padEnd(9, " ");
+
+    rows.push({
+      text: `${phasePadded} → ${modelWithProvider}${thinkingPart}`,
+    });
+  }
+
+  rows.push({ text: "" });
+  const providers = new Set<string>();
+  for (const phase of PHASES) {
+    const p = target.providers[phase]?.trim();
+    if (p) providers.add(p);
+  }
+  const provSummary =
+    providers.size > 0 ? [...providers].sort().join(", ") : "por defecto";
+  rows.push({ text: `proveedores: ${provSummary}`, color: "dim" });
+
+  return rows;
+}
+
