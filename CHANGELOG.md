@@ -7,6 +7,8 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.78] - 2026-09-08
+
 ### Added — contador de rondas durable (`/zero-rounds`)
 
 - Nuevo comando **`/zero-rounds [status|record <verdicto>|reset] [<slug>] [--cap N] [--json]`**: lleva las rondas build/veredicto en `.sdd/<slug>/rounds.json` y devuelve el estado de ruteo `proceed` / `cap-reached` / `done`. El cap sale de `.sdd/config.json` (`rounds.cap`, default 3) la primera vez que el run registra una ronda y queda fijo para ese run.
