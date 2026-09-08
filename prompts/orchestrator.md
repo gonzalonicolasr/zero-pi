@@ -41,6 +41,26 @@ back through `analyze` before build begins; it does not consume a round.
 The orchestrator code controls phase order and the round count. The cap is not
 optional and the model does not get to extend it.
 
+**The round count is durable — it does not live in your head.** After every
+veredicto, record the round with `/zero-rounds record <verdicto> <slug>` when
+the command is available. It appends the round to `.sdd/<slug>/rounds.json` and
+returns the routing state:
+
+- `proceed` — rounds left; continue the loop as the verdict dictates.
+- `cap-reached` — the cap is spent with no `pasa`; STOP and report the run as
+  **no verificado**.
+- `done` — the last verdict was `pasa`; the run is settled.
+
+Route on that returned state, never on a count you carried yourself, and never
+edit `rounds.json` by hand. The round number you print in the build/veredicto
+phase-start line is the ledger's. The cap comes from `.sdd/config.json`
+(`rounds.cap`, default 3) the first time a run records a round and stays fixed
+for that run; `/zero-rounds status <slug>` reads it back without writing. Gate
+loops (`clarify`, `/zero-validate`, `analyze`, and a `## Phase result gate`
+re-run) are never recorded — only build/veredicto rounds are. If the command is
+unavailable, count the rounds in the run as before and say so in the final
+summary.
+
 ## Resuming a run
 
 `/forge --continue` resumes an interrupted run instead of starting fresh. Resume
@@ -107,10 +127,13 @@ treated the same as any other truncated artifact — rebuilt, never trusted.
 **Pipeline guarantees on resume.** Resume enters the same loop at a later
 phase — every existing guarantee still holds: phase order proceeds forward from
 the resume phase with no downstream phase skipped; the build/veredicto iteration
-cap still bounds the resumed segment (the spent round count is not recoverable,
-so a resumed `building`/`built` run starts its counter at 1); the veredicto gate
-still stands — `pasa` is reported only on a `pasa` verdict, and the `done`
-short-circuit is the sole exception because it required positive proof of a
+cap still bounds the resumed segment — recover the rounds already spent with
+`/zero-rounds status <slug>` and continue counting from there, so an
+interrupted run cannot quietly buy itself a fresh cap; a run with no ledger
+(started before the ledger existed, or with the command unavailable) falls back
+to starting its counter at 1, and you say so in the resume announcement; the
+veredicto gate still stands — `pasa` is reported only on a `pasa` verdict, and
+the `done` short-circuit is the sole exception because it required positive proof of a
 prior `pasa`. Ask for the execution mode (interactive / automatic) at resume
 time exactly as a fresh run does — mode is per-invocation, not persisted — and
 announce the slug, the detected resume phase, and (for `building`) the first
@@ -146,6 +169,31 @@ list). Never paste artifact contents — requirements, design, task text, prior
 findings, file dumps — into a brief; reference them by path. Re-passing context
 the sub-agent can read for itself is wasted tokens on every invocation, and a
 batched build issues many briefs.
+
+## Phase result gate
+
+A phase that returned is not a phase that delivered. Before launching the next
+phase, check the envelope you just received:
+
+- **Declared artifacts exist.** Every `.sdd/<slug>/` path the phase claims it
+  wrote must exist and read as complete — not empty, not cut mid-section, not a
+  heading with no body. This is the same sanity-check `## Resuming a run`
+  applies to a killed phase; run it on every hand-off, not only on resume.
+- **The envelope reports success.** A phase that came back `blocked`, partial,
+  or with its objective unmet does not advance the pipeline.
+- **Concrete references resolve.** Spot-check the paths and commands the phase
+  says it touched. A path that does not resolve is a hallucinated result, not a
+  passing phase.
+
+On a failure, re-run **that same phase once**, naming the exact defect in the
+brief, and check the re-run the same way. If it fails twice, STOP and report the
+phase, both failures, and the recommended fix — never advance to a dependent
+phase on a failed gate.
+
+A gate re-run is **not** a build/veredicto round: it is one phase failing to
+deliver, so it never touches the iteration cap and is never recorded with
+`/zero-rounds`. This gate is additive — it does not replace the `## Plan quality
+gate` or the `## Analyze gate`, and it never starts a review pass.
 
 ## Plan quality gate
 

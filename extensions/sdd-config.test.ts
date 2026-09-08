@@ -43,3 +43,19 @@ test("loadSddConfig falls back to strict for an unknown tdd mode", () => fixture
   writeFileSync(join(dir, ".sdd", "config.json"), JSON.stringify({ tdd: { mode: "loose", testCommand: 42 } }));
   assert.deepEqual(loadSddConfig(dir).tdd, { mode: "strict", testCommand: "" });
 }));
+
+test("loadSddConfig defaults the round cap to 3", () => fixture((dir) => {
+  assert.deepEqual(loadSddConfig(dir).rounds, { cap: 3 });
+}));
+
+test("loadSddConfig honours an explicit round cap", () => fixture((dir) => {
+  writeFileSync(join(dir, ".sdd", "config.json"), JSON.stringify({ rounds: { cap: 5 } }));
+  assert.equal(loadSddConfig(dir).rounds.cap, 5);
+}));
+
+test("loadSddConfig ignores a non-positive or non-numeric round cap", () => fixture((dir) => {
+  writeFileSync(join(dir, ".sdd", "config.json"), JSON.stringify({ rounds: { cap: 0 } }));
+  assert.equal(loadSddConfig(dir).rounds.cap, 3);
+  writeFileSync(join(dir, ".sdd", "config.json"), JSON.stringify({ rounds: { cap: "muchas" } }));
+  assert.equal(loadSddConfig(dir).rounds.cap, 3);
+}));

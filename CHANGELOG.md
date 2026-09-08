@@ -7,6 +7,22 @@ uses [semantic versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added — contador de rondas durable (`/zero-rounds`)
+
+- Nuevo comando **`/zero-rounds [status|record <verdicto>|reset] [<slug>] [--cap N] [--json]`**: lleva las rondas build/veredicto en `.sdd/<slug>/rounds.json` y devuelve el estado de ruteo `proceed` / `cap-reached` / `done`. El cap sale de `.sdd/config.json` (`rounds.cap`, default 3) la primera vez que el run registra una ronda y queda fijo para ese run.
+- `.sdd/config.json` acepta el bloque `rounds: { cap }`; `loadSddConfig` lo valida (ignora valores no numéricos o ≤ 0).
+- El orquestador registra cada veredicto y **rutea por el estado devuelto**, no por un contador propio. Al reanudar recupera lo gastado con `/zero-rounds status`: hasta ahora un run interrumpido volvía a arrancar el contador en 1 y se compraba un cap nuevo. Un run sin ledger (previo a este cambio, o con el comando ausente) degrada al comportamiento viejo y el orquestador lo dice en el anuncio del resume.
+- Los loops de gate (`clarify`, `/zero-validate`, `analyze`) siguen sin contar como rondas y no se registran.
+
+### Added — gate de resultado de fase
+
+- Nueva sección `## Phase result gate` en el orquestador: antes de lanzar la fase siguiente se verifica que los artefactos declarados existan y estén completos, que el envelope reporte éxito y que las referencias concretas resuelvan. Ante una falla se re-corre esa misma fase una vez nombrando el defecto; si falla dos veces el run para y reporta. El re-run del gate no es una ronda y no toca el cap.
+
+### Changed — clarify cubre la superficie de producto
+
+- La fase `clarify` ahora recorre explícitamente problema de negocio, usuarios y situación, reglas, outcome observable, edge cases, no-goals y tradeoff aceptado: cada ítem se responde, se registra como supuesto o se declara fuera de alcance. Mantiene el sesgo a asumir en vez de preguntar; las preguntas de mecánica del harness (comando de tests, forma del PR, presupuesto de líneas) siguen prohibidas en esa fase.
+
+
 ## [0.1.74] - 2026-08-25
 
 ### Fixed — tool cards crashed pi in narrow panes

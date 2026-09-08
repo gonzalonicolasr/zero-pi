@@ -26,6 +26,18 @@ whole build in the wrong direction, waste a plan/build round, or ship the wrong
 product. When in doubt, assume and record; do not stop the pipeline for a detail
 `plan` can decide.
 
+**Cover the product surface, not only the technical one.** Before closing the
+phase, walk this list and make sure each item is either answered by the request,
+recorded as an assumption, or named as out of scope: the business problem being
+solved, who uses it and in what situation, the business rules that constrain it,
+the observable outcome that means it worked, the edge cases and failure modes,
+what is explicitly a non-goal, and the product tradeoff being accepted. Most
+items resolve into a one-line assumption — that is the point of the list, not to
+turn the phase into an interview. An item you cannot resolve, and that would
+send the whole build in the wrong direction if guessed wrong, is exactly what a
+blocking question is for. Do not ask about harness mechanics (test commands, PR
+shape, changed-line budgets) — those are `plan`'s and the orchestrator's.
+
 **Write `.sdd/<slug>/clarifications.md`.** Structure it so the orchestrator can
 tell at a glance whether the run may proceed:
 

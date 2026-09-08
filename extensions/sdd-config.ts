@@ -28,11 +28,20 @@ export interface SddConfig {
     mode: "strict" | "off";
     testCommand: string;
   };
+  /**
+   * The build/veredicto iteration cap — how many rounds a run may spend before
+   * it stops and reports the result as not verified. Persisted per run by
+   * `/zero-rounds`, so a resumed run does not silently restart the count.
+   */
+  rounds: {
+    cap: number;
+  };
 }
 
 export const DEFAULT_SDD_CONFIG: SddConfig = {
   git: { branchPrefix: "sdd/", numbering: false, autoCommit: false, commitStyle: "conventional", baseBranch: "main" },
   tdd: { mode: "strict", testCommand: "" },
+  rounds: { cap: 3 },
 };
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -47,6 +56,7 @@ export function loadSddConfig(root = process.cwd()): SddConfig {
   catch (err) { throw new Error(`invalid .sdd/config.json: ${err instanceof Error ? err.message : String(err)}`); }
   const git = asObject(parsed.git);
   const tdd = asObject(parsed.tdd);
+  const rounds = asObject(parsed.rounds);
   return {
     git: {
       branchPrefix: typeof git.branchPrefix === "string" ? git.branchPrefix : DEFAULT_SDD_CONFIG.git.branchPrefix,
@@ -58,6 +68,11 @@ export function loadSddConfig(root = process.cwd()): SddConfig {
     tdd: {
       mode: tdd.mode === "off" ? "off" : DEFAULT_SDD_CONFIG.tdd.mode,
       testCommand: typeof tdd.testCommand === "string" ? tdd.testCommand : DEFAULT_SDD_CONFIG.tdd.testCommand,
+    },
+    rounds: {
+      cap: typeof rounds.cap === "number" && Number.isFinite(rounds.cap) && rounds.cap > 0
+        ? Math.floor(rounds.cap)
+        : DEFAULT_SDD_CONFIG.rounds.cap,
     },
   };
 }

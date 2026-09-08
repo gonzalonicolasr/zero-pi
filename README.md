@@ -109,6 +109,7 @@ into `/forge` for you.
 | **`/zero-doctor`** | Preflight diagnostics for zero-pi: package install, Node version, pi-subagents, generated phase agents, model config, `.sdd/config`, run history, git, and `gh` auth. |
 | **`/zero-cost`** | Aggregates a run's sub-agent `meta.json` files into a per-phase token/cost/duration report — `/forge` invokes it automatically at the end; manual re-run stays available for older runs/debug. |
 | **`/zero-checkpoint`** | Writes patch-based worktree checkpoints under `.sdd/<slug>/checkpoints/` before risky build batches. |
+| **`/zero-rounds`** | Durable build/veredicto round ledger in `.sdd/<slug>/rounds.json` — a resumed run recovers the rounds it already spent instead of restarting the iteration cap. |
 | **`/zero-sync` / `/zero-archive`** | Folds each run's spec delta into a canonical, project-wide spec store and archives approved runs. |
 | **Git / PR / Issues** | `/zero-branch`, `/zero-git-validate`, `/zero-pr`, and `/zero-issue` keep branches and GitHub links audit-ready. |
 | **Run memory** | Every run recalls and saves traces to Cortex, so runs learn from each other. |
@@ -143,6 +144,7 @@ into `/forge` for you.
 | `/zero-theme [neon\|sunset\|sdd\|sith\|saiyan\|matrix\|cyberpunk]` | Switch between packaged ZERO theme variants without remembering full `zero-*` names. |
 | `/zero-cost [<slug>]` | Report tokens (in/out/cache), USD cost, duration, and tool-count per SDD phase for a run — reads native pi session metas and project-local `.pi-subagents/artifacts`; `<slug>` for a specific run, no argument for the most recent. |
 | `/zero-checkpoint [<slug>] [--json]` | Save `diff.patch`, `status.txt`, `head.txt`, `meta.json`, and a review-before-running `restore.sh` under `.sdd/<slug>/checkpoints/<id>/`. |
+| `/zero-rounds [status\|record <verdicto>\|reset] [<slug>] [--cap N] [--json]` | Read or append the run's build/veredicto rounds. `record` returns the routing state — `proceed`, `cap-reached` or `done`. The cap defaults to `.sdd/config.json` `rounds.cap` (3). |
 | `/zero-branch <slug>` | Create/reuse the configured SDD Git branch and persist `branch`/`baseBranch`. |
 | `/zero-git-validate <slug>` | Check worktree, branch, remote, `gh auth`, and verdict gating before PR/archive. |
 | `/zero-pr <slug>` | Create an audit-ready GitHub PR from a run that already has verdict `pasa`. |
