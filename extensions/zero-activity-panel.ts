@@ -5,6 +5,8 @@
 // replacing pi's built-in tool renderer: the panel is a live dashboard, not a
 // second source of truth.
 
+import { padToWidth, truncateToWidth } from "./zero-tui-layout.ts";
+
 interface Ctx {
   ui?: {
     setWidget?: (key: string, content: string[] | undefined, options?: { placement?: "aboveEditor" | "belowEditor" }) => void;
@@ -164,23 +166,77 @@ function toolGlyph(state: ToolState): string {
   }
 }
 
-export function renderActivityPanel(state: ActivityState): string[] {
+/** Below this there is no room for a frame plus a readable label. */
+const MIN_PANEL_WIDTH = 24;
+
+/**
+ * Draw the live panel as a closed box exactly `width` columns wide.
+ *
+ * `ctx.ui.setWidget` takes plain lines and pi prints them as-is, so a line
+ * wider than the terminal wraps and tears the frame apart. The width therefore
+ * has to come from the terminal on every draw — the panel used to be pinned at
+ * a hardcoded 72 columns whose top and bottom borders did not even match each
+ * other, and whose content rows had no right border at all.
+ */
+export function renderActivityPanel(state: ActivityState, width: number): string[] {
   if (!state.sddActive) return [];
-  const rule = (n: number) => color.coral("─".repeat(n));
-  const border = rule(72);
-  const header = `${color.coral("╭─")} ${color.gold("ZERO activity")} ${rule(54)}${color.coral("╮")}`;
+  if (!Number.isFinite(width) || width < MIN_PANEL_WIDTH) {
+    // Too narrow to frame: one honest, clamped status line beats a torn box.
+    const label = truncateToWidth(`${color.gold("ZERO")} ${color.magenta(activePhase(state))}`, Math.max(0, width));
+    return width > 0 ? [label] : [];
+  }
+
+  const TITLE = "ZERO activity";
+  const inner = width - 4;
+  const headFill = Math.max(0, width - 2 - 1 - TITLE.length - 1 - 1);
+  const header = `${color.coral("╭─")} ${color.gold(TITLE)} ${color.coral("─".repeat(headFill))}${color.coral("╮")}`;
+  const footer = `${color.coral("╰")}${color.coral("─".repeat(width - 2))}${color.coral("╯")}`;
+
   const phaseLine = PHASES
     .map((phase) => `${phaseGlyph(state.phases[phase])} ${state.phases[phase] === "active" ? color.cyan(phase) : color.muted(phase)}`)
     .join(color.dim(" › "));
   const toolLine = state.tools.length === 0
     ? color.dim("sin tools todavía")
     : state.tools.map((tool) => `${toolGlyph(tool.state)} ${color.muted(tool.label)}`).join(color.dim(" · "));
-  return [
-    header,
-    `${color.coral("│")} ${color.magenta("SDD ")} ${phaseLine}`,
-    `${color.coral("│")} ${color.magenta("Tools")} ${toolLine}`,
-    `${color.coral("╰")}${border}${color.coral("╯")}`,
-  ];
+
+  const row = (label: string, body: string): string =>
+    `${color.coral("│")} ${padToWidth(`${color.magenta(label)} ${body}`, inner)} ${color.coral("│")}`;
+
+  return [header, row("SDD  ", phaseLine), row("Tools", toolLine), footer];
+}
+
+/** The phase to name when the panel is too narrow to list them all. */
+function activePhase(state: ActivityState): string {
+  return PHASES.find((phase) => state.phases[phase] === "active") ?? "sdd";
+}
+
+/** Live terminal width, falling back to a conservative 80 off a TTY. */
+function terminalColumns(): number {
+  const columns = process.stdout?.columns;
+  return typeof columns === "number" && columns > 0 ? columns : 80;
+}
+
+/**
+ * Columns a `setWidget(key, string[])` line may actually use.
+ *
+ * pi wraps every line of a string-array widget in `new Text(line, 1, 0)`
+ * (`interactive-mode.js`, `setExtensionWidget`). `Text` renders its content at
+ * `width - paddingX * 2` — one column of margin on each side — and it **word
+ * wraps** the overflow instead of clipping it. So a line drawn at exactly the
+ * terminal width comes out as two wrapped lines, which is precisely how the
+ * frame ended up torn: corners on their own rows, borders at random columns.
+ *
+ * The container hands `Text` the full terminal width (`Container.render`
+ * forwards it verbatim, and the root renders at `terminal.columns`), so the
+ * budget is exactly two columns less than the terminal. Verified against
+ * pi-coding-agent 0.84.2 / pi-tui.
+ */
+export const WIDGET_MARGIN = 2;
+
+/** The drawable width of a string-array widget in a terminal of `columns`. */
+export function widgetWidth(columns: number | undefined): number {
+  const terminal = typeof columns === "number" && columns > 0 ? columns : 80;
+  return Math.max(0, terminal - WIDGET_MARGIN);
 }
 
 let registered = false;
@@ -199,17 +255,42 @@ export default function register(pi?: PiAPI): void {
 
   const draw = (): void => {
     try {
-      const lines = renderActivityPanel(state);
+      const lines = renderActivityPanel(state, widgetWidth(terminalColumns()));
       ui?.setWidget?.(WIDGET_ID, lines.length > 0 ? lines : undefined, { placement: "aboveEditor" });
     } catch {
       // Visual sugar must never break the session.
     }
   };
 
+  // A widget is drawn once and then held by pi verbatim: `setWidget` stores the
+  // lines, it does not re-ask for them when the terminal is resized. So a panel
+  // framed for a 152-column window keeps those 152-column lines after the window
+  // shrinks, and pi's `Text` *word wraps* every one of them — a 4-row box comes
+  // out as 9 torn rows with corners stranded on their own lines.
+  //
+  // Redrawing on resize is therefore not a refinement, it is what keeps the frame
+  // closed. Only while a panel is actually on screen, and coalesced: a drag emits
+  // a burst of `resize` events and each one would otherwise be a full repaint.
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+  const redrawOnResize = (): void => {
+    if (!state.sddActive) return;
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      resizeTimer = undefined;
+      draw();
+    }, 60);
+    resizeTimer.unref?.();
+  };
+  process.stdout?.on?.("resize", redrawOnResize);
+
   const clear = (): void => {
     state.sddActive = false;
     state.tools = [];
     for (const phase of PHASES) state.phases[phase] = "pending";
+    if (resizeTimer) {
+      clearTimeout(resizeTimer);
+      resizeTimer = undefined;
+    }
     try { ui?.setWidget?.(WIDGET_ID, undefined); } catch { /* ignore */ }
   };
 
@@ -265,4 +346,11 @@ export default function register(pi?: PiAPI): void {
       clear();
     });
   }
+
+  // `process.stdout` outlives the session, so the resize listener has to come off
+  // explicitly: pi warns at 11 listeners, and a session switch would otherwise
+  // leak one per switch until the warning fires.
+  pi.on("session_shutdown", () => {
+    process.stdout?.off?.("resize", redrawOnResize);
+  });
 }
