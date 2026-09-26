@@ -101,6 +101,7 @@ export function buildAgentFile(
   description: string,
   model: string | undefined,
   thinking?: ThinkingLevel,
+  inheritProjectContext?: boolean,
 ): string {
   const front = [
     "---",
@@ -115,13 +116,14 @@ export function buildAgentFile(
   if (thinking && isThinkingLevel(thinking)) front.push(`thinking: ${thinking}`);
   front.push(`tools: ${PHASE_TOOLS[phase].join(", ")}`);
   if (!PHASE_COMPLETION_GUARD[phase]) front.push("completionGuard: false");
-  // `inheritProjectContext: false` keeps the user's global AGENTS.md out of
-  // every phase sub-agent: it is heavy (re-sent to each phase) and may carry
-  // personal data or credentials no phase needs. Project conventions still
-  // reach the phases — explore/build skim the repo's own AGENTS.md/CLAUDE.md.
+  // `inheritProjectContext` defaults to false so the user's global AGENTS.md
+  // stays out of every phase sub-agent: it is heavy (re-sent to each phase)
+  // and may carry personal data or credentials no phase needs. Project
+  // conventions still reach the phases — explore/build skim the repo's own
+  // AGENTS.md/CLAUDE.md. A per-phase opt-in in zero.json flips it to true.
   front.push(
     "systemPromptMode: replace",
-    "inheritProjectContext: false",
+    `inheritProjectContext: ${inheritProjectContext === true ? "true" : "false"}`,
     "inheritSkills: false",
     "---",
   );
@@ -191,6 +193,19 @@ export function resolvePhaseThinking(data: unknown, phase: Phase): ThinkingLevel
   return phaseThinking(data, phase) ?? DEFAULT_THINKING[phase];
 }
 
+/**
+ * Resolve the per-phase `inheritProjectContext` opt-in from a parsed
+ * `zero.json`: an explicit boolean under `inheritProjectContext[phase]` wins;
+ * anything else resolves to `undefined` and the generator keeps the default
+ * `false`. Mirrors `phaseThinking`. Exported for tests.
+ */
+export function phaseInheritProjectContext(data: unknown, phase: Phase): boolean | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const d = data as { inheritProjectContext?: Record<string, unknown> };
+  const raw = d.inheritProjectContext?.[phase];
+  return typeof raw === "boolean" ? raw : undefined;
+}
+
 /** Read the per-phase model from `~/.pi/zero.json`; `undefined` when absent. */
 function readPhaseModel(phase: Phase): string | undefined {
   try {
@@ -208,6 +223,19 @@ function readPhaseModel(phase: Phase): string | undefined {
 function readPhaseThinking(phase: Phase): ThinkingLevel | undefined {
   try {
     return phaseThinking(
+      JSON.parse(readFileSync(join(homedir(), ".pi", "zero.json"), "utf8")),
+      phase,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read the per-phase `inheritProjectContext` opt-in from `~/.pi/zero.json`;
+ *  `undefined` when absent, invalid, or unrecoverable. */
+function readPhaseInheritProjectContext(phase: Phase): boolean | undefined {
+  try {
+    return phaseInheritProjectContext(
       JSON.parse(readFileSync(join(homedir(), ".pi", "zero.json"), "utf8")),
       phase,
     );
@@ -240,6 +268,7 @@ export default function register(_pi?: unknown): void {
           description,
           readPhaseModel(phase),
           readPhaseThinking(phase) ?? DEFAULT_THINKING[phase],
+          readPhaseInheritProjectContext(phase),
         );
         writeFileSync(join(agentsDir, `zero-${phase}.md`), file, "utf8");
       } catch {

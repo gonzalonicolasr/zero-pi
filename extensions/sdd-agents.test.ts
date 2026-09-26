@@ -10,6 +10,7 @@ import { join } from "node:path";
 
 import {
   buildAgentFile,
+  phaseInheritProjectContext,
   phaseModel,
   phaseThinking,
   PHASE_COMPLETION_GUARD,
@@ -242,4 +243,30 @@ test("resolvePhaseThinking: an invalid user level falls back to the default, nev
     resolvePhaseThinking({ thinking: { veredicto: "ultracode" } }, "veredicto"),
     "xhigh",
   );
+});
+
+test("phaseInheritProjectContext: absent config resolves to undefined (default false)", () => {
+  assert.equal(phaseInheritProjectContext({}, "build"), undefined);
+  assert.equal(phaseInheritProjectContext({ thinking: { build: "high" } }, "build"), undefined);
+});
+
+test("phaseInheritProjectContext: an explicit boolean wins per phase", () => {
+  assert.equal(phaseInheritProjectContext({ inheritProjectContext: { build: true } }, "build"), true);
+  assert.equal(phaseInheritProjectContext({ inheritProjectContext: { veredicto: true } }, "veredicto"), true);
+  assert.equal(phaseInheritProjectContext({ inheritProjectContext: { build: true } }, "clarify"), undefined);
+});
+
+test("phaseInheritProjectContext: non-boolean values resolve to undefined", () => {
+  assert.equal(phaseInheritProjectContext({ inheritProjectContext: { build: "true" } }, "build"), undefined);
+  assert.equal(phaseInheritProjectContext({ inheritProjectContext: { build: 1 } }, "build"), undefined);
+  assert.equal(phaseInheritProjectContext({ inheritProjectContext: { build: null } }, "build"), undefined);
+});
+
+test("buildAgentFile emits the opt-in inheritProjectContext when requested", () => {
+  const on = buildAgentFile("build", "body", "Build desc", undefined, undefined, true);
+  assert.ok(on.includes("inheritProjectContext: true"));
+  const off = buildAgentFile("build", "body", "Build desc", undefined, undefined, false);
+  assert.ok(off.includes("inheritProjectContext: false"));
+  const unset = buildAgentFile("build", "body", "Build desc");
+  assert.ok(unset.includes("inheritProjectContext: false"), "default stays false");
 });
