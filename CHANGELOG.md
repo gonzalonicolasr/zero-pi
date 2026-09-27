@@ -5,6 +5,27 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.84] - 2026-09-27
+
+### Fixed — el autotune aprende de lo que pasó, no de lo que el modelo tipeó
+
+Dos acciones nuevas en la tool `zero_execution`, y el orquestador pasa a usarlas:
+
+- **`round`** registra el veredicto de cada ronda en `.sdd/<slug>/rounds.json` y
+  devuelve `proceed` / `done` / `cap-reached`. Antes el prompt pedía correr
+  `/zero-rounds record`, un comando de usuario que el modelo no puede invocar:
+  sólo 1 de 119 runs de esta máquina tenía `rounds.json`. El cap sale de
+  `.sdd/config.json` (default 3), igual que en `/zero-rounds`.
+- **`finish`** escribe la única línea `RunRecord` v2 en `~/.pi/zero-runs.jsonl`,
+  con los modelos por fase capturados de `~/.pi/zero.json` en `start` (un cambio
+  de perfil a mitad del run no reescribe la historia) y los veredictos de
+  `rounds.json`. Es idempotente, y si falta el modelo de una fase no escribe nada
+  antes que adivinar. Antes el modelo tipeaba la línea a mano y metieron basura
+  en `model`, como `"orchestrator (subagentes bloqueados por NODD)"`.
+
+El orquestador pierde la plantilla de la línea escrita a mano (5.912 palabras,
+antes 6.145). Carga de la extensión sin cambio medible (mediana 1,7 → 2,2 ms).
+
 ## [0.1.83] - 2026-09-27
 
 ### Performance — menos trabajo por token y por frame

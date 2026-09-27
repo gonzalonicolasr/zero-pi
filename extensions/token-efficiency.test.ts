@@ -33,3 +33,14 @@ test("execution bookkeeping directory is never presented as a resumable feature"
     assert.match(read(`extensions/${path}`), /\.executions/);
   }
 });
+
+test("the orchestrator records rounds and the RunRecord through zero_execution, never by hand", () => {
+  // `/zero-rounds` is a user command the model cannot call (1 of 119 runs had a
+  // rounds.json) and a hand-typed RunRecord put junk in `model`. Both are tool
+  // actions now; the prompt must route to them and stop teaching the manual path.
+  const o = readFileSync(new URL("../prompts/orchestrator.md", import.meta.url), "utf8");
+  assert.match(o, /zero_execution[^\n]*action: "round"/);
+  assert.match(o, /zero_execution[^\n]*action: "finish"/);
+  assert.doesNotMatch(o, /\/zero-rounds record/, "no manual round recording");
+  assert.doesNotMatch(o, /Exact one-line shape to emit/, "no hand-written RunRecord template");
+});

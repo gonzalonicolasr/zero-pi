@@ -43,9 +43,9 @@ ledger operations enforce their counters mechanically; they are not a scheduler
 or a sandbox around arbitrary scripts. Caps are not optional.
 
 **The round count is durable — it does not live in your head.** After every
-veredicto, record the round with `/zero-rounds record <verdicto> <slug>` when
-the command is available. It appends the round to `.sdd/<slug>/rounds.json` and
-returns the routing state:
+veredicto, record the round with `zero_execution` `action: "round", runId: "<runId>",
+verdict: "<corregir|replantear|pasa>"`. It appends the round to
+`.sdd/<slug>/rounds.json` and returns the routing state:
 
 - `proceed` — rounds left; continue the loop as the verdict dictates.
 - `cap-reached` — the cap is spent with no `pasa`; STOP and report the run as
@@ -54,11 +54,11 @@ returns the routing state:
 
 Route on that returned state, never on a count you carried yourself, and never
 edit `rounds.json` by hand. The round number you print in the build/veredicto
-phase-start line is the ledger's. The cap comes from `.sdd/config.json`
-(`rounds.cap`, default 3) the first time a run records a round and stays fixed
-for that run; `/zero-rounds status <slug>` reads it back without writing. Gate
+phase-start line is the ledger's. The tool takes the cap from `.sdd/config.json`
+(`rounds.cap`, default 3) on the first round and keeps it for the run;
+`/zero-rounds status <slug>` shows it to the user without writing. Gate
 loops (`clarify`, `/zero-validate`, `analyze`, and a `## Phase result gate`
-re-run) are never recorded — only build/veredicto rounds are. If the command is
+re-run) are never recorded — only build/veredicto rounds are. If the tool is
 unavailable, count the rounds in the run as before and say so in the final
 summary.
 
@@ -139,8 +139,7 @@ treated the same as any other truncated artifact — rebuilt, never trusted.
 **Pipeline guarantees on resume.** Resume enters the same loop at a later
 phase — every existing guarantee still holds: phase order proceeds forward from
 the resume phase with no downstream phase skipped; the build/veredicto iteration
-cap still bounds the resumed segment — recover the rounds already spent with
-`/zero-rounds status <slug>` and continue counting from there, so an
+cap still bounds the resumed segment — recover the rounds already spent from `.sdd/<slug>/rounds.json` (read it, never edit it) and continue counting from there, so an
 interrupted run cannot quietly buy itself a fresh cap; a run with no ledger
 (started before the ledger existed, or with the command unavailable) falls back
 to starting its counter at 1, and you say so in the resume announcement; the
@@ -275,8 +274,8 @@ phase, both failures, and the recommended fix — never advance to a dependent
 phase on a failed gate.
 
 A gate re-run is **not** a build/veredicto round: it is one phase failing to
-deliver, so it never touches the iteration cap and is never recorded with
-`/zero-rounds`. This gate is additive — it does not replace the `## Plan quality
+deliver, so it never touches the iteration cap and is never recorded as a
+round. This gate is additive — it does not replace the `## Plan quality
 gate` or the `## Analyze gate`, and it never starts a review pass.
 
 ## Plan quality gate
@@ -553,57 +552,25 @@ block a run.
 
 ## Run metrics
 
-zero tunes itself from a local outcome log. At the **end of every run** that
-reached a verdict, append exactly one line to `~/.pi/zero-runs.jsonl` recording
-how the run went. This is separate from — and additional to — the "## Run
-memory" Cortex save above; do both.
+zero tunes itself from a local outcome log, `~/.pi/zero-runs.jsonl`. At the
+**end of every run** that reached a verdict — the `round` action returned `done`
+or `cap-reached` — call `zero_execution` with `action: "finish", runId: "<runId>"`.
+The tool appends the one `RunRecord` line itself, from the per-phase models it
+captured from `~/.pi/zero.json` at `start` and the verdicts in `rounds.json`.
+**Never write that line yourself**: a hand-typed record is how junk reached the
+`model` field. This is separate from — and additional to — the "## Run memory"
+Cortex save above; do both.
 
-The line is one `RunRecord` JSON object, serialized with no pretty-printing,
-followed by a single newline. Build it from facts you already hold:
-
-- `v`: the schema version — always the integer `2`.
-- `ts`: the run-end timestamp, ISO 8601 (e.g. `2026-05-17T14:03:22.000Z`).
-- `feature`: the SDD feature slug for this run.
-- `phases`: an object with the four keys `explore`, `plan`, `build`,
-  `veredicto`, each mapped to `{ "model": "<model id>" }` — the per-phase model
-  ids you read from `~/.pi/zero.json` at the start of the run. These four remain
-  the **required** run-record phases for autotune aggregation and verdict
-  attribution — keep the log backward-compatible with older four-phase records
-  and do **not** add `clarify`/`analyze` as required keys. The gate sub-agents
-  (`zero-clarify`, `zero-analyze`) still show up in `/zero-cost` meta reports
-  like any other sub-agent; the outcome log just does not require them.
-- `verdict`: `"pasa"` if the run reached a `pasa` verdict, or `"cap-reached"`
-  if the iteration cap was hit without one. No other values.
-- `rounds`: the number of build/veredicto rounds (`1` for a clean first-pass
-  run).
-- `verdicts`: the ordered per-round verdict sequence — one entry per round, in
-  chronological order, accumulated as `veredicto` returns each round's verdict.
-  Every entry is one of `"corregir"`, `"replantear"`, or `"pasa"`;
-  `"cap-reached"` is a run-level terminal state and never appears inside this
-  array. `verdicts.length` must equal `rounds` (one verdict per round,
-  including the final cap-reaching round). A `pasa` run ends with exactly one
-  `"pasa"`, as the last entry; a `cap-reached` run contains no `"pasa"` at all.
-
-Exact one-line shape to emit:
-
-```json
-{"v":2,"ts":"2026-05-17T14:03:22.000Z","feature":"adaptive-model-profiles","phases":{"explore":{"model":"claude-haiku-4-5"},"plan":{"model":"claude-opus-4-7"},"build":{"model":"claude-sonnet-4-6"},"veredicto":{"model":"claude-opus-4-7"}},"verdict":"pasa","rounds":2,"verdicts":["corregir","pasa"]}
-```
-
-Rules:
-
-- **Append only.** Add one line per run. Create `~/.pi/zero-runs.jsonl` if it
-  does not exist. Never rewrite, reorder, or delete existing lines.
-- **Never block the run.** If the write fails for any reason, emit a
-  non-blocking warning and continue — the run's result stands regardless.
+- `finish` is idempotent: calling it twice never appends a second line.
+- If it returns `recorded: false`, report its `reason` as a non-blocking warning
+  and continue — the run's result stands regardless. Never block the run on it.
 - **Readiness-blocked is not cap-reached.** When the separate analyze cap
-  blocks, do not emit a fake build verdict or autotune RunRecord. Keep the
+  blocks, do not call `finish`: there is no build verdict to record. Keep the
   readiness decisions in the execution ledger and report not verified.
 - **No record without a verdict.** If the run was aborted before `veredicto`
-  ever produced a verdict, write nothing — only a `pasa` or `cap-reached` run
-  is recorded.
+  ever produced a verdict, do not call `finish`.
 
-**Push to Cortex.** After appending the local line, also save the same
+**Push to Cortex.** After `finish` records the line, also save the same
 `RunRecord` to Cortex so other machines' autotune can pull it. This is separate
 from — and additional to — the `session_summary` save in "## Run memory"; do
 both, and it does not rewrite the local line. Call `memoria_save` with:
@@ -614,9 +581,8 @@ both, and it does not rewrite the local line. Call `memoria_save` with:
 - `topic_key`: `zero-metric/<feature>/<ts>` — unique per run record, so two
   distinct runs never upsert over each other.
 - `title`: `zero metric — <feature> @ <ts>`.
-- `what`: the `RunRecord` JSON line **verbatim** — the exact same one-line
-  string just written to `~/.pi/zero-runs.jsonl`, not reformatted or
-  pretty-printed.
+- `what`: the `record` object `finish` returned, serialized as one JSON line,
+  not reformatted or pretty-printed.
 - `why`: `"zero run metrics — synced for cross-machine autotune"`.
 
 No verdict → no local line and no push (consistent with "No record without a
@@ -635,7 +601,7 @@ re-run/debug command.
 Rules:
 
 - Run it **after** the final veredicto/iteration-cap outcome is known and after
-  the `~/.pi/zero-runs.jsonl` metric append above. Do not run it for an aborted
+  the `finish` metric record above. Do not run it for an aborted
   invocation that never reached veredicto.
 - Pass the execution UUID explicitly: `/zero-cost <runId>`. Never rely on the
   command's "latest run" default from inside `/forge`.
@@ -666,7 +632,7 @@ manual fold-only command, but the pipeline drives `/zero-archive`, which already
 folds the delta itself — never run both for the same run.)
 
 **After a `pasa` verdict — and only then.** Alongside the Cortex save and the
-`zero-runs.jsonl` append, invoke the **`/zero-archive <slug>`** command, passing
+`finish` record, invoke the **`/zero-archive <slug>`** command, passing
 the run's feature slug explicitly. `/zero-archive` is a real pi command — a
 deterministic, unit-tested operation, not a prompt instruction. In one step it
 folds the delta into the store (`.sdd/specs/requirements.md`, or per-domain

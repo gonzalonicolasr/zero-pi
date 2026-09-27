@@ -1,9 +1,13 @@
 // Forge execution identity and readiness accounting. No task-text attribution or
 // workflowScript parsing. Runtime files are read only through attached receipts.
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { COST_PHASES, parseMeta, type CostPhase, type PhaseMeta } from "./zero-cost.ts";
+import { readLedger, recordRound, stateOf, writeLedger, VERDICTS, type Verdict } from "./zero-rounds.ts";
+import { RUN_SCHEMA_VERSION } from "./autotune.ts";
+import { loadSddConfig } from "./sdd-config.ts";
 
 export interface ExecutionAttempt {
   id: string;
@@ -23,6 +27,11 @@ export interface ExecutionLedger {
   createdAt: number;
   replanCap: 2;
   attempts: ExecutionAttempt[];
+  /** Per-phase models from ~/.pi/zero.json at start: what the run actually used,
+   *  even if the profile is switched mid-run. Absent on ledgers started earlier. */
+  models?: Partial<Record<CostPhase, string>>;
+  /** Set once `finish` has appended the RunRecord, so a retry never duplicates it. */
+  finishedAt?: string;
 }
 export interface ExecutionInput {
   action: string;
@@ -36,6 +45,35 @@ export interface ExecutionInput {
   workflowRunId?: string;
   asyncDir?: string;
   decision?: string;
+  verdict?: string;
+  cap?: number;
+}
+
+/** The run-record phases the autotune aggregates (see autotune.ts RECORD_PHASES). */
+const RECORD_PHASES = ["explore", "plan", "build", "veredicto"] as const;
+
+function zeroConfigPath(): string { return process.env.ZERO_CONFIG_PATH || join(homedir(), ".pi", "zero.json"); }
+function runsPath(): string { return process.env.ZERO_RUNS_PATH || join(homedir(), ".pi", "zero-runs.jsonl"); }
+
+/** Same resolution as sdd-agents.ts `phaseModel` (a test pins them together).
+ *  Copied rather than imported: sdd-agents pulls in zero-models, which tripled
+ *  this extension's load time for 15 lines. */
+export function recordModel(cfg: unknown, phase: string): string | undefined {
+  const d = (cfg ?? {}) as { models?: Record<string, unknown>; providers?: Record<string, unknown> };
+  const raw = d.models?.[phase];
+  if (typeof raw !== "string" || raw.trim() === "") return undefined;
+  const model = raw.trim().split(/\s+/)[0];
+  const provider = d.providers?.[phase];
+  return typeof provider === "string" && provider !== "" && !model.includes("/") ? `${provider}/${model}` : model;
+}
+
+/** The models the phase agents are generated with. */
+function snapshotModels(): Partial<Record<CostPhase, string>> {
+  let cfg: unknown;
+  try { cfg = JSON.parse(readFileSync(zeroConfigPath(), "utf8")); } catch { return {}; }
+  const out: Partial<Record<CostPhase, string>> = {};
+  for (const phase of COST_PHASES) { const m = recordModel(cfg, phase); if (m) out[phase] = m; }
+  return out;
 }
 function token(value: unknown, label: string): string {
   if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) throw new Error(`Invalid ${label}`);
@@ -197,7 +235,7 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       if (existsSync(dir) && readdirSync(dir).length) throw new Error("Run exists; resume or explicitly confirm artifact removal first");
       mkdirSync(dir, { recursive: true });
       const latest = selectExecution(cwd);
-      const ledger: ExecutionLedger = { v: 1, cwd, runId: randomUUID(), slug, createdAt: Math.max(Date.now(), (latest?.createdAt ?? 0) + 1), replanCap: 2, attempts: [] };
+      const ledger: ExecutionLedger = { v: 1, cwd, runId: randomUUID(), slug, createdAt: Math.max(Date.now(), (latest?.createdAt ?? 0) + 1), replanCap: 2, attempts: [], models: snapshotModels() };
       writeFileSync(join(dir, "request.md"), input.request, { flag: "wx", mode: 0o600 });
       save(ledger);
       writeFileSync(join(dir, "execution.json"), JSON.stringify({ v: 1, cwd, runId: ledger.runId }), { flag: "wx", mode: 0o600 });
@@ -216,6 +254,39 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       return state(ledger);
     }
     const ledger = readExecution(cwd, token(runId, "runId"));
+    if (input.action === "round") {
+      if (!(VERDICTS as readonly string[]).includes(input.verdict ?? "")) throw new Error(`verdict must be one of ${VERDICTS.join(", ")}`);
+      if (input.cap !== undefined && !positive(input.cap)) throw new Error("cap must be a positive integer");
+      const previous = readLedger(ledger.slug, cwd);
+      const routing = stateOf(previous);
+      if (routing === "done") throw new Error("Run already reached pasa; call finish, do not record more rounds");
+      if (routing === "cap-reached") throw new Error("Round cap reached; call finish (cap-reached), do not record more rounds");
+      // Same source as /zero-rounds: .sdd/config.json rounds.cap (default 3), fixed at the first round.
+      const cap = input.cap ?? (previous ? null : loadSddConfig(cwd).rounds.cap);
+      const next = recordRound(previous, input.verdict as Verdict, { slug: ledger.slug, cap });
+      writeLedger(next, cwd);
+      return { ...state(ledger), rounds: next.rounds, cap: next.cap, verdicts: next.verdicts, routing: stateOf(next) };
+    }
+    if (input.action === "finish") {
+      if (ledger.finishedAt) return { ...state(ledger), recorded: true, already: true };
+      const rounds = readLedger(ledger.slug, cwd);
+      if (!rounds || rounds.rounds === 0) throw new Error("No verdict recorded; record each round with action round before finish");
+      const routing = stateOf(rounds);
+      if (routing === "proceed") throw new Error("Run still in progress (routing proceed): no pasa and cap not reached");
+      const models = ledger.models ?? {};
+      const missing = RECORD_PHASES.filter(p => !models[p]);
+      if (missing.length) return { ...state(ledger), recorded: false, reason: `no model in ~/.pi/zero.json for ${missing.join(", ")} at start; RunRecord not written rather than guessed` };
+      const finishedAt = new Date().toISOString();
+      const record = {
+        v: RUN_SCHEMA_VERSION, ts: finishedAt, feature: ledger.slug,
+        phases: Object.fromEntries(RECORD_PHASES.map(p => [p, { model: models[p]! }])),
+        verdict: routing === "done" ? "pasa" : "cap-reached", rounds: rounds.rounds, verdicts: rounds.verdicts,
+      };
+      mkdirSync(dirname(runsPath()), { recursive: true });
+      appendFileSync(runsPath(), `${JSON.stringify(record)}\n`, { mode: 0o600 });
+      ledger.finishedAt = finishedAt; save(ledger);
+      return { ...state(ledger), recorded: true, record };
+    }
     if (input.action === "status") { const result = reconcile(ledger); save(ledger); return { ...state(ledger), ...result }; }
     if (input.action === "attempt") {
       if (state(ledger).state === "blocked") throw new Error("Readiness replan cap reached; blocked/not verified");

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { executionOperation, readExecution, executionPath, reconcileExecution } from "./zero-execution.ts";
@@ -169,4 +169,103 @@ test("missing or mismatched child outcome cannot verify delivery", () => {
     executionOperation(cwd, { action: "attach", runId, attemptId: a.attemptId, workflowRunId: "workflow-captured", asyncDir: r.dir });
     assert.throws(() => executionOperation(cwd, { action: "analyze", runId, attemptId: a.attemptId, decision: "continue" }), /unverified/);
   });
+});
+
+// ── round / finish: the RunRecord comes from the tool, not from the model ──────
+// The orchestrator used to type the ~/.pi/zero-runs.jsonl line itself, and junk
+// landed in `model` ("orchestrator (subagentes bloqueados por NODD)"). It was also
+// told to run `/zero-rounds record`, a user command it cannot call: 1 of 119 runs
+// on this machine had a rounds.json. Both move into the tool.
+function withRuns(fn: (cwd: string, runsPath: string, zeroJson: string) => void) {
+  fixture(cwd => {
+    const old = { runs: process.env.ZERO_RUNS_PATH, cfg: process.env.ZERO_CONFIG_PATH };
+    const runsPath = join(cwd, "runs.jsonl"); const zeroJson = join(cwd, "zero.json");
+    writeFileSync(zeroJson, JSON.stringify({ models: { explore: "ds/deepseek-flash", plan: "claude-opus-5", build: "gpt-5.6-sol high", veredicto: "claude-opus-5" }, providers: { plan: "personal", build: "prolite", veredicto: "personal" } }));
+    process.env.ZERO_RUNS_PATH = runsPath; process.env.ZERO_CONFIG_PATH = zeroJson;
+    try { fn(cwd, runsPath, zeroJson); } finally {
+      if (old.runs === undefined) delete process.env.ZERO_RUNS_PATH; else process.env.ZERO_RUNS_PATH = old.runs;
+      if (old.cfg === undefined) delete process.env.ZERO_CONFIG_PATH; else process.env.ZERO_CONFIG_PATH = old.cfg;
+    }
+  });
+}
+
+test("round records each verdict in rounds.json and reports the routing state", () => withRuns(cwd => {
+  const { runId } = start(cwd, "feat");
+  const r1 = executionOperation(cwd, { action: "round", runId, verdict: "corregir", cap: 3 });
+  assert.deepEqual([r1.rounds, r1.routing], [1, "proceed"]);
+  const r2 = executionOperation(cwd, { action: "round", runId, verdict: "pasa" });
+  assert.deepEqual([r2.rounds, r2.routing], [2, "done"]);
+  const ledger = JSON.parse(readFileSync(join(cwd, ".sdd/feat/rounds.json"), "utf8"));
+  assert.deepEqual(ledger.verdicts, ["corregir", "pasa"]); assert.equal(ledger.cap, 3);
+  assert.throws(() => executionOperation(cwd, { action: "round", runId, verdict: "corregir" }), /pasa|done|finish/);
+  assert.throws(() => executionOperation(cwd, { action: "round", runId, verdict: "maybe" as any }), /verdict/);
+}));
+
+test("round refuses past the cap", () => withRuns(cwd => {
+  const { runId } = start(cwd, "feat");
+  executionOperation(cwd, { action: "round", runId, verdict: "corregir", cap: 1 });
+  assert.throws(() => executionOperation(cwd, { action: "round", runId, verdict: "corregir" }), /cap/);
+}));
+
+test("finish appends exactly one v2 RunRecord built from start-time models and rounds.json", async () => {
+  const { parseRunLine: parseRunRecord } = await import("./autotune.ts");
+  withRuns((cwd, runsPath, zeroJson) => {
+    const { runId } = start(cwd, "feat");
+    // A profile switch mid-run must not rewrite history: models are the ones the run started with.
+    writeFileSync(zeroJson, JSON.stringify({ models: { explore: "other", plan: "other", build: "other", veredicto: "other" } }));
+    executionOperation(cwd, { action: "round", runId, verdict: "corregir", cap: 3 });
+    executionOperation(cwd, { action: "round", runId, verdict: "pasa" });
+    const out = executionOperation(cwd, { action: "finish", runId });
+    const lines = readFileSync(runsPath, "utf8").trim().split("\n");
+    assert.equal(lines.length, 1);
+    const rec = JSON.parse(lines[0]);
+    assert.deepEqual(rec.phases, { explore: { model: "ds/deepseek-flash" }, plan: { model: "personal/claude-opus-5" }, build: { model: "prolite/gpt-5.6-sol" }, veredicto: { model: "personal/claude-opus-5" } });
+    assert.deepEqual([rec.v, rec.feature, rec.verdict, rec.rounds], [2, "feat", "pasa", 2]);
+    assert.deepEqual(rec.verdicts, ["corregir", "pasa"]);
+    assert.ok(parseRunRecord(lines[0]), "the autotune reader accepts it");
+    assert.equal(out.recorded, true);
+    // Idempotent: finishing again does not append a second line.
+    executionOperation(cwd, { action: "finish", runId });
+    assert.equal(readFileSync(runsPath, "utf8").trim().split("\n").length, 1);
+  });
+});
+
+test("finish records cap-reached, and refuses a run with no verdict or still in progress", () => withRuns((cwd, runsPath) => {
+  const a = start(cwd, "a");
+  assert.throws(() => executionOperation(cwd, { action: "finish", runId: a.runId }), /round|verdict/);
+  executionOperation(cwd, { action: "round", runId: a.runId, verdict: "corregir", cap: 2 });
+  assert.throws(() => executionOperation(cwd, { action: "finish", runId: a.runId }), /progress|proceed/);
+  executionOperation(cwd, { action: "round", runId: a.runId, verdict: "replantear" });
+  executionOperation(cwd, { action: "finish", runId: a.runId });
+  const rec = JSON.parse(readFileSync(runsPath, "utf8").trim());
+  assert.deepEqual([rec.verdict, rec.rounds, rec.verdicts], ["cap-reached", 2, ["corregir", "replantear"]]);
+}));
+
+test("finish without a model for a required phase records nothing instead of guessing", () => withRuns((cwd, runsPath, zeroJson) => {
+  writeFileSync(zeroJson, JSON.stringify({ models: { plan: "x" } }));
+  const { runId } = start(cwd, "feat");
+  executionOperation(cwd, { action: "round", runId, verdict: "pasa", cap: 3 });
+  const out = executionOperation(cwd, { action: "finish", runId });
+  assert.equal(out.recorded, false); assert.match(out.reason, /explore/);
+  assert.equal(existsSync(runsPath), false);
+}));
+
+test("round takes the cap from .sdd/config.json (default 3) when the call omits it", () => withRuns(cwd => {
+  const { runId } = start(cwd, "feat");
+  assert.equal(executionOperation(cwd, { action: "round", runId, verdict: "corregir" }).cap, 3);
+  writeFileSync(join(cwd, ".sdd/config.json"), JSON.stringify({ rounds: { cap: 5 } }));
+  const b = start(cwd, "other");
+  assert.equal(executionOperation(cwd, { action: "round", runId: b.runId, verdict: "corregir" }).cap, 5);
+}));
+
+test("recordModel resolves exactly like the agent generator's phaseModel", async () => {
+  const { phaseModel } = await import("./sdd-agents.ts");
+  const { recordModel } = await import("./zero-execution.ts");
+  const cfgs = [
+    { models: { build: "gpt-5.6-sol high" }, providers: { build: "prolite" } },
+    { models: { build: "ds/deepseek-flash" }, providers: { build: "x" } },
+    { models: { build: "  " } }, { models: {} }, {}, null,
+    { models: { build: "claude-opus-5" }, providers: { build: "" } },
+  ];
+  for (const c of cfgs) assert.equal(recordModel(c, "build"), phaseModel(c, "build" as any), JSON.stringify(c));
 });
