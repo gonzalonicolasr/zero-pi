@@ -12,6 +12,8 @@
 //
 // Disable with the ZERO_HEADER=off environment variable.
 
+import { truncateToWidth, visibleWidth as cellWidth } from "./zero-tui-layout.ts";
+
 type RGB = [number, number, number];
 
 const WORD = "ZERO";
@@ -48,8 +50,6 @@ const CORAL: RGB = [255, 124, 92];
 const PEACH: RGB = [255, 168, 99];
 const MUTED: RGB = [150, 120, 130];
 
-const ANSI_RE = /\x1b\[[0-9;]*m/g;
-
 function fg([r, g, b]: RGB, text: string): string {
   return `\x1b[38;2;${r};${g};${b}m${text}\x1b[0m`;
 }
@@ -77,12 +77,22 @@ function ramp(stops: RGB[], t: number): RGB {
 
 /** Printable width of a string, ignoring ANSI colour escapes. */
 export function visibleWidth(text: string): number {
-  return text.replace(ANSI_RE, "").length;
+  return cellWidth(text);
 }
 
+/**
+ * Centre `text` in `width` columns — and never return more than `width`.
+ *
+ * The banner is written straight to stdout before pi's TUI takes over, so an
+ * over-wide line wraps into the next one and the art shears. Centring alone
+ * used to allow that: when the art was wider than the terminal the padding
+ * clamped to zero and the full-width line went out as-is.
+ */
 function center(text: string, width: number): string {
-  const pad = Math.max(0, Math.floor((width - visibleWidth(text)) / 2));
-  return " ".repeat(pad) + text;
+  if (width <= 0) return "";
+  const clipped = truncateToWidth(text, width);
+  const pad = Math.max(0, Math.floor((width - visibleWidth(clipped)) / 2));
+  return " ".repeat(pad) + clipped;
 }
 
 function matrixFor(text: string): { rows: string[]; width: number } {
@@ -153,10 +163,14 @@ function ornament(width: number): string {
  * was removed to fit that cap exactly — adding blanks back would re-truncate.
  */
 export function bannerBlock(width: number): string[] {
-  if (width < 64) {
+  const tag = fg(PEACH, "ZERO SDD") + fg(MUTED, "   clarify → explore → plan → analyze → build → veredicto");
+  // Derive the switch point from the art itself. It used to be a hardcoded 64
+  // while the logo needs 65, so a terminal exactly 64 columns wide got the wide
+  // layout and one line of it overflowed by a single cell.
+  const wideNeeds = Math.max(matrixFor(WORD).width + SHADOW_DX, visibleWidth(tag));
+  if (width < wideNeeds) {
     return [center(fg(PEACH, "ZERO SDD"), width), center(fg(MUTED, "pi.dev · spec-driven work"), width)];
   }
-  const tag = fg(PEACH, "ZERO SDD") + fg(MUTED, "   clarify → explore → plan → analyze → build → veredicto");
   return [ornament(width), ...renderLogo(width), center(tag, width), ornament(width)];
 }
 

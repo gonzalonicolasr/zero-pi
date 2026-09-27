@@ -9,6 +9,7 @@ import {
   formatAutotune,
   formatPhases,
   frameBox,
+  framePicker,
   frameTwoBoxes,
   groupByProvider,
   isPhase,
@@ -29,6 +30,7 @@ import {
   type PhaseProviders,
   type PhaseThinking,
 } from "./zero-models.ts";
+import { visibleWidth } from "./zero-tui-layout.ts";
 
 test("THINKING_LEVELS is exactly the six real pi effort levels, in order", () => {
   assert.deepEqual(
@@ -475,3 +477,128 @@ test("frameTwoBoxes falls back to single frameBox when width is below MIN_SPLIT_
   assert.ok(!lines[1].includes("Right Preview"));
 });
 
+
+// ---------------------------------------------------------------------------
+// Responsive layout — the picker must fit the viewport by itself
+// ---------------------------------------------------------------------------
+
+/** Build `n` menu rows whose labels are long enough to need truncating. */
+function longList(n: number): BoxRow[] {
+  return Array.from({ length: n }, (_v, i) => ({
+    text: `  perfil-numero-${String(i).padStart(3, "0")}-con-nombre-largo   (cliproxy, openai-codex)`,
+  }));
+}
+
+const HEADER: BoxRow[] = [{ text: "zero · perfiles de modelos SDD" }, { text: "" }];
+const FOOTER: BoxRow[] = [{ text: "" }, { text: "↑↓ navegar · enter elegir · esc volver" }];
+const PREVIEW: BoxRow[] = [
+  { text: "vista previa · mixto-wibond" },
+  { text: "" },
+  { text: "clarify   → cliproxy/plus/gpt-5.6-luna · medium" },
+  { text: "veredicto → cliproxy/plus/gpt-5.6-sol · xhigh" },
+];
+
+test("framePicker never returns more lines than the terminal can show", () => {
+  const lines = framePicker(
+    { header: HEADER, list: longList(52), cursor: 0, footer: FOOTER, preview: PREVIEW, width: 120, maxRows: 30 },
+    dummyTheme,
+  );
+  assert.ok(lines.length <= 30, `devolvió ${lines.length} líneas para maxRows=30`);
+});
+
+test("framePicker draws every line at exactly the given width", () => {
+  for (const width of [80, 100, 120, 200]) {
+    const lines = framePicker(
+      { header: HEADER, list: longList(52), cursor: 10, footer: FOOTER, preview: PREVIEW, width, maxRows: 24 },
+      dummyTheme,
+    );
+    for (const line of lines) {
+      assert.equal(visibleWidth(line), width, `ancho ${visibleWidth(line)} != ${width}`);
+    }
+  }
+});
+
+test("framePicker keeps the cursor row on screen for every cursor position", () => {
+  const list = longList(52);
+  for (let cursor = 0; cursor < list.length; cursor++) {
+    const marker = `perfil-numero-${String(cursor).padStart(3, "0")}`;
+    const lines = framePicker(
+      { header: HEADER, list, cursor, footer: FOOTER, preview: PREVIEW, width: 120, maxRows: 24 },
+      dummyTheme,
+    );
+    assert.ok(lines.some((l) => l.includes(marker)), `el cursor ${cursor} quedó fuera de pantalla`);
+  }
+});
+
+test("framePicker reports how many rows it hid above and below", () => {
+  const lines = framePicker(
+    { header: HEADER, list: longList(52), cursor: 26, footer: FOOTER, preview: PREVIEW, width: 120, maxRows: 24 },
+    dummyTheme,
+  );
+  const body = lines.join("\n");
+  assert.match(body, /↑ \d+ más/, "falta el indicador de filas ocultas arriba");
+  assert.match(body, /↓ \d+ más/, "falta el indicador de filas ocultas abajo");
+});
+
+test("framePicker shows no scroll indicator when the whole list fits", () => {
+  const lines = framePicker(
+    { header: HEADER, list: longList(4), cursor: 0, footer: FOOTER, preview: PREVIEW, width: 120, maxRows: 40 },
+    dummyTheme,
+  );
+  const body = lines.join("\n");
+  assert.ok(!body.includes("más"), "mostró indicador de scroll con la lista entera visible");
+});
+
+test("framePicker always keeps the title and the help line", () => {
+  const lines = framePicker(
+    { header: HEADER, list: longList(52), cursor: 40, footer: FOOTER, preview: PREVIEW, width: 120, maxRows: 14 },
+    dummyTheme,
+  );
+  const body = lines.join("\n");
+  assert.ok(body.includes("zero · perfiles"), "se perdió el título");
+  assert.ok(body.includes("navegar"), "se perdió la línea de ayuda");
+});
+
+test("framePicker drops the preview pane on a narrow terminal", () => {
+  const lines = framePicker(
+    { header: HEADER, list: longList(8), cursor: 0, footer: FOOTER, preview: PREVIEW, width: 60, maxRows: 30 },
+    dummyTheme,
+  );
+  assert.ok(!lines.join("\n").includes("vista previa"), "dibujó el panel de preview sin lugar");
+  for (const line of lines) assert.equal(visibleWidth(line), 60);
+});
+
+test("framePicker survives a degenerate viewport without throwing", () => {
+  for (const [width, maxRows] of [[8, 3], [1, 1], [0, 0], [200, 2]] as const) {
+    assert.doesNotThrow(() =>
+      framePicker(
+        { header: HEADER, list: longList(52), cursor: 3, footer: FOOTER, preview: PREVIEW, width, maxRows },
+        dummyTheme,
+      ),
+    );
+  }
+});
+
+test("frameBox marks a truncated row with an ellipsis instead of cutting it dead", () => {
+  const lines = frameBox([{ text: "una-etiqueta-demasiado-larga-para-la-caja" }], 20, dummyTheme);
+  assert.ok(lines[1].includes("…"), "cortó sin marcar el corte");
+  assert.equal(visibleWidth(lines[1]), 20);
+});
+
+test("frameBox measures rows by display width, not by UTF-16 length", () => {
+  const lines = frameBox([{ text: "漢字漢字漢字漢字漢字" }], 16, dummyTheme);
+  for (const line of lines) assert.equal(visibleWidth(line), 16);
+});
+
+test("frameTwoBoxes sizes the menu pane from its content instead of a fixed cap", () => {
+  const wide: BoxRow[] = [{ text: "x".repeat(70) }];
+  const lines = frameTwoBoxes(wide, PREVIEW, 160, dummyTheme);
+  // 70 cells of content + 4 of frame must survive when the terminal is 160 wide.
+  assert.ok(lines[1].includes("x".repeat(70)), "recortó el menú teniendo lugar de sobra");
+  for (const line of lines) assert.equal(visibleWidth(line), 160);
+});
+
+test("frameTwoBoxes falls back to one pane below MIN_SPLIT_WIDTH", () => {
+  const lines = frameTwoBoxes([{ text: "Left Only" }], [{ text: "Right Preview" }], MIN_SPLIT_WIDTH - 1, dummyTheme);
+  assert.ok(!lines.join("\n").includes("Right Preview"));
+});

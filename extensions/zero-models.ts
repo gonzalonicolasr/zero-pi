@@ -41,6 +41,14 @@ interface Component {
 
 import { readAutotuneMode, type AutotuneMode } from "./autotune.ts";
 import {
+  fitRows,
+  padToWidth,
+  truncateToWidth,
+  usableRows,
+  visibleWidth,
+  windowRows,
+} from "./zero-tui-layout.ts";
+import {
   applyProfileCommand,
   formatActiveProfile,
   mirrorToActiveProfile,
@@ -538,18 +546,6 @@ const PICKER_TITLE = "zero · modelos SDD";
 /** The dim help line shown at the foot of the boxed panel. */
 const PICKER_HELP = "↑↓ navegar · enter elegir · esc volver";
 
-
-/**
- * Clamp a rendered line to `width` columns so it never overflows the box
- * frame (tui.md "Line Width" is a hard rule). A plain slice is enough here —
- * the picker emits no ANSI inside its row strings except whole-line theming,
- * and `theme.fg` is applied *after* truncation by the caller where it matters.
- */
-function clampLine(line: string, width: number): string {
-  if (width <= 0) return "";
-  return line.length > width ? line.slice(0, width) : line;
-}
-
 /** Unicode box-drawing characters for the picker's 4-sided frame. */
 const BOX = {
   topLeft: "┌",
@@ -588,7 +584,7 @@ export interface BoxRow {
  */
 export function frameBox(rows: readonly BoxRow[], width: number, theme: PiTheme): string[] {
   if (width < MIN_BOX_WIDTH) {
-    return rows.map((row) => clampLine(row.text, Math.max(0, width)));
+    return rows.map((row) => truncateToWidth(row.text, Math.max(0, width)));
   }
   const inner = width - 4;
   const frame = (s: string): string => theme.fg(FRAME_COLOR, s);
@@ -598,13 +594,27 @@ export function frameBox(rows: readonly BoxRow[], width: number, theme: PiTheme)
   const side = frame(BOX.vertical);
 
   const body = rows.map((row) => {
-    // Size on plain text, then colorize — never measure an ANSI string.
-    const sized = clampLine(row.text, inner).padEnd(inner, " ");
+    // Size on plain text, then colorize — never measure an ANSI string. The
+    // sizing is by *display* cells and marks a cut with an ellipsis, so a wide
+    // glyph can never push the closing `│` off the line.
+    const sized = padToWidth(row.text, inner);
     const content = row.color ? theme.fg(row.color, sized) : sized;
     return `${side} ${content} ${side}`;
   });
   return [top, ...body, bottom];
 }
+
+/** Widest row of a block, in display cells. */
+function contentWidth(rows: readonly BoxRow[]): number {
+  let max = 0;
+  for (const row of rows) max = Math.max(max, visibleWidth(row.text));
+  return max;
+}
+
+/** The menu pane never shrinks past this, so profile names stay readable. */
+const MIN_MENU_WIDTH = 30;
+/** Nor does it take more than this share of the terminal when both panes compete. */
+const MAX_MENU_SHARE = 0.62;
 
 /**
  * Render two boxed panels side-by-side with equal row heights.
@@ -619,8 +629,28 @@ export function frameTwoBoxes(
   theme: PiTheme,
 ): string[] {
   const GAP = "  "; // 2 spaces between panels
-  const leftWidth = Math.min(52, Math.max(36, Math.floor((width - GAP.length) * 0.44)));
-  const rightWidth = width - leftWidth - GAP.length;
+  // Below the split threshold there is no room for two useful panes: one full
+  // -width menu beats two cramped ones. The caller checks this too; owning the
+  // rule here as well keeps the fallback true for every caller.
+  if (width < MIN_SPLIT_WIDTH) return frameBox(leftRows, width, theme);
+
+  const available = width - GAP.length;
+  // Size each pane from what it actually holds. The old fixed 52-column cap
+  // truncated profile names mid-word on a 200-column terminal while the
+  // preview pane sat mostly empty beside them.
+  const leftNeed = contentWidth(leftRows) + 4;
+  const rightNeed = contentWidth(rightRows) + 4;
+  let leftWidth: number;
+  if (leftNeed + rightNeed <= available) {
+    // Everything fits: give the menu exactly what it needs, the rest is preview.
+    leftWidth = leftNeed;
+  } else {
+    // Contended: split in proportion to demand, capped so the preview survives.
+    leftWidth = Math.round(available * (leftNeed / Math.max(1, leftNeed + rightNeed)));
+    leftWidth = Math.min(leftWidth, Math.floor(available * MAX_MENU_SHARE));
+  }
+  leftWidth = Math.min(Math.max(leftWidth, MIN_MENU_WIDTH), available - MIN_BOX_WIDTH);
+  const rightWidth = available - leftWidth;
 
   if (leftWidth < MIN_BOX_WIDTH || rightWidth < MIN_BOX_WIDTH) {
     return frameBox(leftRows, width, theme);
@@ -649,6 +679,76 @@ export function frameTwoBoxes(
     out.push(`${left}${GAP}${right}`);
   }
   return out;
+}
+
+/** Everything {@link framePicker} needs to lay one picker screen out. */
+export interface PickerLayout {
+  /** Rows pinned above the list — title, blank, optional notice. */
+  header: readonly BoxRow[];
+  /** One row per menu entry, already prefixed and coloured. */
+  list: readonly BoxRow[];
+  /** Index into `list` that must stay on screen. `-1` when there is no list. */
+  cursor: number;
+  /** Rows pinned below the list — blank, help line. */
+  footer: readonly BoxRow[];
+  /** Preview pane rows, drawn beside the menu when the terminal is wide enough. */
+  preview?: readonly BoxRow[];
+  /** Full outer width available, in columns. */
+  width: number;
+  /** Full outer height available, in rows (see `usableRows`). */
+  maxRows: number;
+}
+
+/** Row shown in place of the entries scrolled off the top of the window. */
+function scrolledAway(count: number, direction: "up" | "down"): BoxRow {
+  return { text: `  ${direction === "up" ? "↑" : "↓"} ${count} más`, color: "dim" };
+}
+
+/**
+ * Lay out one picker screen so it fits the terminal on both axes.
+ *
+ * pi never clips a widget: a component that returns more lines than the
+ * terminal has rows just scrolls its own top — frame border and title first —
+ * off the screen. So the list is windowed around the cursor to whatever height
+ * is left after the header, footer and frame, and the entries that did not fit
+ * are reported as `↑ N más` / `↓ N más` rows instead of silently vanishing.
+ *
+ * Total-safe by construction, and `fitRows` is the belt-and-braces last clamp.
+ */
+export function framePicker(layout: PickerLayout, theme: PiTheme): string[] {
+  const { header, list, cursor, footer, preview, width, maxRows } = layout;
+  if (maxRows <= 0) return [];
+
+  const FRAME_ROWS = 2; // top and bottom border
+  const INDICATORS = 2; // worst case: rows hidden above *and* below
+  const fixed = FRAME_ROWS + header.length + footer.length;
+
+  let capacity = Math.max(0, maxRows - fixed);
+  if (list.length > capacity) {
+    capacity = Math.max(0, capacity - INDICATORS);
+    // One reclaim pass: at the very top or the very bottom of a long list only
+    // one indicator is drawn, so the row reserved for the other is handed back.
+    const probe = windowRows(list.length, cursor, capacity);
+    const drawn = (probe.hiddenBefore > 0 ? 1 : 0) + (probe.hiddenAfter > 0 ? 1 : 0);
+    capacity += INDICATORS - drawn;
+  }
+
+  const win = windowRows(list.length, cursor, capacity);
+  const rows: BoxRow[] = [...header];
+  if (win.hiddenBefore > 0) rows.push(scrolledAway(win.hiddenBefore, "up"));
+  for (let i = win.start; i < win.end; i++) rows.push(list[i]);
+  if (win.hiddenAfter > 0) rows.push(scrolledAway(win.hiddenAfter, "down"));
+  rows.push(...footer);
+
+  // The preview pane is padded to the menu's height by `frameTwoBoxes`, so it
+  // only needs its own clamp when it is the taller of the two.
+  const previewRows = preview?.slice(0, Math.max(0, maxRows - FRAME_ROWS));
+  const lines =
+    previewRows && previewRows.length > 0 && width >= MIN_SPLIT_WIDTH
+      ? frameTwoBoxes(rows, previewRows, width, theme)
+      : frameBox(rows, width, theme);
+
+  return fitRows(lines, maxRows);
 }
 
 /**
@@ -695,43 +795,48 @@ function createPickerComponent(
    * `width`.
    */
   function render(width: number): string[] {
-    const rows: BoxRow[] = [];
+    // pi hands the component its width but not its height, so the height comes
+    // from the terminal itself — minus what pi's own chrome takes.
+    const maxRows = usableRows(process.stdout?.rows);
 
-    rows.push({ text: pickerTitle(state) });
-    rows.push({ text: "" });
-
+    const header: BoxRow[] = [{ text: pickerTitle(state) }, { text: "" }];
     if (state.notice) {
-      rows.push({ text: state.notice, color: "accent" });
-      rows.push({ text: "" });
+      header.push({ text: state.notice, color: "accent" });
+      header.push({ text: "" });
     }
 
     if (state.textPrompt) {
       // Inline text-entry mode: show the prompt label and the typed buffer.
-      rows.push({ text: state.textPrompt.label });
-      rows.push({ text: `> ${buffer ?? ""}`, color: "accent" });
-      rows.push({ text: "" });
-      rows.push({ text: "enter confirmar · esc volver", color: "dim" });
-      return frameBox(rows, width, theme);
+      // A short, fixed screen — no list to window, so it frames directly.
+      const rows: BoxRow[] = [
+        ...header,
+        { text: state.textPrompt.label },
+        { text: `> ${buffer ?? ""}`, color: "accent" },
+        { text: "" },
+        { text: "enter confirmar · esc volver", color: "dim" },
+      ];
+      return fitRows(frameBox(rows, width, theme), maxRows);
     }
 
-    state.entries.forEach((entry, index) => {
-      if (index === state.cursor) {
-        rows.push({ text: `> ${entry.label}`, color: "accent" });
-      } else {
-        rows.push({ text: `  ${entry.label}`, color: "dim" });
-      }
-    });
-
-    rows.push({ text: "" });
-    rows.push({ text: PICKER_HELP, color: "dim" });
+    const list: BoxRow[] = state.entries.map((entry, index) =>
+      index === state.cursor
+        ? { text: `> ${entry.label}`, color: "accent" }
+        : { text: `  ${entry.label}`, color: "dim" },
+    );
 
     const preview = getPreviewTarget(state);
-    if (preview && width >= MIN_SPLIT_WIDTH) {
-      const rightRows = buildPreviewRows(preview);
-      return frameTwoBoxes(rows, rightRows, width, theme);
-    }
-
-    return frameBox(rows, width, theme);
+    return framePicker(
+      {
+        header,
+        list,
+        cursor: state.cursor,
+        footer: [{ text: "" }, { text: PICKER_HELP, color: "dim" }],
+        preview: preview ? buildPreviewRows(preview) : undefined,
+        width,
+        maxRows,
+      },
+      theme,
+    );
   }
 
   /** Apply an `EnterResult` — re-render on `state`, close on `save`/`quit`. */

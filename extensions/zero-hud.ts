@@ -12,6 +12,8 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
+import { truncateToWidth, visibleWidth } from "./zero-tui-layout.ts";
+
 const execAsync = promisify(exec);
 
 type RGB = [number, number, number];
@@ -206,6 +208,8 @@ export interface HudParts {
   ctxPercent?: number;
   branch?: string;
   preset?: HudPreset;
+  /** Columns available. Omitted (or 0) means "draw it all, do not constrain". */
+  width?: number;
 }
 
 function separator(preset: HudPreset): string {
@@ -219,8 +223,7 @@ function segment(label: string, value: string, color: RGB, preset: HudPreset): s
   return `${dim(label)} ${fg(color, value)}`;
 }
 
-export function composeHud(parts: HudParts): string {
-  const preset = parts.preset ?? "compact";
+function buildHud(preset: HudPreset, parts: HudParts): string {
   if (preset === "off") return "";
 
   const out: string[] = [];
@@ -268,6 +271,40 @@ export function composeHud(parts: HudParts): string {
   }
 
   return out.join(sep);
+}
+
+/** The next narrower preset, or `null` when there is nothing left to give up. */
+const NARROWER: Record<HudPreset, HudPreset | null> = {
+  full: "compact",
+  compact: "minimal",
+  minimal: null,
+  // `ascii` is a style choice, not a width tier — never auto-switch away from it.
+  ascii: null,
+  off: null,
+};
+
+/**
+ * Build the status line, degrading it until it fits `parts.width`.
+ *
+ * pi prints the status text as one line: too long and it wraps, pushing the
+ * input box down and making the footer flicker on every token. Dropping a
+ * preset tier sheds whole segments — which reads far better than a line cut
+ * mid-number — and truncation is only the last resort.
+ */
+export function composeHud(parts: HudParts): string {
+  let preset = parts.preset ?? "compact";
+  let text = buildHud(preset, parts);
+
+  const width = parts.width;
+  if (!width || !Number.isFinite(width) || width <= 0) return text;
+
+  while (visibleWidth(text) > width) {
+    const narrower = NARROWER[preset];
+    if (!narrower) break;
+    preset = narrower;
+    text = buildHud(preset, parts);
+  }
+  return visibleWidth(text) > width ? truncateToWidth(text, width) : text;
 }
 
 interface PiUI {
@@ -332,6 +369,12 @@ async function readGit(cwdHint: string | undefined): Promise<void> {
   }
 }
 
+/** Live terminal width, falling back to a conservative 80 off a TTY. */
+function terminalColumns(): number {
+  const columns = process.stdout?.columns;
+  return typeof columns === "number" && columns > 0 ? columns : 80;
+}
+
 function render(ctx: PiCtx): void {
   try {
     if (!ctx?.ui || typeof ctx.ui.setStatus !== "function") return;
@@ -345,6 +388,7 @@ function render(ctx: PiCtx): void {
     const usage = computeSessionUsage(ctx.sessionManager);
     const text = composeHud({
       preset,
+      width: terminalColumns(),
       phase: activePhase,
       model: shortModel(ctx.model?.id ?? ctx.model?.name),
       tokensIn: usage.input,

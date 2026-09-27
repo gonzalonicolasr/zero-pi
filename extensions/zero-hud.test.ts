@@ -13,6 +13,7 @@ import {
   phaseFromSubagentArgs,
   shortModel,
 } from "./zero-hud.ts";
+import { visibleWidth } from "./zero-tui-layout.ts";
 
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
 
@@ -98,4 +99,52 @@ test("composeHud supports ascii and off presets", () => {
   assert.equal(ascii.includes("\x1b["), true, "ascii preset keeps dim separators but values are plain");
   const plain = stripAnsi(ascii);
   assert.ok(plain.includes("ZERO | phase:plan | tok:↑1.0K ↓20 | diff:+1/-0"));
+});
+
+// ---------------------------------------------------------------------------
+// Responsive status line — it must fit the terminal it is drawn in
+// ---------------------------------------------------------------------------
+
+const FAT_HUD = {
+  preset: "full" as const,
+  phase: "veredicto" as const,
+  model: "claude-opus-5",
+  tokensIn: 153_000,
+  tokensOut: 536_000,
+  cacheRead: 94_000,
+  costUsd: 0.096,
+  diffAdded: 312,
+  diffRemoved: 108,
+  ctxPercent: 72,
+  branch: "feature/zero-tui-responsive",
+};
+
+test("composeHud without a width keeps its current, unconstrained output", () => {
+  const free = composeHud(FAT_HUD);
+  assert.ok(visibleWidth(free) > 0);
+  assert.equal(composeHud({ ...FAT_HUD, width: 0 }), free, "width 0 debe comportarse como sin ancho");
+});
+
+test("composeHud never returns a line wider than the width it was given", () => {
+  for (const width of [20, 40, 60, 80, 120, 200]) {
+    const out = composeHud({ ...FAT_HUD, width });
+    assert.ok(visibleWidth(out) <= width, `${visibleWidth(out)} celdas en ${width} columnas`);
+  }
+});
+
+test("composeHud drops to a narrower preset before it starts truncating", () => {
+  const narrow = composeHud({ ...FAT_HUD, width: 44 });
+  // `full` is the only preset that shows the cache segment — degrading drops it.
+  assert.ok(!narrow.includes("cache"), "siguió en preset full sin lugar");
+  assert.ok(visibleWidth(narrow) <= 44);
+});
+
+test("composeHud still says which phase is running on a very narrow terminal", () => {
+  const tiny = composeHud({ ...FAT_HUD, width: 24 });
+  assert.ok(visibleWidth(tiny) <= 24);
+  assert.ok(tiny.includes("veredicto") || tiny.includes("…"), "no quedó nada legible");
+});
+
+test("composeHud leaves `off` empty whatever the width", () => {
+  assert.equal(composeHud({ preset: "off", model: "x", width: 10 }), "");
 });

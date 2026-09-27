@@ -43,3 +43,33 @@ test("bannerBlock wide tag advertises the gated pipeline, not the old four-phase
     "the stale four-phase-only flow string is gone",
   );
 });
+
+// ---------------------------------------------------------------------------
+// Responsive banner — it is written straight to stdout, so it must fit
+// ---------------------------------------------------------------------------
+
+test("bannerBlock never emits a line wider than the terminal", () => {
+  for (let width = 20; width <= 200; width++) {
+    for (const line of bannerBlock(width)) {
+      assert.ok(
+        visibleWidth(line) <= width,
+        `ancho ${width}: una línea de ${visibleWidth(line)} celdas se pasa`,
+      );
+    }
+  }
+});
+
+test("bannerBlock switches to the wide layout only once the logo really fits", () => {
+  // The exact switch point is whatever the art needs — what must hold is that
+  // the layout it picks always fits, on both sides of the boundary.
+  let firstWide = -1;
+  for (let width = 20; width <= 200; width++) {
+    if (bannerBlock(width).length === 10) {
+      firstWide = width;
+      break;
+    }
+  }
+  assert.ok(firstWide > 0, "nunca llegó al layout ancho");
+  for (const line of bannerBlock(firstWide)) assert.ok(visibleWidth(line) <= firstWide);
+  assert.equal(bannerBlock(firstWide - 1).length, 2, "justo debajo del umbral debe caer al bloque angosto");
+});
