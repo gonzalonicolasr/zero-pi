@@ -8,7 +8,6 @@ import {
   markPhaseActive,
   phaseFromSubagentArgs,
   renderActivityPanel,
-  widgetWidth,
   toolLabel,
   upsertTool,
 } from "./zero-activity-panel.ts";
@@ -151,25 +150,7 @@ test("renderActivityPanel degrades instead of throwing on an absurd width", () =
   }
 });
 
-test("widgetWidth leaves room for the padding pi's own Text wrapper adds", () => {
-  // `setWidget(key, string[])` wraps every line in `new Text(line, 1, 0)`, whose
-  // content width is `width - paddingX * 2` = `width - 2`. A line of exactly the
-  // terminal width gets *wrapped*, not clipped — which is what tore the box.
-  assert.equal(widgetWidth(206), 204);
-  assert.equal(widgetWidth(80), 78);
-});
-
-test("widgetWidth falls back to a sane width off a TTY", () => {
-  assert.equal(widgetWidth(undefined), 78);
-  assert.equal(widgetWidth(0), 78);
-});
-
-test("widgetWidth never goes negative on an absurd terminal", () => {
-  assert.ok(widgetWidth(1) >= 0);
-  assert.ok(widgetWidth(2) >= 0);
-});
-
-test("the panel fits inside pi's Text content width for every terminal size", () => {
+test("the panel fits every width it is rendered at", () => {
   const state = createActivityState();
   state.sddActive = true;
   state.phases.plan = "active";
@@ -177,45 +158,41 @@ test("the panel fits inside pi's Text content width for every terminal size", ()
     const label = `read: un-archivo-con-nombre-largo-${i}.ts`;
     upsertTool(state, { id: label, name: "read", label, state: "ok" });
   }
-  for (const terminal of [30, 40, 80, 120, 160, 206, 300]) {
-    const content = widgetWidth(terminal);
-    for (const line of renderActivityPanel(state, content)) {
-      // pi re-adds one column of margin on each side; this is the real budget.
-      assert.ok(
-        visibleWidth(line) + 2 <= terminal,
-        `terminal ${terminal}: línea de ${visibleWidth(line)} + 2 de margen se pasa`,
-      );
+  for (const width of [28, 38, 78, 118, 158, 204, 298]) {
+    for (const line of renderActivityPanel(state, width)) {
+      assert.ok(visibleWidth(line) <= width, `ancho ${width}: línea de ${visibleWidth(line)}`);
     }
   }
 });
-
 test("the panel never exceeds pi's MAX_WIDGET_LINES", () => {
   const state = createActivityState();
   state.sddActive = true;
   assert.ok(renderActivityPanel(state, 120).length <= 10);
 });
 
-test("a panel framed for a wide terminal is torn once the window shrinks", () => {
-  // The regression this guards: `setWidget` stores lines, it does not re-ask for
-  // them on resize. Lines framed at 152 columns stay 152 columns wide, and pi
-  // word wraps every one of them into the smaller window — the closed box turns
-  // into stranded corners. The fix is redrawing on `resize`; this test states the
-  // invariant that makes the redraw necessary.
-  const state = createActivityState();
-  state.sddActive = true;
-  markPhaseActive(state, "build");
-  upsertTool(state, { id: "1", name: "bash", label: "bash ls ~/.pi/agent/subagents", state: "ok" });
+test("the panel is a component that pi sizes: every render fits the width pi passes", async () => {
+  // A string[] widget has to guess its width from process.stdout.columns, and
+  // pi wraps whatever overshoots. In tuiMode fullscreen the guess (terminal - 2)
+  // was wrong and the box came out torn. A component receives the real width
+  // from pi on every render — resizes included — so there is nothing to guess.
+  const { default: register } = await import(`./zero-activity-panel.ts?component=${Date.now()}`);
+  const handlers = new Map<string, (e: unknown, ctx: unknown) => void>();
+  let content: unknown;
+  const ctx = { ui: { setWidget: (_k: string, c: unknown) => { content = c; } } };
+  register({ on: (name: string, h: (e: unknown, ctx: unknown) => void) => handlers.set(name, h) });
+  handlers.get("input")!({ text: "/forge algo" }, ctx);
+  handlers.get("tool_execution_start")!({ toolCallId: "1", toolName: "bash", args: { command: "cd /home/gon/zero/packages/zero-pi && npm test" } }, ctx);
 
-  const stale = renderActivityPanel(state, widgetWidth(152));
-  const overflows = stale.some((line) => visibleWidth(line) + 2 > 100);
-  assert.ok(overflows, "las líneas de 152 deberían desbordar una terminal de 100");
-
-  // Redrawn at the new size, every line fits again and the frame stays closed.
-  const fresh = renderActivityPanel(state, widgetWidth(100));
-  for (const line of fresh) {
-    assert.ok(visibleWidth(line) + 2 <= 100, `línea de ${visibleWidth(line)} no entra en 100`);
+  assert.equal(typeof content, "function", "setWidget recibe una factory de componente, no string[]");
+  const component = (content as (tui: unknown, theme: unknown) => { render(w: number): string[] })({}, {});
+  for (const width of [20, 40, 79, 118, 153, 206]) {
+    const lines = component.render(width);
+    assert.ok(lines.length > 0);
+    for (const line of lines) assert.ok(visibleWidth(line) <= width, `ancho ${width}: línea de ${visibleWidth(line)}`);
+    if (width >= 24) {
+      assert.equal(visibleWidth(lines[0]), width, "el marco ocupa exactamente el ancho que da pi");
+      assert.ok(stripAnsi(lines[lines.length - 1]).endsWith("╯"));
+    }
   }
-  assert.equal(fresh.length, stale.length, "el redibujado conserva la altura del panel");
-  assert.ok(stripAnsi(fresh[0]).startsWith("╭"), "sigue abriendo el marco");
-  assert.ok(stripAnsi(fresh[fresh.length - 1]).endsWith("╯"), "sigue cerrando el marco");
+  handlers.get("session_shutdown")!({}, ctx);
 });

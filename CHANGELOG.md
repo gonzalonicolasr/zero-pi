@@ -5,6 +5,20 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.82] - 2026-09-27
+
+### Fixed — el panel `ZERO activity` salía roto en `tuiMode: fullscreen`
+
+El panel se entregaba como `string[]` armado a `stdout.columns - 2`, un margen
+medido en la TUI clásica de pi 0.84. En el modo fullscreen de pi 0.87 el dock
+renderiza a otro ancho, pi envolvía cada línea y la caja de 4 filas salía como
+8, con las esquinas y los bordes sueltos. Ahora el panel es un componente: pi le
+pide `render(width)` en cada frame con el ancho real, así que no hay nada que
+adivinar y cierra en cualquier modo y tamaño. Se va el redibujo manual en
+`resize` y `widgetWidth()`, que ya no hacen falta. Verificado renderizando con
+`Container`/`VStack` de pi-tui: 4 filas al ancho exacto a 80, 118 y 153
+columnas; el camino viejo da 8 filas con sólo 1 columna de diferencia.
+
 ## [0.1.81] - 2026-09-27
 
 ### Fixed
