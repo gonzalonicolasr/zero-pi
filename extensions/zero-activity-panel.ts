@@ -238,18 +238,27 @@ export default function register(pi?: PiAPI): void {
   // box into stranded corners. A component is asked `render(width)` by pi on
   // every frame with the width it really has — resizes and layout modes
   // included — so the frame always closes and there is nothing to redraw.
+  // pi calls render(width) on every frame (spinner ticks, streaming), while the
+  // panel only changes on tool/phase events — each of which goes through draw(),
+  // which drops this cache. So a frame with the same width reuses the lines.
+  let cache: { width: number; lines: string[] } | undefined;
   const component: WidgetComponent = {
     render(width: number): string[] {
+      if (cache?.width === width) return cache.lines;
       try {
-        return renderActivityPanel(state, width);
+        cache = { width, lines: renderActivityPanel(state, width) };
+        return cache.lines;
       } catch {
         return []; // Visual sugar must never break the session.
       }
     },
-    invalidate() {},
+    invalidate() {
+      cache = undefined;
+    },
   };
   let shown = false;
   const draw = (): void => {
+    cache = undefined;
     try {
       if (!state.sddActive) {
         if (shown) ui?.setWidget?.(WIDGET_ID, undefined);
@@ -270,6 +279,7 @@ export default function register(pi?: PiAPI): void {
     state.tools = [];
     for (const phase of PHASES) state.phases[phase] = "pending";
     shown = false;
+    cache = undefined;
     try { ui?.setWidget?.(WIDGET_ID, undefined); } catch { /* ignore */ }
   };
 

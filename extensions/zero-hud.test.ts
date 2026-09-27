@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import {
   composeHud,
   computeSessionUsage,
+  createUsageTracker,
   formatTokenCount,
   formatUsd,
   normalizePreset,
@@ -147,4 +148,62 @@ test("composeHud still says which phase is running on a very narrow terminal", (
 
 test("composeHud leaves `off` empty whatever the width", () => {
   assert.equal(composeHud({ preset: "off", model: "x", width: 10 }), "");
+});
+
+test("sessionUsage only sums the entries it has not seen, and resets on a new list", () => {
+  // message_update fires per streamed token and the HUD re-rendered by walking
+  // the whole session each time — ~1 ms per token on a 14k-entry session. The
+  // streaming message is not in getEntries() until message_end, so the sum only
+  // changes when entries are appended: add just those.
+  const tracker = createUsageTracker();
+  const entries: any[] = [
+    { type: "message", message: { role: "assistant", usage: { input: 10, output: 1, cost: 0.5 } } },
+  ];
+  let calls = 0;
+  const sm = { getEntries: () => { calls++; return entries; } };
+  assert.equal(tracker.usage(sm).input, 10);
+  entries.push({ type: "message", message: { role: "assistant", usage: { input: 5, output: 2, cacheRead: 3 } } });
+  assert.deepEqual(tracker.usage(sm), { input: 15, output: 3, cacheRead: 3, cacheWrite: 0, costUsd: 0.5 });
+  // Same length again: no re-walk, same totals.
+  assert.deepEqual(tracker.usage(sm), { input: 15, output: 3, cacheRead: 3, cacheWrite: 0, costUsd: 0.5 });
+  // A shorter list (session switch, compaction rewrite) is a new session: recount from scratch.
+  entries.splice(0, 2, { type: "message", message: { role: "assistant", usage: { input: 7 } } });
+  assert.equal(tracker.usage(sm).input, 7);
+  // A different session manager also recounts.
+  assert.equal(tracker.usage({ getEntries: () => [] }).input, 0);
+  assert.ok(calls >= 4);
+  // A fork/branch keeps the manager but mints a new session id with a longer list.
+  let id = "a"; const list: any[] = [{ type: "message", message: { role: "assistant", usage: { input: 1 } } }];
+  const same = { getEntries: () => list, getSessionId: () => id };
+  assert.equal(tracker.usage(same).input, 1);
+  id = "b"; list.splice(0, 1, ...Array.from({ length: 3 }, () => ({ type: "message", message: { role: "assistant", usage: { input: 100 } } })));
+  assert.equal(tracker.usage(same).input, 300, "nuevo id: se recuenta, no se suma sobre el viejo");
+});
+
+test("sessionUsage equals computeSessionUsage on a real-shaped session", () => {
+  const tracker = createUsageTracker();
+  const entries: any[] = [];
+  const sm = { getEntries: () => entries };
+  for (let i = 0; i < 300; i++) {
+    entries.push({ type: i % 3 ? "message" : "tool_call", message: { role: i % 2 ? "assistant" : "user", usage: { input: i, output: i % 7, cacheRead: i % 5, cost: { total: i / 1000 } } } });
+    assert.deepEqual(tracker.usage(sm), computeSessionUsage(sm), `tras ${i + 1} entradas`);
+  }
+});
+
+test("streamed tokens do not re-render the HUD; message_end does", async () => {
+  // Nothing the HUD shows moves mid-stream: session usage lands on message_end,
+  // and pi's getContextUsage() rebuilds the whole session projection — the most
+  // expensive thing it could do, and it was being done once per token.
+  const { default: register } = await import(`./zero-hud.ts?stream=${Date.now()}`);
+  const handlers = new Map<string, (e: unknown, ctx: unknown) => void>();
+  register({ on: (n: string, h: (e: unknown, ctx: unknown) => void) => handlers.set(n, h), registerCommand() {} });
+  let renders = 0, projections = 0;
+  const ctx = { ui: { setStatus: () => { renders++; } }, getContextUsage: () => { projections++; return { tokens: 1 }; }, sessionManager: { getEntries: () => [] } };
+  handlers.get("session_start")!({}, ctx);
+  const base = renders; const baseProj = projections;
+  for (let i = 0; i < 200; i++) handlers.get("message_update")?.({}, ctx);
+  assert.equal(renders, base, "200 tokens: ningún render");
+  assert.equal(projections, baseProj, "200 tokens: ninguna proyección de contexto");
+  handlers.get("message_end")!({}, ctx);
+  assert.equal(renders, base + 1, "message_end renderiza una vez");
 });

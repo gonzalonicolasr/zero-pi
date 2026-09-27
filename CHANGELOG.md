@@ -5,6 +5,30 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.83] - 2026-09-27
+
+### Performance — menos trabajo por token y por frame
+
+Medido con la sesión real más grande de la máquina (14.167 entradas, 49 MB).
+
+- **HUD: no se redibuja en cada token.** Escuchaba `message_update`, que pi
+  emite por cada token streameado, y en cada uno recorría la sesión entera
+  (~0,95 ms) y llamaba a `ctx.getContextUsage()`, que reconstruye la proyección
+  completa de la sesión en pi. Nada de lo que muestra el HUD cambia a mitad del
+  stream: ahora se actualiza en `message_end`, una vez por mensaje.
+- **HUD: el uso de la sesión se suma incrementalmente.** Sólo las entradas
+  nuevas; se recuenta desde cero ante otro session manager, otro session id
+  (switch/fork/branch) o una lista más corta. Mismo total que el cálculo
+  completo, verificado entrada por entrada. De ~0,95 ms a ~0,38 ms por render
+  (lo que queda es el `getEntries()` de pi).
+- **Panel `ZERO activity`: caché de render.** pi pide `render(width)` en cada
+  frame; el panel sólo cambia en eventos de tool/fase. Mismas líneas mientras no
+  cambien el estado ni el ancho: de ~45 µs a ~6 ns por frame.
+
+Medido y sin cambios, porque ya están bien: carga de zero-pi ~49 ms y de NODD
+~14 ms con la caché de jiti; NODD ~0,1 ms por tool call, sin crecer con la
+sesión (1.500 llamadas); `working-phrases` rota la frase cada 2,4 s.
+
 ## [0.1.82] - 2026-09-27
 
 ### Fixed — el panel `ZERO activity` salía roto en `tuiMode: fullscreen`

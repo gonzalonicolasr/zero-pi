@@ -122,6 +122,7 @@ interface PiSessionEntry {
 }
 interface PiSessionManager {
   getEntries?(): PiSessionEntry[];
+  getSessionId?(): string;
 }
 
 function positive(n: unknown): number {
@@ -139,26 +140,69 @@ function usageCost(usage: PiSessionEntry["message"] extends infer M ? M extends 
   return 0;
 }
 
+function addEntries(totals: SessionUsage, entries: PiSessionEntry[], from: number): void {
+  for (let i = from; i < entries.length; i++) {
+    const entry = entries[i];
+    if (entry?.type !== "message") continue;
+    if (entry.message?.role !== "assistant") continue;
+    const u = entry.message.usage;
+    if (!u) continue;
+    totals.input += positive(u.input);
+    totals.output += positive(u.output);
+    totals.cacheRead += positive(u.cacheRead);
+    totals.cacheWrite += positive(u.cacheWrite);
+    totals.costUsd += usageCost(u);
+  }
+}
+
+function roundedCost(totals: SessionUsage): SessionUsage {
+  return { ...totals, costUsd: Math.round((totals.costUsd + Number.EPSILON) * 1_000_000) / 1_000_000 };
+}
+
 export function computeSessionUsage(sessionManager: PiSessionManager | undefined): SessionUsage {
   const totals: SessionUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 };
   if (!sessionManager || typeof sessionManager.getEntries !== "function") return totals;
   try {
-    for (const entry of sessionManager.getEntries()) {
-      if (entry?.type !== "message") continue;
-      if (entry.message?.role !== "assistant") continue;
-      const u = entry.message.usage;
-      if (!u) continue;
-      totals.input += positive(u.input);
-      totals.output += positive(u.output);
-      totals.cacheRead += positive(u.cacheRead);
-      totals.cacheWrite += positive(u.cacheWrite);
-      totals.costUsd += usageCost(u);
-    }
+    addEntries(totals, sessionManager.getEntries(), 0);
   } catch {
     // Return what we collected so far.
   }
-  totals.costUsd = Math.round((totals.costUsd + Number.EPSILON) * 1_000_000) / 1_000_000;
-  return totals;
+  return roundedCost(totals);
+}
+
+/**
+ * Session usage summed incrementally. The HUD renders on every streamed token
+ * (`message_update`), and walking the whole session each time cost ~1 ms per
+ * token on a 14k-entry session. Entries are append-only while a session runs —
+ * the streaming message only lands on `message_end` — so only the new tail is
+ * added. A different manager, a new session id (switch, fork, branch — pi mints
+ * a new id for each) or a shorter list is a new session, recounted from scratch.
+ */
+export function createUsageTracker(): { usage(sessionManager: PiSessionManager | undefined): SessionUsage } {
+  let owner: PiSessionManager | undefined;
+  let ownerId: string | undefined;
+  let seen = 0;
+  let totals: SessionUsage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 };
+  return {
+    usage(sessionManager) {
+      if (!sessionManager || typeof sessionManager.getEntries !== "function") return computeSessionUsage(sessionManager);
+      try {
+        const entries = sessionManager.getEntries();
+        const id = sessionManager.getSessionId?.();
+        if (sessionManager !== owner || id !== ownerId || entries.length < seen) {
+          owner = sessionManager;
+          ownerId = id;
+          seen = 0;
+          totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 };
+        }
+        addEntries(totals, entries, seen);
+        seen = entries.length;
+      } catch {
+        // Keep the last good totals.
+      }
+      return roundedCost(totals);
+    },
+  };
 }
 
 const SDD_AGENT_TO_PHASE: Record<string, Phase> = {
@@ -335,6 +379,7 @@ let lastCtx: PiCtx | undefined;
 let gitInFlight = false;
 let preset: HudPreset = normalizePreset(process.env.ZERO_HUD_PRESET) ?? "compact";
 let activePhase: Phase | undefined;
+const usageTracker = createUsageTracker();
 
 function resetSessionState(): void {
   branch = undefined;
@@ -385,7 +430,7 @@ function render(ctx: PiCtx): void {
     const window = ctx.model?.contextWindow && ctx.model.contextWindow > 0 ? ctx.model.contextWindow : 200_000;
     const used = ctx.getContextUsage?.()?.tokens;
     const ctxPercent = typeof used === "number" && used >= 0 ? Math.min(100, (used / window) * 100) : undefined;
-    const usage = computeSessionUsage(ctx.sessionManager);
+    const usage = usageTracker.usage(ctx.sessionManager);
     const text = composeHud({
       preset,
       width: terminalColumns(),
@@ -461,7 +506,11 @@ export default function register(pi?: unknown): void {
       render(ctx);
     });
 
-    api.on("message_update", (_event, ctx) => {
+    // Not message_update: it fires per streamed token, and nothing the HUD shows
+    // moves mid-stream — usage lands with the finished message, and
+    // ctx.getContextUsage() rebuilds pi's whole session projection. Once per
+    // message is the same picture at a fraction of the cost.
+    api.on("message_end", (_event, ctx) => {
       lastCtx = ctx;
       render(ctx);
     });

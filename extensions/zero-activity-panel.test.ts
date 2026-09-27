@@ -196,3 +196,23 @@ test("the panel is a component that pi sizes: every render fits the width pi pas
   }
   handlers.get("session_shutdown")!({}, ctx);
 });
+
+test("the component reuses its lines until the state or the width changes", async () => {
+  // pi calls render(width) on every frame — spinner ticks, streaming — while the
+  // panel only changes on tool/phase events. Recomputing identical lines each
+  // frame is pure waste; a stale cache after a change would be a visible bug.
+  const { default: register } = await import(`./zero-activity-panel.ts?cache=${Date.now()}`);
+  const handlers = new Map<string, (e: unknown, ctx: unknown) => void>();
+  let content: any;
+  const ctx = { ui: { setWidget: (_k: string, c: unknown) => { content = c; } } };
+  register({ on: (name: string, h: (e: unknown, ctx: unknown) => void) => handlers.set(name, h) });
+  handlers.get("input")!({ text: "/forge algo" }, ctx);
+  const component = content({}, {});
+  const a = component.render(120);
+  assert.equal(component.render(120), a, "mismo estado y ancho: mismas líneas, sin recalcular");
+  assert.notEqual(component.render(100), a, "otro ancho: se recalcula");
+  handlers.get("tool_execution_start")!({ toolCallId: "9", toolName: "bash", args: { command: "npm test" } }, ctx);
+  const b = content({}, {}).render(100);
+  assert.ok(stripAnsi(b.join("\n")).includes("npm test"), "un cambio de estado invalida el caché");
+  handlers.get("session_shutdown")!({}, ctx);
+});
