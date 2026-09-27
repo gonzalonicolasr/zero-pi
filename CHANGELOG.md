@@ -5,6 +5,20 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.80] - 2026-09-27
+
+### Fixed — el panel `ZERO activity` se redibuja al cambiar el tamaño de la terminal
+
+`setWidget` guarda las líneas y no las vuelve a pedir en un resize: un panel
+enmarcado a 152 columnas conservaba esas líneas al achicar la ventana y pi las
+envolvía, así que la caja de 4 filas salía como 9 con las esquinas sueltas.
+Ahora se redibuja en `resize` (agrupado a 60 ms, sólo con el panel en pantalla)
+y el listener se saca en `session_shutdown`.
+
+### Changed
+
+- CI del paquete en Node 22 y 24 (Node 20 no tiene `--experimental-strip-types`).
+
 ## [0.1.79] - 2026-09-15
 
 ### Fixed — todos los bloques de zero se adaptan a la terminal
