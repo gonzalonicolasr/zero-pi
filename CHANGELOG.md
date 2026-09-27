@@ -5,7 +5,65 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.1.79] - 2026-09-15
+
+### Fixed — todos los bloques de zero se adaptan a la terminal
+
+pi no tiene ventanas: `ctx.ui.custom()` da `render(width)` y `ctx.ui.setWidget()`
+toma un `string[]` pelado. pi imprime esas líneas tal cual y **no las recorta**,
+así que cada bloque tiene que caber solo. Varios no cabían.
+
+- **Nuevo `extensions/zero-tui-layout.ts`**, único lugar donde vive el cálculo:
+  `visibleWidth` / `truncateToWidth` por celdas reales (CJK y emoji = 2, marcas
+  combinantes = 0, nunca parte un par surrogate, cierra el ANSI que cortó),
+  `padToWidth`, `windowRows` (ventana centrada en el cursor), `usableRows` y
+  `fitRows`. Adopta los helpers de pi-tui cuando existen (`setWidthFns`).
+- **`/zero-models`**: el picker devolvía una línea por perfil — con 52 perfiles
+  eran 61 líneas y la terminal le comía el techo (borde y título). Ahora la
+  lista se **enventana a lo que entra**, el cursor queda siempre visible y lo
+  que no entró se anuncia como `↑ N más` / `↓ N más`. El panel de menú deja de
+  estar clavado en 52 columnas: se **dimensiona por su contenido** y reparte con
+  la vista previa, así en una terminal ancha ya no corta los nombres al medio.
+  El corte, cuando hace falta, se marca con `…` y se mide por celdas.
+- **Panel `ZERO activity`**: estaba fijo en 72 columnas, con el borde de arriba
+  y el de abajo de **anchos distintos** (72 vs 74) y sin borde derecho en las
+  filas de contenido. Ahora cierra la caja y recorta la lista de tools en vez de
+  desbordar; bajo 24 columnas cae a una sola línea de estado.
+  El ancho **no es el de la terminal**: `setWidget(key, string[])` envuelve cada
+  línea en `new Text(line, 1, 0)`, que renderiza a `width - paddingX * 2` y
+  **envuelve** lo que sobra en vez de recortarlo (`interactive-mode.js`,
+  `setExtensionWidget`; pi-coding-agent 0.84.2). Una línea del ancho exacto de la
+  terminal salía como dos, y por eso la caja aparecía descuajeringada con las
+  esquinas en renglones sueltos. El presupuesto real es `columnas - 2`, expuesto
+  como `widgetWidth()`. `setStatus` no tiene ese margen — el footer trunca a
+  `width` por su cuenta — y `ui.custom()` tampoco: el componente se agrega
+  directo al container y recibe el ancho entero.
+- **Fences de código**: las líneas de código salían sin recortar, así que un
+  comando largo desbordaba, envolvía y rompía la caja. El fence ahora se
+  **dimensiona por el código** (el tope de lectura de 96 columnas crece si hay
+  lugar en la terminal) y recorta marcando con `…` solo lo que de verdad no
+  entra. El módulo pasa a importar pi-tui dinámicamente, como
+  `zero-pretty-tool-cards.ts`, y expone `fenceWidth` / `fenceBody` testeables.
+- **HUD / status line**: no miraba el ancho nunca. Ahora **degrada de preset**
+  (`full` → `compact` → `minimal`) antes de recortar, así pierde segmentos
+  enteros en vez de cortar un número a la mitad.
+- **Banner**: en una terminal de exactamente 64 columnas emitía una línea de
+  **65** — el umbral estaba hardcodeado en 64 y el logo mide 65. El umbral ahora
+  sale del arte, y `center()` nunca devuelve más ancho del que le dieron.
+
+### Changed — primera tanda de eficiencia de Forge
+
+- Identidad durable por cwd/UUID, intentos y receipts async explícitos mediante
+  `zero_execution`; `/zero-cost` deja de atribuir por task/slug global, muestra
+  cache read/write y cobertura parcial. Solo hijos registrados, no costo padre.
+- Contexto fresh explícito por workflow/fase/lote y defensa en agentes; request
+  verbatim y findings persistidos por runtime + tool del padre sin quitar bash
+  a explore. Gates y capacidades de calidad se conservan.
+- TDD acumulativo en disco, sin duplicar la tabla en envelopes; reviewer sigue
+  ejecutando tests. Veredicto no escribe el log terminal de autotune.
+- Cap durable separado de dos decisiones analyze/replan: stop en la segunda,
+  idempotencia por intento y resume sin reset; corrupción falla cerrado.
+- Sin cambios de modelos/thinking/config, sin medición de ahorro ni A/B.
 
 ## [0.1.78] - 2026-09-08
 

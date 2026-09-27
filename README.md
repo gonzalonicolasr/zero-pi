@@ -47,8 +47,8 @@ the `zero-*` phase agents.
 2. Run `/zero-models` (or set direct assignments) when you want a different
    model/thinking profile per phase; otherwise the package defaults are used.
 3. Run `/forge <feature>` and let the automatic gates drive the flow.
-4. Read the final cost table: `/forge` invokes `/zero-cost <slug>` automatically
-   at the end. Re-run `/zero-cost [slug]` manually only when you want to inspect
+4. Read the final cost table: `/forge` invokes `/zero-cost <runId>` automatically
+   at the end. Re-run `/zero-cost [runId|slug]` manually only when you want to inspect
    an older run or debug missing metadata.
 
 ## 🛠 `/forge` — the SDD pipeline
@@ -76,7 +76,10 @@ slash command in the normal flow. `clarify` writes `.sdd/<slug>/clarifications.m
 and asks only when proceeding would risk the wrong product; `analyze` writes
 `.sdd/<slug>/checklist.md` after the structural `/zero-validate` gate and returns
 `continue` (build) or `replan` (re-run plan with concrete defects). Neither gate
-counts as a build/veredicto round.
+counts as a build/veredicto round. Readiness has a separate durable cap: the
+**second analyze `replan` decision stops blocked/not verified**. Resume retains
+that count and execution identity; missing/corrupt legacy accounting fails
+closed rather than buying a new allowance. Analyze is never bypassed.
 
 The verdict is `pasa` (done), `corregir` (re-run build), or `replantear`
 (re-run plan). A hard iteration cap bounds the build↔veredicto loop — reached
@@ -105,9 +108,9 @@ into `/forge` for you.
 | **Model profiles** | Save whole per-phase setups as named profiles and switch between them — from the picker's `perfiles` row (create, edit, activate, duplicate, delete) or via `/zero-models profile …`. Editing a profile does not activate it. |
 | **Phase tool gating** | Generated `zero-*` sub-agents get phase-specific tool allowlists: explore/veredicto are read-only, clarify/analyze/plan write only `.sdd` artifacts, build edits code. |
 | **Dependency-aware tasks** | `tasks.md` is validated as a task graph with mandatory `depends:` edges, topological ordering, and review workload totals. |
-| **Autotune** | Learns which model fits each phase from your run history and re-tunes itself; optional `autotuneBudget.maxPhaseCostUsd` suppresses costly step-ups. |
+| **Autotune** | Proposes model step-ups for build/plan from sufficiently sampled, valid outcome records; it does not automatically downgrade models to save tokens. Optional `autotuneBudget.maxPhaseCostUsd` suppresses costly step-ups when cost samples are available. |
 | **`/zero-doctor`** | Preflight diagnostics for zero-pi: package install, Node version, pi-subagents, generated phase agents, model config, `.sdd/config`, run history, git, and `gh` auth. |
-| **`/zero-cost`** | Aggregates a run's sub-agent `meta.json` files into a per-phase token/cost/duration report — `/forge` invokes it automatically at the end; manual re-run stays available for older runs/debug. |
+| **`/zero-cost`** | Reports registered child usage from project/execution identity and attached async receipts; explicit UUID selects one run, legacy/missing data stays unattributed/partial. Not a parent/whole-Forge meter. |
 | **`/zero-checkpoint`** | Writes patch-based worktree checkpoints under `.sdd/<slug>/checkpoints/` before risky build batches. |
 | **`/zero-rounds`** | Durable build/veredicto round ledger in `.sdd/<slug>/rounds.json` — a resumed run recovers the rounds it already spent instead of restarting the iteration cap. |
 | **`/zero-sync` / `/zero-archive`** | Folds each run's spec delta into a canonical, project-wide spec store and archives approved runs. |
@@ -142,7 +145,7 @@ into `/forge` for you.
 | `/zero-status` | Show each `.sdd/` run's artifact, sync, latest-verdict, and GitHub-link status. |
 | `/zero-hud [compact\|minimal\|full\|ascii\|off\|on\|preview]` | Preview or switch the segmented ZERO footer for this pi session. Default preset: `compact`. |
 | `/zero-theme [neon\|sunset\|sdd\|sith\|saiyan\|matrix\|cyberpunk]` | Switch between packaged ZERO theme variants without remembering full `zero-*` names. |
-| `/zero-cost [<slug>]` | Report tokens (in/out/cache), USD cost, duration, and tool-count per SDD phase for a run — reads native pi session metas and project-local `.pi-subagents/artifacts`; `<slug>` for a specific run, no argument for the most recent. |
+| `/zero-cost [<runId>\|<slug>]` | Report registered child input/output/cacheRead/cacheWrite and provider-reported USD. Exact UUID selects an execution; slug/default selects a single newest ledger in the current cwd, never sums reused slugs or scans global sessions. |
 | `/zero-checkpoint [<slug>] [--json]` | Save `diff.patch`, `status.txt`, `head.txt`, `meta.json`, and a review-before-running `restore.sh` under `.sdd/<slug>/checkpoints/<id>/`. |
 | `/zero-rounds [status\|record <verdicto>\|reset] [<slug>] [--cap N] [--json]` | Read or append the run's build/veredicto rounds. `record` returns the routing state — `proceed`, `cap-reached` or `done`. The cap defaults to `.sdd/config.json` `rounds.cap` (3). |
 | `/zero-branch <slug>` | Create/reuse the configured SDD Git branch and persist `branch`/`baseBranch`. |
@@ -369,15 +372,54 @@ leave it empty to let the build/veredicto phases detect it from the project.
 
 ### Token efficiency
 
-The phase sub-agents run **without** your global project context
-(`inheritProjectContext: false`): a global `AGENTS.md` is heavy and may carry
-personal data or credentials no phase needs — project conventions still reach
-the phases, because explore/build skim the repo's own `AGENTS.md`/`CLAUDE.md`.
-Every phase runs at an explicit `thinking:` level (your `zero.json` entry wins;
-gaps take the package defaults above), and explore works under a numeric
-tool-call budget with a mid-budget stop check. The heavy lifting happens inside
-the sub-agents on their own models — leave the session that runs `/forge` on
-your cheap default model.
+**Implemented first slice (Unreleased; audit baseline was 0.1.78):**
+
+- Forge invokes the `zero_execution` tool to persist the complete verbatim
+  request, create a project/canonical-cwd + UUID identity, register each
+  phase/batch/retry attempt and attach its actual async workflow receipt.
+  `.sdd/<slug>/execution.json` points at `.sdd/.executions/<runId>.json`.
+  `--continue` accumulates new fresh children under that same ID; fresh
+  same-slug runs get new IDs and retain the previous accounting ledger.
+- `/zero-cost` reads only these ledgers and exact attached runtime identities.
+  It snapshots normalized child usage, includes failed attempts with metadata,
+  deduplicates child IDs, shows both cache classes, and reports missing/legacy
+  coverage honestly. Reported `$0.00` is not proof of free tokens/subscription
+  quota; missing USD is `unknown`. Duration is summed child duration, not wall
+  time. **Parent calls/compactions are not captured**, nor are unregistered
+  children: this is not a whole-Forge benchmark. Provider/thinking are not
+  independently verified beyond the model string reported by child metadata.
+- Every async phase/batch brief explicitly requests `context: "fresh"` at the
+  workflow and child levels; generated agents add `defaultContext: fresh` as
+  defense. Receipt reconciliation checks resolved context. Global fork wins
+  over an agent default when an explicit launch context is omitted, so the
+  launch instruction matters. This is **prompt-enforced orchestration**, not
+  a JS rewriter, automatic scheduler, or sandbox. Existing inheritance/skills
+  exclusions and project-local rules/steering handoffs are preserved.
+- Explore retains `read,bash` and its read-only **prompt** boundary. Because
+  the runtime treats bash as mutation-capable, Forge uses `output: false` for
+  explore (no conflicting write instruction) with debug artifacts enabled.
+  Runtime saves its full final report; the parent `findings` operation copies
+  the confirmed output to `findings.md`, then the parent checks completeness.
+  Missing/disabled debug output blocks plan. Other phase outputs use file-only
+  pointers; authored requirements/design/tasks and artifact gates remain.
+- Build keeps cumulative per-task TDD evidence on disk, returns paths/status/
+  exceptions rather than another table, and veredicto independently reruns
+  tests. The support modules follow the same contract.
+- Readiness outcomes are idempotent per analyze attempt, capped at two replans
+  per execution, stop on the second, and never reset on resume. Delivery
+  retries are neither replans nor build rounds. Malformed ledgers fail closed;
+  interrupted lock recovery requires a human to verify no writer is active.
+  Routing/tool invocation remains prompt-enforced; the ledger enforces only
+  operations actually called. Veredicto never writes `zero-runs.jsonl`:
+  terminal outcome persistence belongs to the orchestrator.
+
+Existing 20/40 exploration guidance, four-task / 800-estimated-line batching,
+quality gates, TDD, model/thinking assignments and user configuration remain.
+No measured token savings or A/B quality equivalence is claimed. Deferred:
+parent/compaction accounting, automatic async event capture, temp/custom
+metadata recovery, Cortex metrics transport, and controlled profile/batch
+experiments. The retained historical audit, fixture provenance and limitations
+are in **[TOKEN-EFFICIENCY.md](./TOKEN-EFFICIENCY.md)**.
 
 ## Release checks
 
