@@ -45,7 +45,7 @@ export function buildStatus({
 }): StatusRow[] {
   const verdicts = latestVerdictBySlug(runRecords);
   return Object.keys(sddDir)
-    .filter((slug) => slug !== "specs" && slug !== "archive")
+    .filter((slug) => slug !== "specs" && slug !== "archive" && slug !== ".executions")
     .sort((a, b) => a.localeCompare(b))
     .map((slug) => {
       const files = new Set(sddDir[slug]);

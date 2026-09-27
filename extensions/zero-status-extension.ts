@@ -13,7 +13,7 @@ interface PiExtensionAPI { registerCommand(name: string, options: { description?
 function listProjectSdd(): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const e of readdirSync(".sdd", { withFileTypes: true })) {
-    if (!e.isDirectory() || e.name === "specs" || e.name === "archive") continue;
+    if (!e.isDirectory() || e.name === "specs" || e.name === "archive" || e.name === ".executions") continue;
     out[e.name] = readdirSync(join(".sdd", e.name));
   }
   return out;

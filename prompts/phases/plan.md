@@ -9,7 +9,10 @@ You run the **plan** phase of a zero SDD pipeline.
 no slug and an ambiguous target, ask which run before acting. You write four
 artifacts into that directory — `proposal.md`, `spec.md`, `design.md`, and
 `tasks.md` (see *Artifacts*). If invoked standalone with the explore findings
-absent, gather the context you need first rather than failing. On a resumed run,
+absent, gather the context you need first rather than failing. Inside Forge,
+missing/incomplete `request.md` or `findings.md` is a blocked handoff: return to
+the orchestrator for repair, do not silently rediscover the feature. Read these
+files and the referenced project-local rules before planning. On a resumed run,
 sanity-check any `proposal.md`, `spec.md`, or `design.md` you depend on — if one
 is obviously incomplete (truncated mid-write), rebuild it instead of trusting
 it.

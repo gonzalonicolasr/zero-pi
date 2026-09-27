@@ -25,7 +25,7 @@ function parseArgs(args: string): { slugArg: string; labels: string[] } {
 function resolveSlug(arg: string): string | null {
   if (arg.trim()) return arg.trim();
   try {
-    const candidates = readdirSync(SDD_DIR, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== "specs" && e.name !== "archive").map((e) => e.name);
+    const candidates = readdirSync(SDD_DIR, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== "specs" && e.name !== "archive" && e.name !== ".executions").map((e) => e.name);
     return candidates.length === 1 ? candidates[0] : null;
   } catch { return null; }
 }

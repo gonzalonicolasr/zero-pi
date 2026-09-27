@@ -1,0 +1,70 @@
+{
+  "runtime": "pi-subagents 0.55.0",
+  "receipt": {
+    "version": 1,
+    "workflowRunId": "workflow-captured",
+    "state": "complete",
+    "createdAt": 1789260474863,
+    "entries": {
+      "connect-0": {
+        "key": "connect-0",
+        "agent": "zero-build",
+        "requestedContext": "fresh",
+        "resolvedContext": "fresh",
+        "continuation": {
+          "runIds": [
+            "child-captured"
+          ]
+        },
+        "latestRunId": "child-captured",
+        "resumability": {
+          "state": "resumable"
+        }
+      },
+      "connect-1": {
+        "key": "connect-1",
+        "agent": "zero-build",
+        "requestedContext": "fresh",
+        "resolvedContext": "fresh",
+        "continuation": {
+          "runIds": [
+            "child-second"
+          ]
+        },
+        "latestRunId": "child-second",
+        "resumability": {
+          "state": "not-resumable",
+          "reason": "Status file not found for async run 'child-second'."
+        }
+      }
+    }
+  },
+  "status": {
+    "runId": "workflow-captured",
+    "cwd": "/fixture/project",
+    "sessionId": "/fixture/sessions/parent.jsonl",
+    "state": "complete",
+    "steps": [
+      { "workflowKey": "connect-0", "parentWorkflowRunId": "workflow-captured", "agent": "zero-build", "runId": "child-captured", "status": "completed" },
+      { "workflowKey": "connect-1", "parentWorkflowRunId": "workflow-captured", "agent": "zero-build", "runId": "child-second", "status": "completed" }
+    ]
+  },
+  "meta": {
+    "runId": "child-captured",
+    "agent": "zero-build",
+    "task": "[prompt redacted]",
+    "exitCode": 0,
+    "usage": {
+      "input": 92890,
+      "output": 15849,
+      "cacheRead": 1279488,
+      "cacheWrite": 0,
+      "cost": 0,
+      "turns": 34
+    },
+    "model": "cliproxy/prolite/gpt-6-astra:high",
+    "durationMs": 686738,
+    "toolCount": 47,
+    "timestamp": 1789260387238
+  }
+}

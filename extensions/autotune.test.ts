@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { parseMeta } from "./zero-cost.ts";
 import {
   aggregate,
   aggregateCostStats,
@@ -630,6 +631,27 @@ test("aggregateCostStats computes average cost per phase/model", () => {
   assert.equal(build?.avgCost, 3);
   assert.equal(stats.get("plan claude-opus-4-7")?.avgCost, 9);
   assert.equal(stats.size, 2);
+});
+
+test("aggregateCostStats over real parseMeta output never reads unknown cost as free", () => {
+  const known = parseMeta({ agent: "zero-build", runId: "r1", model: "claude-sonnet-4-6", usage: { input: 10, output: 5, cacheRead: 3, cacheWrite: 2, turns: 1, cost: 2.5 }, durationMs: 1, toolCount: 1, timestamp: 1 });
+  const unknownCost = parseMeta({ agent: "zero-build", runId: "r2", model: "claude-sonnet-4-6", usage: { input: 10, output: 5, cacheRead: 3, cacheWrite: 2, turns: 1 }, durationMs: 1, toolCount: 1, timestamp: 2 });
+  const legacy = parseMeta({ agent: "zero-build", runId: "r3", model: "claude-sonnet-4-6", usage: { input: 10, output: 5, cost: 7 }, durationMs: 1, toolCount: 1, timestamp: 3 });
+
+  assert.equal(known?.usage.cost, 2.5);
+  assert.equal(unknownCost?.usage.cost, null, "absent cost is unknown, not zero");
+  assert.equal(legacy, null, "legacy usage shape without cache/turns classes is not parseable");
+
+  const stats = aggregateCostStats([known!, unknownCost!]);
+  const build = stats.get("build claude-sonnet-4-6");
+  assert.equal(build?.samples, 1, "only the run with a reported cost is evidence");
+  assert.equal(build?.totalCost, 2.5);
+  assert.equal(build?.avgCost, 2.5, "unknown cost never drags the average toward free");
+  assert.equal(stats.size, 1);
+
+  // With only unknown-cost evidence the pair gains no bucket at all, so it can
+  // never reach MIN_COST_SAMPLES and suppress a step-up.
+  assert.equal(aggregateCostStats([unknownCost!]).size, 0);
 });
 
 // ---------------------------------------------------------------------------

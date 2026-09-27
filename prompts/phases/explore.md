@@ -28,7 +28,7 @@ constraints — reading past that point burns tokens without improving the plan.
 tool call: a localized change gets a budget of **20 tool calls**; a
 cross-cutting or architectural change gets **40**. At half budget, checkpoint:
 if you can already name the exact files to change and their constraints, STOP
-and write the findings. Exceeding the budget requires a
+and produce the findings for runtime persistence. Exceeding the budget requires a
 `Budget exceeded: <concrete reason>` line inside `findings.md`, and whatever you
 did not get to goes into a `## Unknowns` section of the findings instead of more
 reading.
@@ -55,9 +55,15 @@ If the orchestrator includes prior-run memory in your brief, use it: past runs
 record what already broke in this code and which plans were sent back. Fold the
 relevant points into the findings under a "Prior runs" heading.
 
-**Return contract.** Return a concise result envelope to the orchestrator: your
-phase's outcome (findings, plan, build result, or verdict with its concrete
-reasoning) and the `.sdd/<slug>/` artifact path(s) you touched. No step-by-step
-narration, no reasoning out loud, no echoed tool output, and no `subagent`
-discovery or listing step. Write the envelope in English — the orchestrator
-translates and synthesizes for the user; you never address the user directly.
+**Return contract (read-only output handoff).** Read the complete `request.md`
+and the project-local rules referenced in the brief before investigating. Return
+the complete findings report in English, not a path-only envelope: Code roots,
+relevant files/patterns, constraints and project rules, risks, unknowns/blockers,
+and concrete next seams. Include outcome and any budget exception in the report.
+Do not write any files, including `findings.md`. For Forge, configured output
+is disabled (`output: false`) to avoid a conflicting runtime write instruction;
+the runtime persists your complete final response as its debug output artifact.
+The orchestrator's `zero_execution` findings operation copies that confirmed
+artifact to `findings.md`, then the orchestrator checks completeness before plan.
+Do not claim an artifact was written just because you returned its name. Bash
+is allowed for inspection only: read-only is a prompt restriction, not a sandbox.

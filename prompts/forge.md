@@ -16,9 +16,19 @@ defects). A `corregir` verdict re-runs `build`; a `replantear` verdict re-runs
 `plan`; after a few rounds with no `pasa`, stop and report the result as not
 verified. Ask the user for interactive or automatic mode up front; in
 interactive mode pause after each phase for approval. At terminal run end,
-invoke `/zero-cost <slug>` automatically and include the best-effort cost table
+invoke `/zero-cost <runId>` automatically and include the best-effort cost table
 in the final summary; the user should not have to run a second command. Never
 claim success unless veredicto returned `pasa`.
+
+**Execution accounting is required.** Follow the orchestrator's execution
+identity/async receipt protocol using `zero_execution`: persist the complete
+request verbatim before fresh phases, recover the same identity on resume,
+register each phase/batch attempt, attach its actual async workflow receipt,
+and record each delivered analyze decision idempotently. Explicit
+`context: "fresh"` on every async workflow and child; runtime persists the
+explore debug output and the parent `findings` operation copies it to
+`findings.md` (explore uses `output: false` to avoid a write instruction). The second analyze `replan` stops
+blocked/not verified, independently of build rounds; never bypass analyze.
 
 **Parse the arguments first.** If the request begins with `--continue`, this is
 a **resume** run, not a fresh one:

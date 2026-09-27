@@ -182,7 +182,9 @@ BEFORE touching production code:
 When Strict TDD Mode is active, the build phase MUST produce a **TDD Cycle
 Evidence** table. Write it to `.sdd/<slug>/tdd-evidence.md` (create the file on
 the first batch; append rows on later batches — never overwrite prior batches'
-rows) AND include it in your return envelope so the veredicto phase can audit it.
+rows; label corrections/retries by task and attempt). Return only the evidence
+path, status and exceptions/blockers, not the table. Veredicto reads the full
+cumulative table from disk and independently reruns its tests.
 
 ```markdown
 ### TDD Cycle Evidence

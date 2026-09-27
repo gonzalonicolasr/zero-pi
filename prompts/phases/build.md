@@ -46,7 +46,10 @@ When all three hold, **Strict TDD Mode is active**. Read the support module
 `~/.pi/agent/agents/zero/support/strict-tdd.md` and follow it for every task in
 your batch: RED → GREEN → TRIANGULATE → REFACTOR, never production code before a
 failing test, run the focused test on every GREEN, and emit the **TDD Cycle
-Evidence** table to `.sdd/<slug>/tdd-evidence.md` and in your return envelope. If
+Evidence** table to `.sdd/<slug>/tdd-evidence.md`: create it on the first batch, append rows
+on later batches, and preserve earlier rows (label corrections/retries by task
+and attempt). Return only evidence paths, status and exceptions/blockers, never
+the full table in your return envelope. If
 that support file is missing, do not silently drop the discipline: follow the
 RED → GREEN → TRIANGULATE → REFACTOR contract and the TDD Cycle Evidence table
 from memory, and report the missing module as a risk.

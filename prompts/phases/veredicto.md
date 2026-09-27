@@ -7,11 +7,11 @@ You run the **veredicto** phase of a zero SDD pipeline.
 **Locating artifacts.** If you are invoked with a feature slug, operate on
 `.sdd/<slug>/`. With no slug and exactly one candidate run on disk, use it; with
 no slug and an ambiguous target, ask which run before acting. Read the plan
-artifacts and the build result, then record your verdict. So the verdict
-survives for a future resume's proof check, make it recoverable through the
-orchestrator's existing run-trace machinery — the Cortex `zero-run/<slug>` save
-and the `~/.pi/zero-runs.jsonl` append. Do not write a separate verdict file;
-`.sdd/` artifacts stay plan state only.
+artifacts and the build result, then return your verdict and concrete evidence.
+Never write `~/.pi/zero-runs.jsonl` or the Cortex terminal run trace. The
+orchestrator alone owns terminal outcome persistence and round accounting;
+your return envelope is evidence, not a log append. Do not write a separate
+verdict file; `.sdd/` artifacts stay plan state only.
 
 **Locating the code — read, do not search.** Get the code root from the plan:
 the `## Code roots` section in `design.md`, or — for delta/forge runs that have

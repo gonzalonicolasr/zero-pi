@@ -38,8 +38,9 @@ The `clarify` and `analyze` gates are **not** build/veredicto rounds: they never
 count against the iteration cap. An `analyze` `replan` re-runs `plan` and comes
 back through `analyze` before build begins; it does not consume a round.
 
-The orchestrator code controls phase order and the round count. The cap is not
-optional and the model does not get to extend it.
+Phase routing and required tool invocation are prompt-enforced. The invoked
+ledger operations enforce their counters mechanically; they are not a scheduler
+or a sandbox around arbitrary scripts. Caps are not optional.
 
 **The round count is durable — it does not live in your head.** After every
 veredicto, record the round with `/zero-rounds record <verdicto> <slug>` when
@@ -64,16 +65,27 @@ summary.
 ## Resuming a run
 
 `/forge --continue` resumes an interrupted run instead of starting fresh. Resume
-is derived purely from the `.sdd/<feature-slug>/` artifacts — `requirements.md`,
-`design.md`, and `tasks.md` with its `[ ]`/`[x]` checklist. There is no separate
-state file; the artifacts are the run's durable state.
+uses the `.sdd/<feature-slug>/` artifacts — `requirements.md`,
+`design.md`, and `tasks.md` with its `[ ]`/`[x]` checklist. The execution identity pointer and durable ledger below additionally preserve
+usage attribution and readiness decisions; never infer/reset them from chat.
+
+Before applying the resume-point algorithm, call `zero_execution` with
+`action: "resume", slug: "<slug>"`, then `action: "status", runId: "<returned ID>"`.
+A blocked state stops immediately as blocked/not verified, even if checklist.md
+says continue. A missing/corrupt legacy identity is not zero replans: stop and
+report that safe readiness accounting cannot be recovered; do not initialize a
+replacement execution on resume. Human-approved fresh start is a separate run.
+Resume status includes attempt IDs in issue messages; read the durable ledger
+by path to recover any unattached workflow or delivered-but-unrecorded analyze
+outcome before launching another phase. Complete the pending attach/analyze
+operation idempotently; never invent a decision from a missing checklist.
 
 **Selecting the run.**
 
 - `--continue <slug>` — skip the scan and target `.sdd/<slug>/` directly. Never
   disambiguate. (`forge.md` already reports "no such run" and stops if the
   directory is absent.)
-- `--continue` with no slug — scan `.sdd/*/` and classify every run by its
+- `--continue` with no slug — scan `.sdd/*/` excluding `.executions/`, `specs/`, `archive/` and classify every run by its
   resume-point state (below). "Unfinished" = state `clarifying`, `no-plan`,
   `analyzing`, `building`, or `built` (anything except `done`).
   - Exactly one unfinished run → resume it silently.
@@ -146,6 +158,78 @@ silently clobber it and do **not** silently resume. Ask the user to choose:
 the user must explicitly confirm — or (c) pick a different slug. An empty or
 non-existent `.sdd/<slug>/` proceeds as a fresh run with no prompt.
 
+## Execution identity, async receipts and durable handoffs
+
+Before the first clarify, call the `zero_execution` tool with `action: "start",
+slug: "<slug>", request: "<complete original feature request verbatim>"`.
+It persists `request.md` verbatim (including whitespace), an execution pointer
+`.sdd/<slug>/execution.json`, and the accounting ledger at
+`.sdd/.executions/<runId>.json` scoped to the canonical cwd. Do not summarize or
+truncate the request. Verify the file matches the original before delegating.
+A fresh same-slug execution requires the existing-artifact confirmation above;
+old accounting ledgers are retained outside the artifact directory. Never
+remove `.sdd/.executions/` to start over. Fresh runs get different UUIDs;
+`--continue` keeps the UUID, prior child usage, and all readiness decisions.
+Announce: maximum **2 analyze replan decisions per execution**, stopping on the
+second as **bloqueado/no verificado**, separate from build/veredicto rounds.
+If the tool is unavailable, STOP: do not silently fall back to an in-chat cap.
+
+For **every phase, build batch and phase-delivery retry**, in this order:
+
+1. Call `zero_execution` with `action: "attempt", runId: "<runId>",
+   phase: "<phase>", round: <current round>, batch: <batch number or 1>`.
+   Retain its `attemptId`. A retry gets a new attempt ID but not a build round
+   or a replan charge. An interrupted unlaunched attempt remains visible as
+   partial coverage; never silently discard it.
+2. Launch one async workflow for this phase/batch. The exact launch shape is
+   `subagent({ async: true, context: "fresh", cwd: "<absolute project cwd>",
+   artifacts: true, workflowScript: 'return runs.run("<attemptId>", {
+   agent: "zero-<phase>", context: "fresh", task: "<thin English brief>",
+   output: "<absolute output path>", outputMode: "file-only" })' })`.
+   Use JSON-safe string escaping when assembling the script. Do not combine
+   phases into one workflow, use retained-child `resume`, or inherit parent
+   conversation. Explicit top-level AND child `context: "fresh"` override a
+   global fork preference; generated `defaultContext: fresh` is defense only.
+   No code rewrites or parses arbitrary workflowScript to enforce this policy.
+3. Immediately call `zero_execution` with `action: "attach", runId: "<runId>",
+   attemptId: "<attemptId>", workflowRunId: "<details.runId>",
+   asyncDir: "<details.asyncDir>"` from the actual launch receipt. Never infer
+   identity from task text, a slug, or a global artifact search. Wait for async
+   completion normally (status/wait); stay responsive and preserve progress.
+4. After completion, call `zero_execution` with `action: "status",
+   runId: "<runId>"`. It reads the attached workflow-receipt.json + status.json,
+   checks project/workflow/key/agent/fresh context and the explicit child ID,
+   and snapshots normalized metadata from exact runtime filenames. Temp/custom
+   paths, missing metadata, detached/failed deliveries and receipt mismatches
+   stay visible as partial, never a global total or fake zero. If context or
+   delivery cannot be verified, stop at the phase gate; missing cost metadata
+   alone is non-blocking. Never use usage availability as proof of delivery.
+5. Read the output artifact and apply the full Phase result gate. **Explore
+   exception:** set top-level AND child `output: false`, `outputMode: "inline"`
+   (not file-only), keeping `artifacts: true`. Return a compact workflow value,
+   not the findings text: `const child = await runs.run("<attemptId>", {
+   agent: "zero-explore", context: "fresh", task: "<thin brief>", output: false,
+   outputMode: "inline" }); return { ok: child.ok, runId: child.runId };`.
+   This disables the runtime's output-write injector (bash is considered
+   mutation-capable by that injector). Explore returns the complete report;
+   **runtime writes the debug output artifact**. After status reconciliation,
+   call `zero_execution` with `action: "findings", runId: "<runId>",
+   attemptId: "<attemptId>"`: the **parent tool** copies the confirmed debug
+   output to absolute `.sdd/<slug>/findings.md`, without transporting its text
+   through the parent brief. The **orchestrator verifies completeness** before
+   plan. Missing/disabled debug output blocks the handoff, not a silent fallback.
+   Bash remains allowed for inspection; read-only is a prompt boundary, NOT a
+   bash sandbox. For other phases use `.sdd/<slug>/outputs/<attemptId>.md` and
+   file-only as above; do not overwrite their authored specs with an envelope.
+   Full findings include Code roots, relevant files/patterns, project rules,
+   unknowns and blockers. Plan must not advance on a truncated request/findings.
+
+Every fresh brief references the absolute request/findings/artifact paths,
+code roots, applicable project-local AGENTS.md/CLAUDE.md and steering/constitution
+paths, scope/restrictions, blockers, batch task IDs and TDD mode when relevant.
+Preserve requirements and all quality gates; fresh context removes inherited
+conversation, not project conventions. Durable artifacts carry the detail.
+
 ## Sub-agent delegation
 
 Each phase runs as its own sub-agent — `zero-clarify`, `zero-explore`,
@@ -210,15 +294,27 @@ dependencies, missing focused-test evidence, scope creep, review-workload risk).
 It writes `.sdd/<slug>/checklist.md` with a `Decision: continue` or
 `Decision: replan` line.
 
-- `Decision: continue` → proceed to **build**.
-- `Decision: replan` → do **not** start build. Re-run **plan** with the
+After the delivery gate passes, call `zero_execution` with `action: "analyze",
+runId: "<runId>", attemptId: "<analyze attemptId>", decision: "continue"` or
+`decision: "replan"`, matching the delivered checklist. This operation records
+one outcome per attempt; repeating it is idempotent, changing it is an error.
+An unresolved completed analyze must be recorded before another attempt.
+
+- `Decision: continue` and ledger not blocked → proceed to **build**.
+- First `Decision: replan` → do **not** start build. Re-run **plan** with the
   analyzer's concrete blockers from `checklist.md`, run `/zero-validate` again,
-  then re-run **analyze** before build. This gate loop is not a build/veredicto
-  round and does not count against the iteration cap.
+  then re-run **analyze** before build.
+- Second `Decision: replan` → ledger state `blocked`: STOP immediately, expose
+  remaining blockers and report **bloqueado/no verificado**. Do not run another
+  plan/analyze, reset on resume, extend the cap, or treat rejection as continue.
+
+These decisions are not build/veredicto rounds. A failed phase-delivery retry
+is neither a replan decision nor a build round; only a delivered analyzer
+outcome is recorded. Corrupt ledger state fails closed.
 
 The `analyze` gate reads `checklist.md` by path in later briefs — never paste
 its contents. If the command/sub-agent is unavailable, note it in the phase
-summary and proceed to build on the structural validation alone.
+summary and STOP as blocked/not verified; never bypass analyze.
 
 ## Pre-build checkpoint
 
@@ -269,7 +365,8 @@ never touches the iteration cap. A `corregir` verdict re-runs the whole build
 phase (re-batching whatever tasks its defects reopened) as the next round.
 
 **Resume is unaffected.** Each batch marks its tasks `[x]` as they land, so an
-interrupted batched build resumes from the first `[ ]` task with no new state.
+interrupted batched build resumes from the first `[ ]` task and recovers the
+same execution ledger; no new readiness allowance is created.
 
 ## Strict TDD forwarding
 
@@ -499,6 +596,9 @@ Rules:
   does not exist. Never rewrite, reorder, or delete existing lines.
 - **Never block the run.** If the write fails for any reason, emit a
   non-blocking warning and continue — the run's result stands regardless.
+- **Readiness-blocked is not cap-reached.** When the separate analyze cap
+  blocks, do not emit a fake build verdict or autotune RunRecord. Keep the
+  readiness decisions in the execution ledger and report not verified.
 - **No record without a verdict.** If the run was aborted before `veredicto`
   ever produced a verdict, write nothing — only a `pasa` or `cap-reached` run
   is recorded.
@@ -527,7 +627,7 @@ run. The local line already stands.
 ## Run cost report
 
 At the end of every run that reached a terminal verdict (`pasa` or
-`cap-reached`), invoke `/zero-cost <slug>` automatically and include its result
+`cap-reached`), invoke `/zero-cost <runId>` automatically and include its result
 in the final summary under `Costo:`. The user should not have to remember a
 second command after `/forge`; `/zero-cost` remains available only as a manual
 re-run/debug command.
@@ -537,13 +637,12 @@ Rules:
 - Run it **after** the final veredicto/iteration-cap outcome is known and after
   the `~/.pi/zero-runs.jsonl` metric append above. Do not run it for an aborted
   invocation that never reached veredicto.
-- Pass the feature slug explicitly: `/zero-cost <slug>`. Never rely on the
+- Pass the execution UUID explicitly: `/zero-cost <runId>`. Never rely on the
   command's "latest run" default from inside `/forge`.
 - Treat cost reporting as best-effort and non-blocking. If the command is
   missing, errors, or reports no metadata, keep the verdict intact and summarize
-  the reason plainly: the run may not have been executed by native `/forge`, pi
-  may not have written `*_meta.json`, or project-local `.pi-subagents/` artifacts
-  may live under a different cwd.
+  the reason plainly: a receipt or metadata may be missing, legacy history is
+  unattributed, and this slice measures only registered child usage.
 - If the command returns a cost table, relay the table compactly in the final
   summary. Do not invent costs from `~/.pi/zero-runs.jsonl`; that file records
   outcomes/models only, not usage.

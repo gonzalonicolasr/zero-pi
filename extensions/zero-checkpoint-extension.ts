@@ -14,7 +14,7 @@ function resolveSlug(explicit: string | null): string | null {
   if (explicit) return explicit;
   try {
     const candidates = readdirSync(SDD_DIR, { withFileTypes: true })
-      .filter((e) => e.isDirectory() && e.name !== "specs" && e.name !== "archive" && existsSync(join(SDD_DIR, e.name)))
+      .filter((e) => e.isDirectory() && e.name !== "specs" && e.name !== "archive" && e.name !== ".executions" && existsSync(join(SDD_DIR, e.name)))
       .map((e) => e.name);
     return candidates.length === 1 ? candidates[0] : null;
   } catch {

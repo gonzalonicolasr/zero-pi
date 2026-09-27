@@ -1,15 +1,5 @@
-// zero-pi — per-run cost/usage report, pure-logic module.
-//
-// A `/forge` run delegates each phase to a sub-agent that writes a
-// `*_meta.json` under `~/.pi/agent/sessions/<session>/subagent-artifacts/`
-// carrying real `usage` (tokens + cost), `model`, `durationMs` and
-// `toolCount`. `~/.pi/zero-runs.jsonl` records the verdict/rounds/model but
-// never cost — so there is no aggregate view of what a run cost, by phase.
-//
-// This module turns those raw meta records into a per-phase + total report.
-// Every decision (phase mapping, slug extraction, selection, aggregation,
-// formatting) lives here as plain, dependency-free TypeScript so it is
-// testable in isolation. The pi wiring lives in `zero-cost-extension.ts`.
+// Child usage normalization and reporting. Execution attribution belongs to
+// zero-execution.ts, never prompt text or a cross-project artifact scan.
 
 import { formatTokens } from "./format-tokens.ts";
 
@@ -24,7 +14,7 @@ export interface PhaseUsage {
   output: number;
   cacheRead: number;
   cacheWrite: number;
-  cost: number;
+  cost: number | null;
   turns: number;
 }
 
@@ -32,13 +22,13 @@ export interface PhaseUsage {
 export interface PhaseMeta {
   runId: string;
   phase: CostPhase;
-  /** Feature slug extracted from the sub-agent task, or `null`. */
+  /** Always null for runtime metadata; execution ledger supplies the report label. */
   slug: string | null;
   model: string;
   usage: PhaseUsage;
   durationMs: number;
   toolCount: number;
-  /** Epoch ms the meta was written (newest wins for selection/model). */
+  /** Epoch ms the runtime metadata was written. */
   timestamp: number;
 }
 
@@ -51,7 +41,7 @@ export interface PhaseAggregate extends PhaseUsage {
   toolCount: number;
 }
 
-/** The aggregated cost of a whole run. */
+/** Aggregated registered child usage, not whole-Forge/parent cost. */
 export interface RunCost {
   slug: string | null;
   phases: PhaseAggregate[];
@@ -67,21 +57,6 @@ export function phaseFromAgent(agent: unknown): CostPhase | null {
   return m ? (m[1] as CostPhase) : null;
 }
 
-/** Extract the feature slug from the first `.sdd/<slug>/` in a task string.
- *  The internal `specs` and `archive` directories are never slugs. */
-export function extractSlug(task: unknown): string | null {
-  if (typeof task !== "string") return null;
-  const re = /\.sdd\/([A-Za-z0-9._-]+)\//g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(task)) !== null) {
-    const slug = m[1];
-    if (slug && slug !== "specs" && slug !== "archive") return slug;
-  }
-  const label = /(?:^|\n)\s*Slug:\s*([A-Za-z0-9._-]+)/i.exec(task);
-  const slug = label?.[1];
-  return slug && slug !== "specs" && slug !== "archive" ? slug : null;
-}
-
 function num(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
@@ -89,14 +64,15 @@ function num(v: unknown): number {
 function asUsage(raw: unknown): PhaseUsage | null {
   if (!raw || typeof raw !== "object") return null;
   const u = raw as Record<string, unknown>;
-  // A usage object must carry at least the token fields as numbers.
-  if (typeof u.input !== "number" && typeof u.output !== "number") return null;
+  // Installed runtime always emits all token classes. Missing/invalid classes
+  // are incomplete metadata, not proof of zero consumption.
+  if (!["input", "output", "cacheRead", "cacheWrite", "turns"].every(k => typeof u[k] === "number" && Number.isFinite(u[k]) && (u[k] as number) >= 0)) return null;
   return {
     input: num(u.input),
     output: num(u.output),
     cacheRead: num(u.cacheRead),
     cacheWrite: num(u.cacheWrite),
-    cost: num(u.cost),
+    cost: typeof u.cost === "number" && Number.isFinite(u.cost) && u.cost >= 0 ? u.cost : null,
     turns: num(u.turns),
   };
 }
@@ -113,7 +89,7 @@ export function parseMeta(raw: unknown): PhaseMeta | null {
   return {
     runId: typeof r.runId === "string" ? r.runId : "",
     phase,
-    slug: extractSlug(r.task),
+    slug: null,
     model: typeof r.model === "string" ? r.model : "",
     usage,
     durationMs: num(r.durationMs),
@@ -122,28 +98,11 @@ export function parseMeta(raw: unknown): PhaseMeta | null {
   };
 }
 
-/** Select the phase-metas for one run: the given slug, or — by default — the
- *  slug whose newest meta has the greatest timestamp. Slug-less metas are
- *  ignored for the default pick. */
-export function selectRunMetas(metas: readonly PhaseMeta[], slug?: string | null): PhaseMeta[] {
-  if (slug) return metas.filter((m) => m.slug === slug);
-  let bestSlug: string | null = null;
-  let bestTs = -Infinity;
-  for (const m of metas) {
-    if (m.slug && m.timestamp > bestTs) {
-      bestTs = m.timestamp;
-      bestSlug = m.slug;
-    }
-  }
-  if (bestSlug === null) return [];
-  return metas.filter((m) => m.slug === bestSlug);
-}
-
 /** Aggregate selected phase-metas into per-phase rows (pipeline order) plus a
  *  run total. A phase that ran multiple sub-agents sums them; its model is the
- *  newest meta's model. */
+ *  union of reported models. */
 export function aggregateRun(metas: readonly PhaseMeta[], slug: string | null): RunCost {
-  const byPhase = new Map<CostPhase, PhaseAggregate & { _modelTs: number }>();
+  const byPhase = new Map<CostPhase, PhaseAggregate>();
   for (const m of metas) {
     let agg = byPhase.get(m.phase);
     if (!agg) {
@@ -153,7 +112,6 @@ export function aggregateRun(metas: readonly PhaseMeta[], slug: string | null): 
         subAgents: 0,
         input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0,
         durationMs: 0, toolCount: 0,
-        _modelTs: -Infinity,
       };
       byPhase.set(m.phase, agg);
     }
@@ -162,27 +120,23 @@ export function aggregateRun(metas: readonly PhaseMeta[], slug: string | null): 
     agg.output += m.usage.output;
     agg.cacheRead += m.usage.cacheRead;
     agg.cacheWrite += m.usage.cacheWrite;
-    agg.cost += m.usage.cost;
+    agg.cost = agg.cost === null || m.usage.cost === null ? null : agg.cost + m.usage.cost;
     agg.turns += m.usage.turns;
     agg.durationMs += m.durationMs;
     agg.toolCount += m.toolCount;
-    if (m.timestamp >= agg._modelTs) {
-      agg._modelTs = m.timestamp;
-      agg.model = m.model;
-    }
+    agg.model = [...new Set([...agg.model.split(", "), m.model])].filter(Boolean).join(", ");
   }
   const phases = [...byPhase.values()]
-    .sort((a, b) => PHASE_INDEX[a.phase] - PHASE_INDEX[b.phase])
-    .map(({ _modelTs, ...row }) => row);
+    .sort((a, b) => PHASE_INDEX[a.phase] - PHASE_INDEX[b.phase]);
 
   const total = phases.reduce(
     (t, p) => {
       t.input += p.input; t.output += p.output; t.cacheRead += p.cacheRead;
-      t.cacheWrite += p.cacheWrite; t.cost += p.cost; t.turns += p.turns;
+      t.cacheWrite += p.cacheWrite; t.cost = t.cost === null || p.cost === null ? null : t.cost + p.cost; t.turns += p.turns;
       t.durationMs += p.durationMs; t.toolCount += p.toolCount; t.subAgents += p.subAgents;
       return t;
     },
-    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0, durationMs: 0, toolCount: 0, subAgents: 0 },
+    { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 as number | null, turns: 0, durationMs: 0, toolCount: 0, subAgents: 0 },
   );
 
   return { slug, phases, total };
@@ -198,7 +152,8 @@ export function formatDuration(ms: number): string {
 }
 
 /** USD with two decimals: `$2.48`. */
-export function formatUsd(n: number): string {
+export function formatUsd(n: number | null): string {
+  if (n === null) return "unknown";
   const safe = Number.isFinite(n) ? n : 0;
   return `$${safe.toFixed(2)}`;
 }
@@ -207,17 +162,24 @@ export function formatUsd(n: number): string {
 export function formatReport(run: RunCost): string {
   if (run.phases.length === 0) return "zero-cost: no encontré datos de costo para ese run.";
   const head = `zero-cost: ${run.slug ?? "(run reciente)"}`;
-  const cols = `fase       sub  in      out     cache    tools  dur     costo`;
-  const lines = [head, cols];
+  // Header and cells share this one padding contract so they cannot drift apart.
   const row = (
-    label: string, subs: string, inn: number, out: number, cache: number,
-    tools: number, dur: number, cost: number,
+    label: string, subs: string, inn: string, out: string, cache: string, cacheWrite: string,
+    tools: string, dur: string, cost: string,
   ): string =>
-    `${label.padEnd(10)} ${subs.padStart(3)}  ${formatTokens(inn).padStart(6)}  ${formatTokens(out).padStart(6)}  ${formatTokens(cache).padStart(7)}  ${String(tools).padStart(5)}  ${formatDuration(dur).padStart(6)}  ${formatUsd(cost).padStart(7)}`;
+    `${label.padEnd(10)} ${subs.padStart(3)}  ${inn.padStart(6)}  ${out.padStart(6)}  ${cache.padStart(9)}  ${cacheWrite.padStart(10)}  ${tools.padStart(5)}  ${dur.padStart(6)}  ${cost.padStart(7)}`;
+  const data = (
+    label: string, subs: number, inn: number, out: number, cache: number, cacheWrite: number,
+    tools: number, dur: number, cost: number | null,
+  ): string =>
+    row(label, String(subs), formatTokens(inn), formatTokens(out), formatTokens(cache), formatTokens(cacheWrite), String(tools), formatDuration(dur), formatUsd(cost));
+  const lines = [head, `${row("fase", "sub", "in", "out", "cacheRead", "cacheWrite", "tools", "dur", "costo")} reportado`];
   for (const p of run.phases) {
-    lines.push(row(p.phase, String(p.subAgents), p.input, p.output, p.cacheRead, p.toolCount, p.durationMs, p.cost));
+    lines.push(data(p.phase, p.subAgents, p.input, p.output, p.cacheRead, p.cacheWrite, p.toolCount, p.durationMs, p.cost));
   }
   const t = run.total;
-  lines.push(row("TOTAL", String(t.subAgents), t.input, t.output, t.cacheRead, t.toolCount, t.durationMs, t.cost));
+  lines.push(data("TOTAL", t.subAgents, t.input, t.output, t.cacheRead, t.cacheWrite, t.toolCount, t.durationMs, t.cost));
+  lines.push("Solo hijos registrados; no incluye padre, compacciones ni total Forge. Duración = suma de hijos, no tiempo de pared.", "USD reportado por runtime/proveedor; $0.00 no implica tokens/cuota gratis. unknown = costo no reportado.");
+  for (const p of run.phases) lines.push(`${p.phase} modelos reportados: ${p.model || "unknown"}`);
   return lines.join("\n");
 }

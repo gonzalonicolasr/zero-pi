@@ -123,6 +123,7 @@ export function buildAgentFile(
     "systemPromptMode: replace",
     "inheritProjectContext: false",
     "inheritSkills: false",
+    "defaultContext: fresh",
     "---",
   );
   return `${front.join("\n")}\n\n${body}\n`;

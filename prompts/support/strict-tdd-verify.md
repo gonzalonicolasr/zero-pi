@@ -15,7 +15,7 @@ reality. A failed TDD audit is a **`corregir`** verdict, not `pasa`.
 ## Step A — TDD Compliance Check
 
 Read the build's **TDD Cycle Evidence** table — from
-`.sdd/<slug>/tdd-evidence.md` and/or the build's return envelope — and verify
+the cumulative `.sdd/<slug>/tdd-evidence.md` (not a parent envelope) — and verify
 TDD was actually followed:
 
 ```

@@ -3,9 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   phaseFromAgent,
-  extractSlug,
   parseMeta,
-  selectRunMetas,
   aggregateRun,
   formatDuration,
   formatUsd,
@@ -55,16 +53,6 @@ test("aggregateRun: gate phases sort in pipeline order (clarify first, analyze a
   );
 });
 
-test("extractSlug: first .sdd/<slug>/ wins, specs/archive rejected", () => {
-  assert.equal(extractSlug("Operate on .sdd/billing-incentive/ now"), "billing-incentive");
-  assert.equal(extractSlug("read .sdd/my-feature/request.md"), "my-feature");
-  assert.equal(extractSlug("touch .sdd/specs/requirements.md"), null);
-  assert.equal(extractSlug("see .sdd/archive/2026-01-01-x/"), null);
-  assert.equal(extractSlug("Slug: looply-provider-compat-improvements\nProject root: /tmp/x"), "looply-provider-compat-improvements");
-  assert.equal(extractSlug("Slug: archive"), null);
-  assert.equal(extractSlug("no slug here"), null);
-});
-
 test("parseMeta: happy path normalizes fields", () => {
   const m = parseMeta({
     runId: "c79c5444",
@@ -78,7 +66,7 @@ test("parseMeta: happy path normalizes fields", () => {
   });
   assert.ok(m);
   assert.equal(m?.phase, "explore");
-  assert.equal(m?.slug, "feat");
+  assert.equal(m?.slug, null);
   assert.equal(m?.usage.input, 211828);
   assert.equal(m?.toolCount, 34);
   assert.equal(m?.model, "openai-codex/gpt-5.5:high");
@@ -91,42 +79,19 @@ test("parseMeta: non-zero agent and missing usage are skipped", () => {
   assert.equal(parseMeta("nope"), null);
 });
 
-test("parseMeta: missing numerics coerce to 0", () => {
-  const m = parseMeta({
-    agent: "zero-build",
-    task: ".sdd/feat/",
-    usage: { input: 10, output: 5, cacheRead: 0, cost: 0.1, turns: 2 },
-  });
-  assert.ok(m);
-  assert.equal(m?.usage.cacheWrite, 0);
-  assert.equal(m?.toolCount, 0);
-  assert.equal(m?.durationMs, 0);
-  assert.equal(m?.timestamp, 0);
+test("parseMeta: incomplete/invalid token classes are not fake zeros", () => {
+  for (const usage of [{ input: 10 }, { input: 1, output: NaN, cacheRead: 0, cacheWrite: 0, turns: 1 }, { input: -1, output: 1, cacheRead: 0, cacheWrite: 0, turns: 1 }]) {
+    assert.equal(parseMeta({ agent: "zero-build", usage }), null);
+  }
+});
+test("unknown reported cost propagates and cacheWrite is visible", () => {
+  const parsed = parseMeta({ runId: "x", agent: "zero-build", task: "Slug: not-identity", usage: { input: 1, output: 2, cacheRead: 3, cacheWrite: 4, turns: 1 } })!;
+  assert.equal(parsed.usage.cost, null); assert.equal(parsed.slug, null);
+  const run = aggregateRun([parsed], "f"); assert.equal(run.total.cost, null);
+  assert.match(formatReport(run), /cacheRead.*cacheWrite/); assert.match(formatReport(run), /unknown/);
 });
 
-test("selectRunMetas: slug filter keeps only that slug", () => {
-  const metas = [
-    meta({ phase: "explore", slug: "a", timestamp: 1 }),
-    meta({ phase: "build", slug: "b", timestamp: 2 }),
-  ];
-  const sel = selectRunMetas(metas, "a");
-  assert.equal(sel.length, 1);
-  assert.equal(sel[0]?.slug, "a");
-});
-
-test("selectRunMetas: default picks newest slug by max timestamp", () => {
-  const metas = [
-    meta({ phase: "explore", slug: "old", timestamp: 10 }),
-    meta({ phase: "build", slug: "old", timestamp: 20 }),
-    meta({ phase: "explore", slug: "new", timestamp: 30 }),
-    meta({ phase: "plan", slug: null, timestamp: 99 }),
-  ];
-  const sel = selectRunMetas(metas);
-  assert.equal(sel.length, 1);
-  assert.equal(sel[0]?.slug, "new");
-});
-
-test("aggregateRun: phase order, multi-subagent build fold, model=newest, total", () => {
+test("aggregateRun: phase order, multi-subagent build fold, all models, total", () => {
   const metas = [
     meta({ phase: "veredicto", slug: "f", model: "v", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 0.5, turns: 1 }, toolCount: 2, durationMs: 100, timestamp: 5 }),
     meta({ phase: "explore", slug: "f", model: "e", usage: { input: 10, output: 2, cacheRead: 100, cacheWrite: 0, cost: 0.1, turns: 3 }, toolCount: 4, durationMs: 200, timestamp: 1 }),
@@ -140,7 +105,7 @@ test("aggregateRun: phase order, multi-subagent build fold, model=newest, total"
   assert.equal(build?.input, 12);
   assert.equal(build?.toolCount, 9);
   assert.equal(build?.cost, 0.5);
-  assert.equal(build?.model, "b-new"); // newest by timestamp
+  assert.equal(build?.model, "b-old, b-new"); // no model is silently lost
   assert.equal(run.total.input, 23);
   assert.equal(run.total.cost, 1.1);
   assert.equal(run.total.subAgents, 4);
@@ -168,6 +133,46 @@ test("formatReport: names slug, has TOTAL, uses compact tokens", () => {
   assert.match(out, /TOTAL/);
   assert.match(out, /211\.8k/);
   assert.match(out, /\$2\.48/);
+});
+
+function columnSpans(line: string) {
+  return [...line.matchAll(/\S+/g)].map((m) => ({ text: m[0], start: m.index, end: m.index + m[0].length }));
+}
+function assertAligned(report: string, expectedLabels: string[]) {
+  const lines = report.split("\n");
+  const header = columnSpans(lines[1].replace(/ reportado$/, ""));
+  assert.deepEqual(header.map((c) => c.text), ["fase", "sub", "in", "out", "cacheRead", "cacheWrite", "tools", "dur", "costo"]);
+  const dataLines = lines.slice(2, 2 + expectedLabels.length);
+  assert.deepEqual(dataLines.map((l) => columnSpans(l)[0].text), expectedLabels);
+  for (const line of dataLines) {
+    const cells = columnSpans(line);
+    assert.equal(cells.length, header.length, `column count drift on: ${line}`);
+    assert.equal(cells[0].start, header[0].start, `fase column start drift on: ${line}`);
+    for (let i = 1; i < header.length; i++) {
+      assert.equal(cells[i].end, header[i].end, `${header[i].text} column drift on: ${line}`);
+    }
+  }
+}
+
+test("formatReport: every header label lines up with the cells below it, including TOTAL", () => {
+  const run = aggregateRun(
+    [
+      meta({ phase: "explore", slug: "f", usage: { input: 92900, output: 15800, cacheRead: 1300000, cacheWrite: 123500, cost: 1.5, turns: 2 }, toolCount: 47, durationMs: 687000, timestamp: 1 }),
+      meta({ phase: "build", slug: "f", usage: { input: 5, output: 5, cacheRead: 50, cacheWrite: 7, cost: 0.25, turns: 1 }, toolCount: 3, durationMs: 12000, timestamp: 2 }),
+    ],
+    "f",
+  );
+  assertAligned(formatReport(run), ["explore", "build", "TOTAL"]);
+});
+
+test("formatReport: a single phase with unknown cost stays aligned too", () => {
+  const run = aggregateRun(
+    [meta({ phase: "veredicto", slug: "f", usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: null, turns: 1 }, toolCount: 1, durationMs: 1000, timestamp: 1 })],
+    "f",
+  );
+  const report = formatReport(run);
+  assertAligned(report, ["veredicto", "TOTAL"]);
+  assert.match(report, /unknown/);
 });
 
 test("formatReport: empty run is a friendly message", () => {
