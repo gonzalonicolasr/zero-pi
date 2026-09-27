@@ -8,6 +8,7 @@ import { createGitRunner, type GitRunner, type SpawnLike } from "./git-runner.ts
 import { mergeDelta } from "./spec-merge.ts";
 import { writeLinks } from "./sdd-links.ts";
 import { validateSpecInputs, validateTasksFile } from "./zero-validate.ts";
+import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 const SDD_DIR = ".sdd";
 type NotifyType = "info" | "warning" | "error";
@@ -25,6 +26,7 @@ function specPairs(runDir: string): Array<{ domain: string; deltaPath: string; c
 export async function runZeroArchive(args: string, ctx: PiCommandContext, git: GitRunner = createGitRunner(spawn as unknown as SpawnLike)): Promise<void> {
   const opts = parse(args);
   if (!opts.slug) { notify(ctx, "zero-archive: usage /zero-archive <slug> [--dry-run] [--json] [--allow-dirty]", "warning"); return; }
+  if (!isSafeSlug(opts.slug)) { notify(ctx, unsafeSlugMessage("zero-archive", opts.slug), "error"); return; }
   const runDir = join(SDD_DIR, opts.slug);
   const emit = (payload: unknown, text: string, type: NotifyType = "info") => notify(ctx, opts.json ? JSON.stringify(payload) : text, type);
   if (!existsSync(runDir)) { emit({ ok: false, reason: "missing-run" }, `zero-archive: no existe ${runDir}`, "error"); return; }

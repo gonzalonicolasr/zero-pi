@@ -136,3 +136,14 @@ test("register writes on quit and exposes /zero-resume", async () => {
     rmSync(cwd, { recursive: true, force: true });
   }
 });
+
+test("restore fences are labelled with the shell that quoteShellArg targets", () => {
+  // quoteShellArg already escapes for PowerShell on win32 and POSIX elsewhere;
+  // a fence that always said `powershell` mislabelled every Linux/macOS resume.
+  const linux = buildConversationResume(entries, { sessionId: "abc", platform: "linux" });
+  assert.equal(linux.includes("```powershell"), false);
+  assert.equal(linux.match(/```bash/g)?.length, 3);
+  const win = buildConversationResume(entries, { sessionId: "abc", platform: "win32" });
+  assert.equal(win.includes("```bash"), false);
+  assert.equal(win.match(/```powershell/g)?.length, 3);
+});

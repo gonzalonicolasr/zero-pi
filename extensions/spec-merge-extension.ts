@@ -31,6 +31,7 @@ import {
 import { join } from "node:path";
 
 import { isEmptyDelta, mergeDelta, parseDelta, type MergeSummary } from "./spec-merge.ts";
+import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 /** The canonical store path, relative to the project root. */
 const STORE_DIR = join(".sdd", "specs");
@@ -179,6 +180,7 @@ function runSync(args: string, ctx: PiCommandContext): void {
     return;
   }
 
+  if (!isSafeSlug(slug)) { notify(unsafeSlugMessage("zero-sync", slug), "error"); return; }
   const deltaPath = join(SDD_DIR, slug, "spec.md");
   const deltaText = readFileOrNull(deltaPath);
   if (deltaText === null) {

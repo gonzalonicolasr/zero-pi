@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { loadSddConfig } from "./sdd-config.ts";
 import { formatRoundsReport, ledgerPath, parseRoundsArgs, readLedger, recordRound, stateOf, VERDICTS, writeLedger } from "./zero-rounds.ts";
+import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 const SDD_DIR = ".sdd";
 
@@ -33,6 +34,7 @@ export function runRounds(args: string, ctx: PiCommandContext, cwd = process.cwd
 
   const slug = resolveSlug(parsed.slug, cwd);
   if (!slug) { notify("zero-rounds: no hay un único run — corré /zero-rounds <acción> <slug>", "warning"); return; }
+  if (!isSafeSlug(slug)) { notify(unsafeSlugMessage("zero-rounds", slug), "error"); return; }
 
   if (parsed.action === "reset") {
     const path = ledgerPath(slug, cwd);

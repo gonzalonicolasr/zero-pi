@@ -50,6 +50,8 @@ export interface ResumeMetadata {
   generatedAt?: Date;
   maxChars?: number;
   maxItems?: number;
+  /** Defaults to `process.platform`; picks the restore fence's shell label. */
+  platform?: NodeJS.Platform;
   reason?: string;
   sessionFile?: string;
   sessionId?: string;
@@ -225,6 +227,8 @@ export function buildConversationResume(
   const maxChars = metadata.maxChars ?? DEFAULT_MAX_CHARS;
   const items = conversationItems(entries, maxChars).slice(-maxItems);
   const commands = restoreCommands(metadata.sessionFile, metadata.sessionId);
+  // Same split as quoteShellArg: PowerShell quoting on win32, POSIX elsewhere.
+  const fence = "```" + ((metadata.platform ?? process.platform) === "win32" ? "powershell" : "bash");
 
   const lines: string[] = [
     "# ZERO Pi Resume",
@@ -235,20 +239,20 @@ export function buildConversationResume(
     "",
     "Exact command:",
     "",
-    "```powershell",
+    fence,
     commands[0],
     "```",
     "",
   ];
 
   if (metadata.sessionId) {
-    lines.push("Same session by id:", "", "```powershell", `pi --session ${metadata.sessionId}`, "```", "");
+    lines.push("Same session by id:", "", fence, `pi --session ${metadata.sessionId}`, "```", "");
   }
 
   lines.push(
     "Open the interactive picker:",
     "",
-    "```powershell",
+    fence,
     "pi --resume",
     "```",
     "",

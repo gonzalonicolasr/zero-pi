@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { validateArtifactSet, validateSpecInputs, validateTasksFile, type ValidationDefect } from "./zero-validate.ts";
+import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 const SDD_DIR = ".sdd";
 const ARTIFACTS = ["proposal", "spec", "design", "tasks"] as const;
@@ -36,6 +37,7 @@ function runValidate(args: string, ctx: PiCommandContext): void {
     notify("zero-validate: no hay un único run para validar — corré /zero-validate <slug>", "warning");
     return;
   }
+  if (!isSafeSlug(slug)) { notify(unsafeSlugMessage("zero-validate", slug), "error"); return; }
   const dir = join(SDD_DIR, slug);
   const texts = Object.fromEntries(ARTIFACTS.map((a) => [a, readFileOrNull(join(dir, `${a}.md`))])) as Record<(typeof ARTIFACTS)[number], string | null>;
   const hasDomainSpec = existsSync(join(dir, "specs"));

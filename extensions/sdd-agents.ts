@@ -101,6 +101,7 @@ export function buildAgentFile(
   description: string,
   model: string | undefined,
   thinking?: ThinkingLevel,
+  opts: { nodd?: boolean } = {},
 ): string {
   const front = [
     "---",
@@ -113,7 +114,14 @@ export function buildAgentFile(
   // defensive: callers already validate, but the file builder must never write
   // a bad level into agent frontmatter.
   if (thinking && isThinkingLevel(thinking)) front.push(`thinking: ${thinking}`);
-  front.push(`tools: ${PHASE_TOOLS[phase].join(", ")}`);
+  // NODD's gates load inside every child and keep per-process state, so the
+  // parent's declaration never reaches a phase agent: a writer without
+  // `nodd_declare` is refused on its first write with no remedy in reach. The
+  // tool exists only when NODD is installed, and pi-subagents fails a child
+  // whose `tools:` names an unregistered tool — hence the flag.
+  const tools = [...PHASE_TOOLS[phase]];
+  if (opts.nodd && tools.includes("write")) tools.push("nodd_declare");
+  front.push(`tools: ${tools.join(", ")}`);
   if (!PHASE_COMPLETION_GUARD[phase]) front.push("completionGuard: false");
   // `inheritProjectContext: false` keeps the user's global AGENTS.md out of
   // every phase sub-agent: it is heavy (re-sent to each phase) and may carry
@@ -223,6 +231,24 @@ function readPhaseThinking(phase: Phase): ThinkingLevel | undefined {
  * provisioning must never break a pi session — and one phase failing does not
  * block the others.
  */
+/** Whether pi's settings list the `@gonrocca/nodd` package. Exported for tests. */
+export function noddInstalled(settings: unknown): boolean {
+  const packages = (settings as { packages?: unknown } | null)?.packages;
+  if (!Array.isArray(packages)) return false;
+  return packages.some((p) => {
+    const source = typeof p === "string" ? p : (p as { source?: unknown } | null)?.source;
+    return typeof source === "string" && /^npm:@gonrocca\/nodd(@|$)/.test(source);
+  });
+}
+
+function readNoddInstalled(): boolean {
+  try {
+    return noddInstalled(JSON.parse(readFileSync(join(homedir(), ".pi", "agent", "settings.json"), "utf8")));
+  } catch {
+    return false;
+  }
+}
+
 export default function register(_pi?: unknown): void {
   try {
     const here = dirname(fileURLToPath(import.meta.url)); // <pkg>/extensions
@@ -230,6 +256,7 @@ export default function register(_pi?: unknown): void {
     const supportSrcDir = join(here, "..", "prompts", "support");
     const agentsDir = join(homedir(), ".pi", "agent", "agents", "zero");
     mkdirSync(agentsDir, { recursive: true });
+    const nodd = readNoddInstalled();
 
     for (const phase of PHASES) {
       try {
@@ -241,6 +268,7 @@ export default function register(_pi?: unknown): void {
           description,
           readPhaseModel(phase),
           readPhaseThinking(phase) ?? DEFAULT_THINKING[phase],
+          { nodd },
         );
         writeFileSync(join(agentsDir, `zero-${phase}.md`), file, "utf8");
       } catch {

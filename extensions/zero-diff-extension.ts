@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { isEmptyDelta, mergeDelta, parseDelta, type MergeSummary } from "./spec-merge.ts";
+import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 const SDD_DIR = ".sdd";
 const STORE_FILE = join(".sdd", "specs", "requirements.md");
@@ -33,6 +34,7 @@ function runDiff(args: string, ctx: PiCommandContext): void {
   const notify = (m: string, t?: NotifyType) => { try { ctx.ui.notify(m, t); } catch {} };
   const slug = resolveSlug(args);
   if (slug === null) { notify("zero-diff: no hay un único run — corré /zero-diff <slug>", "warning"); return; }
+  if (!isSafeSlug(slug)) { notify(unsafeSlugMessage("zero-diff", slug), "error"); return; }
   const deltaPath = join(SDD_DIR, slug, "spec.md");
   const deltaText = readFileOrNull(deltaPath);
   if (deltaText === null) { notify(`zero-diff: ${deltaPath} no existe — no hay delta para comparar`, "warning"); return; }

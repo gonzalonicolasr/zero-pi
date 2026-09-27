@@ -7,6 +7,7 @@ import { readRunRecords } from "./autotune.ts";
 import { createGhRunner, type SpawnLike as GhSpawnLike } from "./gh-runner.ts";
 import { createGitRunner, type GitRunner, type SpawnLike } from "./git-runner.ts";
 import { readLinks } from "./sdd-links.ts";
+import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 const SDD_DIR = ".sdd";
 type NotifyType = "info" | "warning" | "error";
@@ -45,6 +46,7 @@ export async function runZeroGitValidate(args: string, ctx: PiCommandContext, gi
   const opts = parse(args);
   const notify = (m: string, t?: NotifyType) => { try { ctx.ui.notify(m, t); } catch {} };
   if (!opts.slug) { notify("zero-git-validate: usage /zero-git-validate <slug> [--for=pr|archive|any] [--json]", "warning"); return; }
+  if (!isSafeSlug(opts.slug)) { notify(unsafeSlugMessage("zero-git-validate", opts.slug), "error"); return; }
   if (!existsSync(join(SDD_DIR, opts.slug))) { notify(`zero-git-validate: no existe .sdd/${opts.slug}`, "error"); return; }
   const result = await validateGitState(opts.slug, opts.forMode, git, ghSpawn);
   const text = result.checks.map((c) => `${c.ok ? "✅" : "❌"} ${c.name}: ${c.message}`).join("\n");

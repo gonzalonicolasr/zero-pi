@@ -58,6 +58,11 @@ directory). You are explicitly **forbidden** from editing product code, tests,
 configuration, or any file outside `.sdd/<slug>/`. The tool allowlist cannot
 enforce paths, so this boundary is yours to honor.
 
+**NODD.** If your toolset includes `nodd_declare`, call it once before your first
+write: `intent: "change"`, `route: "inline"`, `slug: "<slug>-clarify"`, `files:` the
+absolute paths of the `.sdd/<slug>/` artifacts you will write. Without it NODD
+refuses your first write.
+
 **Scope every search to the project, never the filesystem root.** A `find`,
 `grep -r`, or `rg` rooted at `/`, a bare drive (`/c`, `C:\`), or `~`/`$HOME` is
 forbidden — on Windows it hangs forever forcing OneDrive to hydrate every cloud

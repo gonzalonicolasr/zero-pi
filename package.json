@@ -1,6 +1,6 @@
 {
   "name": "@gonrocca/zero-pi",
-  "version": "0.1.80",
+  "version": "0.1.81",
   "description": "zero-pi — an installable layer for pi (pi.dev): the zero spec-driven development workflow (clarify → explore → plan → analyze → build → veredicto) with automatic clarify/analyze gates, per-phase model autotune, and token-efficient batched builds. Adds capability to pi without modifying pi.",
   "type": "module",
   "keywords": [
@@ -98,6 +98,7 @@
     "extensions/format-tokens.ts",
     "extensions/pr-body.ts",
     "extensions/sdd-links.ts",
+    "extensions/sdd-slug.ts",
     "extensions/sdd-config.ts",
     "extensions/git-runner.ts",
     "extensions/gh-runner.ts",

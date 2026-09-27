@@ -5,6 +5,29 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.81] - 2026-09-27
+
+### Fixed
+
+- **Forge con NODD.** Los subagentes que escriben (`zero-clarify`, `zero-plan`,
+  `zero-analyze`, `zero-build`) reciben `nodd_declare` cuando `@gonrocca/nodd`
+  está en `~/.pi/agent/settings.json`, y su prompt les pide declarar los
+  archivos antes de escribir. El estado de NODD es por proceso: la declaración
+  del orquestador no llegaba al hijo, y su primer write se rechazaba sin remedio
+  alcanzable. Sin NODD no se agrega (pi-subagents falla si `tools:` nombra una
+  tool que no existe). Verificado con `zero-build` async: declara, edita el
+  archivo declarado tras 6 lecturas, y NODD rechaza uno no declarado.
+- **Slugs que salían de `.sdd/`.** Los 10 comandos que reciben un slug
+  (`/zero-archive`, `/zero-branch`, `/zero-checkpoint`, `/zero-diff`,
+  `/zero-git-validate`, `/zero-issue`, `/zero-pr`, `/zero-rounds`,
+  `/zero-sync`, `/zero-validate`) rechazan uno con `/`, `\`, `..` o que empiece
+  con `.`. `/zero-archive ../x` renombraba una carpeta fuera de `.sdd/`. Se
+  rechaza, no se limpia: un slug corregido en silencio actuaría sobre otro run.
+  Los puntos internos siguen valiendo (`fix-v1.2`).
+- **Resume en Linux/macOS.** Los bloques de restauración de
+  `.pi/zero-resume.md` decían `powershell` siempre; ahora `bash` fuera de
+  Windows, igual que el quoting que ya hacía `quoteShellArg`.
+
 ## [0.1.80] - 2026-09-27
 
 ### Fixed — el panel `ZERO activity` se redibuja al cambiar el tamaño de la terminal

@@ -25,6 +25,14 @@ then proceed — never fall back to scanning the whole tree.
 If the project root carries an `AGENTS.md` or `CLAUDE.md`, skim it once for
 project conventions — you receive no global user context.
 
+**NODD.** If your toolset includes `nodd_declare`, call it once before your
+first write: `intent: "change"`, `route: "inline"`, `slug: "<slug>-build"`,
+`files:` the absolute paths from the `files:` bullets of your batch plus
+`tasks.md` and `tdd-evidence.md` under `.sdd/<slug>/`, and `runner:` the test
+command you resolve below. Without it NODD refuses your first write. Writing a
+file you did not declare is still refused after heavy reading — declare what
+the batch touches, not less.
+
 Implement the planned tasks in dependency order, test-first where practical. `tasks.md` is a dependency-aware graph: every task has a `depends:` line. Before starting a task, verify each listed dependency is already `[x]`; if a dependency is unchecked, complete that dependency first (when it is in your assigned batch) or stop and report the blocked task (when it is outside the assigned batch). Never skip ahead just because a later task looks easier. Keep every change within the plan's scope — do not expand it on your own initiative.
 
 ## Strict TDD gate

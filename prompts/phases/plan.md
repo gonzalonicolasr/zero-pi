@@ -17,6 +17,11 @@ sanity-check any `proposal.md`, `spec.md`, or `design.md` you depend on — if o
 is obviously incomplete (truncated mid-write), rebuild it instead of trusting
 it.
 
+**NODD.** If your toolset includes `nodd_declare`, call it once before your first
+write: `intent: "change"`, `route: "inline"`, `slug: "<slug>-plan"`, `files:` the
+absolute paths of the `.sdd/<slug>/` artifacts you will write. Without it NODD
+refuses your first write.
+
 Using the explore findings, write the plan: the requirements (what must be
 true), the design (how it will be built), and an ordered list of small,
 independently verifiable tasks.

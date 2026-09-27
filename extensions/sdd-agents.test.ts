@@ -17,6 +17,7 @@ import {
   PHASES,
   resolvePhaseThinking,
   splitPhasePrompt,
+  noddInstalled,
   SUPPORT_MODULES,
   supportModulesDir,
 } from "./sdd-agents.ts";
@@ -242,4 +243,29 @@ test("resolvePhaseThinking: an invalid user level falls back to the default, nev
     resolvePhaseThinking({ thinking: { veredicto: "ultracode" } }, "veredicto"),
     "xhigh",
   );
+});
+
+test("writer phases get nodd_declare only when NODD is installed", () => {
+  // NODD's gates load inside every child and its state is per process, so a
+  // parent's declaration never reaches the phase agent: without the tool, the
+  // first write of zero-build is refused and nothing in its toolset clears it.
+  // Without NODD the tool does not exist, and pi-subagents fails a child whose
+  // `tools:` names an unregistered tool — so it is added only when present.
+  for (const phase of PHASES) {
+    const writes = PHASE_TOOLS[phase].includes("write");
+    const withNodd = buildAgentFile(phase, "body", "d", undefined, undefined, { nodd: true });
+    const without = buildAgentFile(phase, "body", "d", undefined, undefined, { nodd: false });
+    assert.equal(/^tools: .*nodd_declare/m.test(withNodd), writes, `${phase} with NODD`);
+    assert.equal(without.includes("nodd_declare"), false, `${phase} without NODD`);
+  }
+  assert.equal(buildAgentFile("build", "body", "d", undefined).includes("nodd_declare"), false, "default is off");
+});
+
+test("noddInstalled reads pi's package list", () => {
+  assert.equal(noddInstalled({ packages: ["npm:pi-subagents", "npm:@gonrocca/nodd"] }), true);
+  assert.equal(noddInstalled({ packages: ["npm:@gonrocca/nodd@0.8.5"] }), true);
+  assert.equal(noddInstalled({ packages: [{ source: "npm:@gonrocca/nodd" }] }), true);
+  assert.equal(noddInstalled({ packages: ["npm:@gonrocca/zero-pi", "npm:@gonrocca/noddy"] }), false);
+  assert.equal(noddInstalled({}), false);
+  assert.equal(noddInstalled(null), false);
 });

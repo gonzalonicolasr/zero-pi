@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { createGitRunner, type GitRunner, type SpawnLike } from "./git-runner.ts";
 import { loadSddConfig } from "./sdd-config.ts";
 import { writeLinks } from "./sdd-links.ts";
+import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 const SDD_DIR = ".sdd";
 type NotifyType = "info" | "warning" | "error";
@@ -34,6 +35,7 @@ function emit(ctx: PiCommandContext, opts: BranchOptions, payload: unknown, text
 export async function runZeroBranch(args: string, ctx: PiCommandContext, runner?: GitRunner): Promise<void> {
   const opts = parseBranchArgs(args);
   if (!opts.slug) { notify(ctx, "zero-branch: usage /zero-branch <slug> [--dry-run] [--json] [--allow-dirty] [--base=<branch>]", "warning"); return; }
+  if (!isSafeSlug(opts.slug)) { notify(ctx, unsafeSlugMessage("zero-branch", opts.slug), "error"); return; }
   const config = loadSddConfig(process.cwd());
   const branch = `${config.git.branchPrefix}${sanitizeSlug(opts.slug)}`;
   const base = opts.base ?? config.git.baseBranch;

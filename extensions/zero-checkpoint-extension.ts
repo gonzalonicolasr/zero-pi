@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { createCheckpoint, formatCheckpointReport, parseCheckpointArgs, type CheckpointRunner } from "./zero-checkpoint.ts";
+import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 const SDD_DIR = ".sdd";
 
@@ -45,6 +46,7 @@ export function runCheckpoint(args: string, ctx: PiCommandContext, runner = defa
   const parsed = parseCheckpointArgs(args ?? "");
   const slug = resolveSlug(parsed.slug);
   if (!slug) { notify("zero-checkpoint: no hay un único run — corré /zero-checkpoint <slug>", "warning"); return; }
+  if (!isSafeSlug(slug)) { notify(unsafeSlugMessage("zero-checkpoint", slug), "error"); return; }
   const result = createCheckpoint(slug, process.cwd(), runner);
   if (parsed.json) notify(JSON.stringify(result, null, 2), result.ok ? "info" : "error");
   else notify(formatCheckpointReport(result), result.ok ? "info" : "error");

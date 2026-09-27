@@ -8,6 +8,7 @@ import { buildPrBody } from "./pr-body.ts";
 import { createGhRunner, type SpawnLike } from "./gh-runner.ts";
 import { readLinks, writeLinks } from "./sdd-links.ts";
 import { validateArtifactSet, validateSpecInputs, validateTasksFile } from "./zero-validate.ts";
+import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 const SDD_DIR = ".sdd";
 type NotifyType = "info" | "warning" | "error";
@@ -64,6 +65,7 @@ export async function runZeroPr(args: string, ctx: PiCommandContext, spawnImpl: 
   const { slugArg, labels } = parseArgs(args);
   const slug = resolveSlug(slugArg);
   if (slug === null) { notify("zero-pr: no hay un único run — corré /zero-pr <slug>", "warning"); return; }
+  if (!isSafeSlug(slug)) { notify(unsafeSlugMessage("zero-pr", slug), "error"); return; }
   const verdict = latestVerdict(slug);
   if (verdict?.verdict !== "pasa") { notify(`zero-pr: ${slug} no tiene veredicto pasa (último: ${verdict?.verdict ?? "—"})`, "warning"); return; }
   const dir = join(SDD_DIR, slug);
