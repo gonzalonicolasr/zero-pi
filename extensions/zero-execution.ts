@@ -168,11 +168,12 @@ function reconcileAttempt(ledger: ExecutionLedger, a: ExecutionAttempt): string 
       const delivery = r.state === "complete"
         ? (step.status === "completed" ? "complete" : step.status)
         : r.state;
-      // Exact filenames from getArtifactPaths(..., index=0), not directory scans.
+      // Exact filenames from getArtifactPaths (index 0, or none in pi-subagents 0.70+), not directory scans.
       // Temp/custom locations remain partial; do not guess globally.
-      const base = `${childRunId}_zero-${a.phase}_0_meta.json`;
-      const candidates = [join(ledger.cwd, ".pi", "subagents", "artifacts", base)];
-      if (typeof s.sessionId === "string" && isAbsolute(s.sessionId)) candidates.unshift(join(dirname(s.sessionId), "subagent-artifacts", base));
+      const bases = [`${childRunId}_zero-${a.phase}_0_meta.json`, `${childRunId}_zero-${a.phase}_meta.json`];
+      const dirs = [join(ledger.cwd, ".pi", "subagents", "artifacts")];
+      if (typeof s.sessionId === "string" && isAbsolute(s.sessionId)) dirs.unshift(join(dirname(s.sessionId), "subagent-artifacts"));
+      const candidates = dirs.flatMap(d => bases.map(b => join(d, b)));
       const metadataPath = candidates.find(existsSync);
       const outputPath = candidates.map(p => p.replace(/_meta\.json$/, "_output.md")).find(existsSync);
       a.receipt = { childRunId, context: "fresh", state: delivery, metadataPath, outputPath };

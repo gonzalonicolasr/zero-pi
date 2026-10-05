@@ -270,14 +270,14 @@ test("recordModel resolves exactly like the agent generator's phaseModel", async
   for (const c of cfgs) assert.equal(recordModel(c, "build"), phaseModel(c, "build" as any), JSON.stringify(c));
 });
 
-function launch(cwd: string, runId: string, phase: string, n: number, opts: { status?: "completed" | "failed"; output?: string; batch?: number } = {}) {
+function launch(cwd: string, runId: string, phase: string, n: number, opts: { status?: "completed" | "failed"; output?: string; batch?: number; noIndex?: boolean } = {}) {
   const a = executionOperation(cwd, { action: "attempt", runId, phase, round: 1, batch: opts.batch ?? n });
   const wid = `wf-${n}`, child = `child-${n}`;
   const dir = join(cwd, "runtime", wid); mkdirSync(dir, { recursive: true });
   const failed = opts.status === "failed";
   writeFileSync(join(dir, "workflow-receipt.json"), JSON.stringify({ version: 1, workflowRunId: wid, state: failed ? "failed" : "complete", entries: { [a.attemptId]: { key: a.attemptId, agent: `zero-${phase}`, requestedContext: "fresh", resolvedContext: "fresh", continuation: { runIds: [child] }, latestRunId: child } } }));
   writeFileSync(join(dir, "status.json"), JSON.stringify({ runId: wid, cwd, sessionId: join(cwd, "sessions", "parent.jsonl"), state: failed ? "failed" : "complete", steps: [{ workflowKey: a.attemptId, parentWorkflowRunId: wid, agent: `zero-${phase}`, runId: child, status: failed ? "failed" : "completed" }] }));
-  const meta = join(cwd, "sessions", "subagent-artifacts", `${child}_zero-${phase}_0_meta.json`);
+  const meta = join(cwd, "sessions", "subagent-artifacts", `${child}_zero-${phase}${opts.noIndex ? "" : "_0"}_meta.json`);
   mkdirSync(dirname(meta), { recursive: true });
   writeFileSync(meta, JSON.stringify({ ...capture.meta, runId: child, agent: `zero-${phase}` }));
   if (opts.output !== undefined) writeFileSync(meta.replace("_meta.json", "_output.md"), opts.output);
@@ -512,4 +512,15 @@ test("adopt is not repeatable: the second call finds the identity it wrote and c
 test("a plain legacy run without identity still fails closed on resume, with no adopt hint", () => fixture(cwd => {
   handoff(cwd, "legacy", "# Legacy spec\n\n- R1\n");
   assert.throws(() => executionOperation(cwd, { action: "resume", slug: "legacy" }), err => /legacy/.test((err as Error).message) && !/adopt/.test((err as Error).message));
+}));
+
+test("findings and status read artifacts that pi-subagents names without an index (0.70+: no _0)", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const report = "# Findings\n\n## Code roots\n\n- `/code`\n";
+  const attemptId = launch(cwd, runId, "explore", 1, { output: report, noIndex: true });
+  const out = executionOperation(cwd, { action: "findings", runId, attemptId });
+  assert.equal(readFileSync(out.findingsPath, "utf8"), report);
+  const st = executionOperation(cwd, { action: "status", runId });
+  assert.equal(st.metas.length, 1);
+  assert.equal(st.missing, 0);
 }));

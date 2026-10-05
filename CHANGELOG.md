@@ -5,6 +5,17 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.87] - 2026-10-05
+
+### Fixed — `/forge` frenaba siempre después de explore con pi-subagents 0.70
+
+pi-subagents 0.70 nombra los artefactos de un workflow de un solo hijo sin
+índice (`<child>_zero-explore_meta.json`), y el ledger sólo buscaba el nombre con
+`_0_`. Sin `outputPath`, la acción `findings` fallaba con "Explore output receipt
+unavailable; blocked handoff" y ningún run pasaba de explore. Tampoco se
+registraba el costo de ninguna fase. Ahora se buscan los dos nombres. Lo
+encontró una corrida real de punta a punta, no un test.
+
 ## [0.1.86] - 2026-10-05
 
 ### Fixed — `/forge --continue` adopta el handoff de NODD
