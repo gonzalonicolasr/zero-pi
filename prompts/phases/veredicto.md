@@ -10,8 +10,10 @@ no slug and an ambiguous target, ask which run before acting. Read the plan
 artifacts and the build result, then return your verdict and concrete evidence.
 Never write `~/.pi/zero-runs.jsonl` or the Cortex terminal run trace. The
 orchestrator alone owns terminal outcome persistence and round accounting;
-your return envelope is evidence, not a log append. Do not write a separate
-verdict file; `.sdd/` artifacts stay plan state only.
+your return envelope is evidence, not a log append. Do not write a verdict
+file yourself: the orchestrator writes `.sdd/<slug>/veredicto-r<N>.md` by code
+from your returned output, so that output must be the complete verdict.
+`.sdd/<slug>/build-r<N>.md` holds the round's build envelopes when present.
 
 **Locating the code — read, do not search.** Get the code root from the plan:
 the `## Code roots` section in `design.md`, or — for delta/forge runs that have
@@ -90,6 +92,11 @@ for runs whose latest recorded `veredicto` is `pasa`; if the verdict is
 State the verdict's reasoning concretely — the specific defects for `corregir`,
 the specific plan flaw for `replantear`. The orchestrator persists that
 reasoning to the run's memory trace, so future runs depend on it being precise.
+
+End your output with exactly one final line, `VEREDICTO: pasa`,
+`VEREDICTO: corregir` or `VEREDICTO: replantear`, and nothing after it. The
+orchestrator's tool reads that line and refuses a recorded verdict that
+contradicts it.
 
 **Return contract.** Return a concise result envelope to the orchestrator: your
 phase's outcome (findings, plan, build result, or verdict with its concrete

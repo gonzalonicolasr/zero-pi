@@ -269,3 +269,137 @@ test("recordModel resolves exactly like the agent generator's phaseModel", async
   ];
   for (const c of cfgs) assert.equal(recordModel(c, "build"), phaseModel(c, "build" as any), JSON.stringify(c));
 });
+
+function launch(cwd: string, runId: string, phase: string, n: number, opts: { status?: "completed" | "failed"; output?: string; batch?: number } = {}) {
+  const a = executionOperation(cwd, { action: "attempt", runId, phase, round: 1, batch: opts.batch ?? n });
+  const wid = `wf-${n}`, child = `child-${n}`;
+  const dir = join(cwd, "runtime", wid); mkdirSync(dir, { recursive: true });
+  const failed = opts.status === "failed";
+  writeFileSync(join(dir, "workflow-receipt.json"), JSON.stringify({ version: 1, workflowRunId: wid, state: failed ? "failed" : "complete", entries: { [a.attemptId]: { key: a.attemptId, agent: `zero-${phase}`, requestedContext: "fresh", resolvedContext: "fresh", continuation: { runIds: [child] }, latestRunId: child } } }));
+  writeFileSync(join(dir, "status.json"), JSON.stringify({ runId: wid, cwd, sessionId: join(cwd, "sessions", "parent.jsonl"), state: failed ? "failed" : "complete", steps: [{ workflowKey: a.attemptId, parentWorkflowRunId: wid, agent: `zero-${phase}`, runId: child, status: failed ? "failed" : "completed" }] }));
+  const meta = join(cwd, "sessions", "subagent-artifacts", `${child}_zero-${phase}_0_meta.json`);
+  mkdirSync(dirname(meta), { recursive: true });
+  writeFileSync(meta, JSON.stringify({ ...capture.meta, runId: child, agent: `zero-${phase}` }));
+  if (opts.output !== undefined) writeFileSync(meta.replace("_meta.json", "_output.md"), opts.output);
+  executionOperation(cwd, { action: "attach", runId, attemptId: a.attemptId, workflowRunId: wid, asyncDir: dir });
+  return a.attemptId as string;
+}
+
+const waveTasks = [
+  "# Tasks", "", "Code root: `/code`", "",
+  "### T001 — [x] Base", "- files:", "  - `/code/base.ts`", "- depends: []", "- evidence: x", "- review: ~10 changed lines", "",
+  "### T002 — Parser [P]", "- files:", "  - `/code/a.ts`", "- depends: T001", "- evidence: x", "- review: ~10 changed lines", "",
+  "- [ ] **T003. Writer** [P]", "  - files: `b.ts` (new)", "  - depends: []", "  - evidence: x", "  - review: ~10 changed lines", "",
+  "## [ ] T004 — Glue", "- files:", "  - `/code/a.ts`", "- depends: T002, T003", "- evidence: x", "- review: ~10 changed lines", "",
+].join("\n");
+
+test("wave returns the next parallel wave, then the sequential remainder", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  writeFileSync(join(cwd, ".sdd/feat/tasks.md"), waveTasks);
+  const w = executionOperation(cwd, { action: "wave", runId });
+  assert.deepEqual([w.mode, w.tasks, w.remaining, w.round], ["parallel", ["T002", "T003"], 2, 1]);
+  assert.equal(readFileSync(join(cwd, ".sdd/feat/tasks.md"), "utf8"), waveTasks);
+  writeFileSync(join(cwd, ".sdd/feat/tasks.md"), waveTasks.replace("[P]", "").replace("[P]", ""));
+  assert.deepEqual(executionOperation(cwd, { action: "wave", runId }).tasks, ["T002", "T003", "T004"]);
+}));
+
+test("wave-close ticks delivered tasks, folds per-task evidence in id order and logs the wave; a failed child stays [ ]", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const dir = join(cwd, ".sdd/feat");
+  writeFileSync(join(dir, "tasks.md"), waveTasks);
+  writeFileSync(join(dir, "tdd-evidence.md"), "# TDD Cycle Evidence\n\n## T001\nrow\n");
+  mkdirSync(join(dir, "tdd-evidence"));
+  writeFileSync(join(dir, "tdd-evidence/T002.md"), "| T002 | RED | GREEN |\n");
+  writeFileSync(join(dir, "tdd-evidence/T003.md"), "| T003 | RED | GREEN |\n");
+  const a3 = launch(cwd, runId, "build", 3, { output: "T003 envelope\n" });
+  const a2 = launch(cwd, runId, "build", 2, { output: "T002 envelope\n" });
+  const out = executionOperation(cwd, { action: "wave-close", runId, batch: 1, total: 2, members: [{ attemptId: a3, task: "T003" }, { attemptId: a2, task: "T002" }] });
+  assert.deepEqual([out.ticked, out.failed, out.evidenceMissing, out.round], [["T002", "T003"], [], [], 1]);
+  const tasks = readFileSync(join(dir, "tasks.md"), "utf8");
+  assert.match(tasks, /^### T002 — \[x\] Parser \[P\]$/m);
+  assert.match(tasks, /^- \[x\] \*\*T003\. Writer\*\* \[P\]$/m);
+  assert.match(tasks, /^## \[ \] T004 — Glue$/m);
+  const evidence = readFileSync(join(dir, "tdd-evidence.md"), "utf8");
+  assert.ok(evidence.startsWith("# TDD Cycle Evidence\n\n## T001\nrow\n"));
+  assert.ok(evidence.indexOf("## T002 (parallel wave 1)") < evidence.indexOf("## T003 (parallel wave 1)"));
+  assert.match(evidence, /## T003 \(parallel wave 1\)\n\n\| T003 \| RED \| GREEN \|/);
+  const build = readFileSync(join(dir, "build-r1.md"), "utf8");
+  assert.match(build, /^## Wave 1\/2: T002, T003$/m);
+  assert.ok(build.indexOf("T002 envelope") < build.indexOf("T003 envelope"));
+  const again = executionOperation(cwd, { action: "wave-close", runId, batch: 1, total: 2, members: [{ attemptId: a3, task: "T003" }, { attemptId: a2, task: "T002" }] });
+  assert.deepEqual([again.ticked, again.already], [[], ["T002", "T003"]]);
+  assert.equal(readFileSync(join(dir, "tdd-evidence.md"), "utf8"), evidence);
+  assert.equal(readFileSync(join(dir, "build-r1.md"), "utf8"), build);
+}));
+
+test("wave-close leaves a failed or orchestrator-rejected child unticked and reports it for a solo retry", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const dir = join(cwd, ".sdd/feat");
+  writeFileSync(join(dir, "tasks.md"), waveTasks);
+  const a2 = launch(cwd, runId, "build", 2, { status: "failed", output: "T002 crashed\n" });
+  const a3 = launch(cwd, runId, "build", 3, { output: "T003 ok\n" });
+  const out = executionOperation(cwd, { action: "wave-close", runId, batch: 1, total: 2, members: [{ attemptId: a2, task: "T002" }, { attemptId: a3, task: "T003" }] });
+  assert.deepEqual([out.ticked, out.failed, out.evidenceMissing], [["T003"], ["T002"], ["T003"]]);
+  const tasks = readFileSync(join(dir, "tasks.md"), "utf8");
+  assert.match(tasks, /^### T002 — Parser \[P\]$/m);
+  assert.match(tasks, /^- \[x\] \*\*T003\./m);
+  assert.equal(existsSync(join(dir, "tdd-evidence.md")), false);
+  assert.match(readFileSync(join(dir, "build-r1.md"), "utf8"), /### T002 — failed[\s\S]*T002 crashed/);
+  const b = start(cwd, "other"); const odir = join(cwd, ".sdd/other");
+  writeFileSync(join(odir, "tasks.md"), waveTasks);
+  const r2 = launch(cwd, b.runId, "build", 12, { output: "claims done but tests red\n" });
+  const r3 = launch(cwd, b.runId, "build", 13, { output: "ok\n" });
+  const rejected = executionOperation(cwd, { action: "wave-close", runId: b.runId, batch: 1, total: 1, members: [{ attemptId: r2, task: "T002", ok: false }, { attemptId: r3, task: "T003" }] });
+  assert.deepEqual([rejected.ticked, rejected.failed], [["T003"], ["T002"]]);
+}));
+
+test("wave-close refuses unknown tasks, non-build attempts and a single member before writing anything", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const dir = join(cwd, ".sdd/feat");
+  writeFileSync(join(dir, "tasks.md"), waveTasks);
+  const a2 = launch(cwd, runId, "build", 2, { output: "x" });
+  const a3 = launch(cwd, runId, "build", 3, { output: "y" });
+  const v = launch(cwd, runId, "veredicto", 4, { output: "z" });
+  assert.throws(() => executionOperation(cwd, { action: "wave-close", runId, batch: 1, total: 1, members: [{ attemptId: a2, task: "T002" }, { attemptId: a3, task: "T099" }] }), /T099/);
+  assert.throws(() => executionOperation(cwd, { action: "wave-close", runId, batch: 1, total: 1, members: [{ attemptId: a2, task: "T002" }, { attemptId: v, task: "T003" }] }), /build/);
+  assert.throws(() => executionOperation(cwd, { action: "wave-close", runId, batch: 1, total: 1, members: [{ attemptId: a2, task: "T002" }] }), /2|members/);
+  assert.equal(readFileSync(join(dir, "tasks.md"), "utf8"), waveTasks);
+  assert.equal(existsSync(join(dir, "build-r1.md")), false);
+}));
+
+test("batch-close appends each sequential batch envelope to build-r<N>.md once", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const a = launch(cwd, runId, "build", 1, { output: "batch one envelope\n" });
+  const b = launch(cwd, runId, "build", 2, { output: "batch two envelope\n" });
+  executionOperation(cwd, { action: "batch-close", runId, attemptId: a, batch: 1, total: 2, tasks: ["T001", "T002"] });
+  executionOperation(cwd, { action: "batch-close", runId, attemptId: b, batch: 2, total: 2, tasks: ["T003"] });
+  executionOperation(cwd, { action: "batch-close", runId, attemptId: b, batch: 2, total: 2, tasks: ["T003"] });
+  const build = readFileSync(join(cwd, ".sdd/feat/build-r1.md"), "utf8");
+  assert.match(build, /^## Batch 1\/2: T001, T002\n\nbatch one envelope\n\n## Batch 2\/2: T003\n\nbatch two envelope\n$/m);
+  assert.equal(build.split("## Batch 2/2").length, 2);
+}));
+
+test("round with the veredicto attempt writes veredicto-r<N>.md from the child output and refuses a mismatched verdict", () => withRuns(cwd => {
+  const { runId } = start(cwd, "feat");
+  const dir = join(cwd, ".sdd/feat");
+  const v1 = launch(cwd, runId, "veredicto", 1, { output: "Defects: x\n\nVEREDICTO: corregir\n" });
+  assert.throws(() => executionOperation(cwd, { action: "round", runId, attemptId: v1, verdict: "pasa", cap: 3 }), /mismatch/);
+  assert.equal(existsSync(join(dir, "rounds.json")), false);
+  const r1 = executionOperation(cwd, { action: "round", runId, attemptId: v1, cap: 3 });
+  assert.deepEqual([r1.rounds, r1.verdicts, r1.verdictPath], [1, ["corregir"], join(cwd, ".sdd/feat/veredicto-r1.md")]);
+  assert.equal(readFileSync(join(dir, "veredicto-r1.md"), "utf8"), "Defects: x\n\nVEREDICTO: corregir\n");
+  const v2 = launch(cwd, runId, "veredicto", 2, { output: "All good, verdict: pasa.\n" });
+  executionOperation(cwd, { action: "round", runId, attemptId: v2, verdict: "pasa" });
+  assert.equal(readFileSync(join(dir, "veredicto-r2.md"), "utf8"), "All good, verdict: pasa.\n\nVEREDICTO: pasa\n");
+}));
+
+test("round refuses an undelivered or non-veredicto attempt and a missing output", () => withRuns(cwd => {
+  const { runId } = start(cwd, "feat");
+  const failed = launch(cwd, runId, "veredicto", 1, { status: "failed", output: "VEREDICTO: pasa\n" });
+  assert.throws(() => executionOperation(cwd, { action: "round", runId, attemptId: failed, cap: 3 }), /unverified/);
+  const b = launch(cwd, runId, "build", 2, { output: "VEREDICTO: pasa\n" });
+  assert.throws(() => executionOperation(cwd, { action: "round", runId, attemptId: b, cap: 3 }), /veredicto/);
+  const empty = launch(cwd, runId, "veredicto", 3);
+  assert.throws(() => executionOperation(cwd, { action: "round", runId, attemptId: empty, verdict: "pasa", cap: 3 }), /output/);
+  assert.equal(existsSync(join(cwd, ".sdd/feat/rounds.json")), false);
+}));

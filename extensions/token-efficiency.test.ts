@@ -44,3 +44,32 @@ test("the orchestrator records rounds and the RunRecord through zero_execution, 
   assert.doesNotMatch(o, /\/zero-rounds record/, "no manual round recording");
   assert.doesNotMatch(o, /Exact one-line shape to emit/, "no hand-written RunRecord template");
 });
+
+test("parallel waves and the on-disk verdict are driven by zero_execution actions, and resume reads spec.md and veredicto-r<N>.md", () => {
+  const o = read("prompts/orchestrator.md"), build = read("prompts/phases/build.md"), review = read("prompts/phases/veredicto.md");
+  for (const action of ["wave", "wave-close", "batch-close"]) assert.ok(o.includes(`action: "${action}"`), action);
+  assert.match(o, /action: "round", runId: "<runId>",\nattemptId: "<veredicto attemptId>"/);
+  assert.match(o, /tanda <i> \(paralelo: T002, T003\)/);
+  assert.match(o, /never `runs\.all`/);
+  assert.match(o, /retries once, alone, as a sequential batch/);
+  assert.match(o, /`\.sdd\/<slug>\/spec\.md` is missing \(and so is the legacy/);
+  assert.match(o, /veredicto-r<last>\.md[\s\S]{0,200}then the Cortex/);
+  assert.doesNotMatch(o, /If `\.sdd\/<slug>\/requirements\.md` is missing/);
+  assert.match(build, /parallel-wave child/i); assert.match(build, /tdd-evidence\/<T###>\.md/);
+  assert.doesNotMatch(review, /Do not write a separate\s+verdict file/);
+  assert.match(review, /VEREDICTO: pasa/);
+});
+
+test("clarify writes the exact Size line and the orchestrator turns `small` into one non-blocking NODD notice", () => {
+  const clarify = read("prompts/phases/clarify.md"), o = read("prompts/orchestrator.md"), skill = read("skills/sdd-routing/SKILL.md");
+  assert.match(clarify, /`Size: small` or\s+`Size: normal`/);
+  assert.match(clarify, /any doubt, is\s+`Size: normal`/);
+  assert.match(clarify, /Write boundary — `\.sdd` only/);
+  assert.match(o, /## Request size notice/);
+  assert.match(o, /missing or unreadable\s+line counts as `normal`/);
+  assert.match(o, /npm i @gonrocca\/nodd/);
+  assert.match(o, /right before\s+`¿Continuamos\?`/);
+  assert.match(o, /never blocks, never\s+changes the route, and never skips/);
+  assert.match(o, /On a `Size: small` run, add the one NODD line/);
+  assert.match(skill, /NODD's territory/);
+});

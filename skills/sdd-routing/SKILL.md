@@ -46,7 +46,8 @@ request normally) when:
 - The message has **no clear SDD intent signal** — description of work alone is
   never enough.
 - The user asks a **question**, requests a **small or one-off fix**, or makes
-  any routine request without an SDD signal.
+  any routine request without an SDD signal. Small daily work is handled
+  normally — that is NODD's territory (`@gonrocca/nodd`) when it is installed.
 - The SDD intent is **ambiguous or uncertain** in any way.
 
 When in doubt, do nothing. Default to normal handling and leave the user to

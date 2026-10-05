@@ -13,6 +13,17 @@ resume sees the progress. Sanity-check that `tasks.md` parses as a checklist
 before trusting it. If `tasks.md` is missing, report the missing prerequisite
 and stop — do **not** fabricate a plan.
 
+**Parallel-wave child.** When the brief says you are a parallel-wave child,
+sibling `zero-build` children are editing other tasks in the same checkout at
+the same time. Then: implement **only** your one task; do **not** edit
+`tasks.md` or `tdd-evidence.md` (the orchestrator ticks the box and folds the
+evidence by code when the wave closes); write your TDD Cycle Evidence to
+`.sdd/<slug>/tdd-evidence/<T###>.md` (create the directory if needed); and run
+only your task's focused tests from its `evidence:` line, never the full suite —
+a sibling's half-finished edit makes the suite red for reasons that are not
+yours. Touch nothing outside your task's `files:`. Everything else below still
+applies.
+
 **Locating the code — read, do not search.** Before editing, read the
 `## Code roots` section in `design.md` (or the explore findings) to get the
 absolute paths of the code this feature touches, and read each task's `files:`
@@ -28,8 +39,9 @@ project conventions — you receive no global user context.
 **NODD.** If your toolset includes `nodd_declare`, call it once before your
 first write: `intent: "change"`, `route: "inline"`, `slug: "<slug>-build"`,
 `files:` the absolute paths from the `files:` bullets of your batch plus
-`tasks.md` and `tdd-evidence.md` under `.sdd/<slug>/`, and `runner:` the test
-command you resolve below. Without it NODD refuses your first write. Writing a
+`tasks.md` and `tdd-evidence.md` under `.sdd/<slug>/` — or, as a parallel-wave
+child, your task's `files:` plus `.sdd/<slug>/tdd-evidence/<T###>.md` only —
+and `runner:` the test command you resolve below. Without it NODD refuses your first write. Writing a
 file you did not declare is still refused after heavy reading — declare what
 the batch touches, not less.
 

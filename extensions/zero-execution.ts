@@ -8,6 +8,8 @@ import { COST_PHASES, parseMeta, type CostPhase, type PhaseMeta } from "./zero-c
 import { readLedger, recordRound, stateOf, writeLedger, VERDICTS, type Verdict } from "./zero-rounds.ts";
 import { RUN_SCHEMA_VERSION } from "./autotune.ts";
 import { loadSddConfig } from "./sdd-config.ts";
+import { PARALLEL_MAX, codeRootsFrom, nextWave, tickTasks, waveSchedule } from "./zero-waves.ts";
+import { parseTasks } from "./zero-validate.ts";
 
 export interface ExecutionAttempt {
   id: string;
@@ -47,6 +49,9 @@ export interface ExecutionInput {
   decision?: string;
   verdict?: string;
   cap?: number;
+  total?: number;
+  tasks?: string[];
+  members?: { attemptId: string; task: string; ok?: boolean }[];
 }
 
 /** The run-record phases the autotune aggregates (see autotune.ts RECORD_PHASES). */
@@ -224,6 +229,46 @@ export function selectExecution(cwd: string, selector?: string): ExecutionLedger
   const ledgers = readdirSync(root).filter(f => f.endsWith(".json")).map(f => readLedgerFile(cwd, f)).flatMap(r => "ledger" in r ? [r.ledger] : []);
   return ledgers.filter(l => !selector || l.slug === selector).sort((a, b) => b.createdAt - a.createdAt || b.runId.localeCompare(a.runId))[0] ?? null;
 }
+function runDir(ledger: ExecutionLedger): string { return join(ledger.cwd, ".sdd", ledger.slug); }
+function writeAtomic(target: string, content: string): void {
+  const tmp = `${target}.${randomUUID()}.tmp`;
+  try { writeFileSync(tmp, content, { mode: 0o600 }); renameSync(tmp, target); }
+  finally { rmSync(tmp, { force: true }); }
+}
+function readText(path: string): string | undefined {
+  try { return readFileSync(path, "utf8"); } catch { return undefined; }
+}
+function currentRound(ledger: ExecutionLedger): number { return (readLedger(ledger.slug, ledger.cwd)?.rounds ?? 0) + 1; }
+function childOutput(ledger: ExecutionLedger, a: ExecutionAttempt): string | undefined {
+  for (const path of [a.receipt?.outputPath, join(runDir(ledger), "outputs", `${a.id}.md`)]) {
+    const text = path ? readText(path) : undefined;
+    if (text?.trim()) return text;
+  }
+  return undefined;
+}
+function appendSection(path: string, header: string, body: string): boolean {
+  const existing = readText(path) ?? "";
+  if (existing.split("\n").includes(header)) return false;
+  writeAtomic(path, `${existing.trimEnd() ? `${existing.trimEnd()}\n\n` : ""}${header}\n\n${body.trim()}\n`);
+  return true;
+}
+function stepLabel(input: ExecutionInput): { i: number; n: number } {
+  if (!positive(input.batch) || !positive(input.total) || input.batch! > input.total!) throw new Error("positive batch (step index) and total with batch <= total required");
+  return { i: input.batch!, n: input.total! };
+}
+function taskIds(ids: unknown, label: string): string[] {
+  if (!Array.isArray(ids) || !ids.every(id => typeof id === "string" && /^T\d+$/.test(id))) throw new Error(`${label} must be T### task ids`);
+  if (new Set(ids).size !== ids.length) throw new Error(`${label} has duplicate task ids`);
+  return ids as string[];
+}
+function buildAttempt(ledger: ExecutionLedger, attemptId: unknown): ExecutionAttempt {
+  const a = ledger.attempts.find(at => at.id === attemptId);
+  if (!a) throw new Error(`Unknown attemptId ${String(attemptId)}`);
+  if (a.phase !== "build") throw new Error(`Attempt ${a.id} is ${a.phase}, expected a build attempt`);
+  return a;
+}
+const VERDICT_LINE = /^[\s*_>#-]*VEREDICTO[\s*_]*:[\s*_`]*(pasa|corregir|replantear)\b/gim;
+
 export function executionOperation(cwd: string, input: ExecutionInput): any {
   return locked(cwd, () => {
     cwd = project(cwd);
@@ -255,7 +300,22 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
     }
     const ledger = readExecution(cwd, token(runId, "runId"));
     if (input.action === "round") {
-      if (!(VERDICTS as readonly string[]).includes(input.verdict ?? "")) throw new Error(`verdict must be one of ${VERDICTS.join(", ")}`);
+      let verdict = input.verdict, report: string | undefined;
+      if (input.attemptId !== undefined) {
+        const a = ledger.attempts.find(at => at.id === input.attemptId);
+        if (!a) throw new Error("Unknown attemptId");
+        if (a.phase !== "veredicto") throw new Error("round attemptId must be a veredicto attempt");
+        reconcileAttempt(ledger, a);
+        if (a.receipt?.state !== "complete") throw new Error("Veredicto delivery unverified; re-run veredicto, do not record a round");
+        report = childOutput(ledger, a);
+        if (!report) throw new Error("Veredicto output unavailable; blocked, do not record a round");
+        const stated = [...report.matchAll(VERDICT_LINE)].at(-1)?.[1]?.toLowerCase();
+        if (stated && verdict !== undefined && stated !== verdict) throw new Error(`Verdict mismatch: the veredicto output says ${stated}, the call says ${verdict}`);
+        verdict = verdict ?? stated;
+        const lastLine = report.trimEnd().split("\n").at(-1) ?? "";
+        report = new RegExp(VERDICT_LINE.source, "im").test(lastLine) ? `${report.trimEnd()}\n` : `${report.trimEnd()}\n\nVEREDICTO: ${verdict}\n`;
+      }
+      if (!(VERDICTS as readonly string[]).includes(verdict ?? "")) throw new Error(`verdict must be one of ${VERDICTS.join(", ")}`);
       if (input.cap !== undefined && !positive(input.cap)) throw new Error("cap must be a positive integer");
       const previous = readLedger(ledger.slug, cwd);
       const routing = stateOf(previous);
@@ -263,9 +323,66 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       if (routing === "cap-reached") throw new Error("Round cap reached; call finish (cap-reached), do not record more rounds");
       // Same source as /zero-rounds: .sdd/config.json rounds.cap (default 3), fixed at the first round.
       const cap = input.cap ?? (previous ? null : loadSddConfig(cwd).rounds.cap);
-      const next = recordRound(previous, input.verdict as Verdict, { slug: ledger.slug, cap });
+      const next = recordRound(previous, verdict as Verdict, { slug: ledger.slug, cap });
+      let verdictPath: string | undefined;
+      if (report !== undefined) { verdictPath = join(runDir(ledger), `veredicto-r${next.rounds}.md`); writeAtomic(verdictPath, report); save(ledger); }
       writeLedger(next, cwd);
-      return { ...state(ledger), rounds: next.rounds, cap: next.cap, verdicts: next.verdicts, routing: stateOf(next) };
+      return { ...state(ledger), rounds: next.rounds, cap: next.cap, verdicts: next.verdicts, routing: stateOf(next), verdictPath };
+    }
+    if (input.action === "wave") {
+      const dir = runDir(ledger);
+      const text = readText(join(dir, "tasks.md"));
+      if (text === undefined) throw new Error("tasks.md missing; re-run plan");
+      const roots = [...codeRootsFrom(text, readText(join(dir, "design.md")) ?? ""), ledger.cwd];
+      const next = nextWave(text, roots);
+      return { ...state(ledger), round: currentRound(ledger), mode: next.mode, tasks: next.tasks, reason: next.mode === "blocked" ? next.reason : undefined, remaining: waveSchedule(text, roots).length };
+    }
+    if (input.action === "wave-close") {
+      const { i, n } = stepLabel(input);
+      const members = input.members;
+      if (!Array.isArray(members) || members.length < 2 || members.length > PARALLEL_MAX) throw new Error(`wave-close needs 2-${PARALLEL_MAX} members {attemptId, task}`);
+      const ids = taskIds(members.map(m => m?.task), "members");
+      if (new Set(members.map(m => m.attemptId)).size !== members.length) throw new Error("members has duplicate attemptIds");
+      const attempts = members.map(m => buildAttempt(ledger, m.attemptId));
+      const dir = runDir(ledger), tasksPath = join(dir, "tasks.md");
+      const text = readText(tasksPath);
+      if (text === undefined) throw new Error("tasks.md missing; blocked");
+      const known = new Set(parseTasks(text).tasks.map(t => t.id));
+      const unknown = ids.filter(id => !known.has(id));
+      if (unknown.length) throw new Error(`Unknown task ids in tasks.md: ${unknown.join(", ")}`);
+      const rows = members.map((m, k) => {
+        const a = attempts[k];
+        reconcileAttempt(ledger, a);
+        const delivery = a.receipt?.state ?? "unverified";
+        const ok = delivery === "complete" && m.ok !== false;
+        return { task: m.task, a, ok, status: ok ? "delivered" : delivery === "complete" ? "rejected by orchestrator" : `failed (${delivery})` };
+      }).sort((x, y) => x.task.localeCompare(y.task, undefined, { numeric: true }));
+      const good = rows.filter(r => r.ok).map(r => r.task);
+      const tick = tickTasks(text, good);
+      if (tick.text !== text) writeAtomic(tasksPath, tick.text);
+      const evidenceMissing: string[] = [];
+      for (const id of good) {
+        const evidence = readText(join(dir, "tdd-evidence", `${id}.md`));
+        if (!evidence?.trim()) { evidenceMissing.push(id); continue; }
+        appendSection(join(dir, "tdd-evidence.md"), `## ${id} (parallel wave ${i})`, evidence);
+      }
+      const round = currentRound(ledger), buildPath = join(dir, `build-r${round}.md`);
+      appendSection(buildPath, `## Wave ${i}/${n}: ${rows.map(r => r.task).join(", ")}`,
+        rows.map(r => `### ${r.task} — ${r.status}\n\n${(childOutput(ledger, r.a) ?? "(no output captured)").trim()}`).join("\n\n"));
+      save(ledger);
+      return { ...state(ledger), round, ticked: tick.ticked, already: tick.already, failed: rows.filter(r => !r.ok).map(r => r.task), evidenceMissing, buildPath, tasksPath };
+    }
+    if (input.action === "batch-close") {
+      const { i, n } = stepLabel(input);
+      const ids = taskIds(input.tasks, "tasks");
+      if (!ids.length) throw new Error("tasks must name the batch task ids");
+      const a = buildAttempt(ledger, input.attemptId);
+      reconcileAttempt(ledger, a);
+      const delivery = a.receipt?.state ?? "unverified";
+      const round = currentRound(ledger), buildPath = join(runDir(ledger), `build-r${round}.md`);
+      appendSection(buildPath, `## Batch ${i}/${n}: ${ids.join(", ")}`, childOutput(ledger, a) ?? `(no output captured; delivery: ${delivery})`);
+      save(ledger);
+      return { ...state(ledger), round, delivery, buildPath };
     }
     if (input.action === "finish") {
       if (ledger.finishedAt) return { ...state(ledger), recorded: true, already: true };

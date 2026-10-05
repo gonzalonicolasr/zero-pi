@@ -5,6 +5,65 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.85] - 2026-10-05
+
+### Added — tandas paralelas en build y el veredicto queda en disco
+
+Las dos cosas siguen el contrato compartido con el mod forge de Claude Code
+(`docs/forge-contract.md`): mismo algoritmo de tandas, mismos archivos por ronda.
+
+- **Tandas paralelas (`[P]`).** El plan ya marcaba tareas con `[P]`, pero nada
+  las leía. `extensions/zero-waves.ts` calcula la próxima tanda por código: arranca
+  con la primera tarea elegible, que tiene que tener `[P]`, y suma hasta 3 tareas
+  `[P]` con las dependencias ya en `[x]` y `files:` que no se pisan (se comparan
+  sin `(new)` y contra el code root). Una tanda de una sola tarea vuelve al loteo
+  de siempre (4 tareas u 800 líneas), pero el lote se corta antes de una tarea
+  `[P]` que, con las siguientes, podría abrir una tanda de 2 o más: si no, un
+  lote secuencial se comía las `[P]` y nunca corrían en paralelo. Sin ningún
+  `[P]`, nada cambia.
+- **Tres acciones nuevas en `zero_execution`.** `wave` devuelve el próximo paso
+  (`parallel`, `sequential`, `done` o `blocked`) y cuántos quedan. `wave-close`
+  verifica cada hijo de la tanda con el mismo reconcile de siempre, tilda `[x]`
+  sólo las tareas entregadas y aceptadas, pega cada `tdd-evidence/<T###>.md` en
+  `tdd-evidence.md` en orden de id, y devuelve las que fallaron para reintentarlas
+  solas. `batch-close` deja el sobre de cada lote secuencial en `build-r<N>.md`.
+  Todo bajo el lock del ledger, con escrituras atómicas e idempotentes.
+- **Cada hijo de una tanda es su propio workflow async**, con su attempt y su
+  attach: la regla de un hijo por workflow del ledger se mantiene. Sin `runs.all`
+  y sin worktrees: los hijos comparten el checkout, no tocan `tasks.md` ni
+  `tdd-evidence.md` y corren sólo sus tests focalizados.
+- **`veredicto-r<N>.md` en disco.** `round` recibe el `attemptId` del veredicto,
+  escribe el archivo desde la salida confirmada del hijo y rechaza un veredicto
+  que contradiga su línea final `VEREDICTO: …`. El hijo no lo escribe.
+- `parseTasks` reporta `done` y `parallel` y saca `[x]` y `[P]` del título.
+  Reconoce `### T001 — [x] Título`, la forma con la que build tilda de verdad.
+
+### Added — clarify mide el pedido y recomienda NODD para lo chico
+
+También sigue `docs/forge-contract.md` (sección "Tamaño del pedido").
+
+- **`Size: small` o `Size: normal` en `clarifications.md`.** clarify escribe la
+  línea en todos los runs. Es `small` sólo para un cambio de un paso que no
+  amerita spec (typo, renombre, estilo, fix de una línea, ajuste de config) en
+  uno o dos archivos y sin comportamiento nuevo. Ante la duda, `normal`; si
+  falta la línea, también.
+- **Con `small`, el orquestador avisa una sola vez** que con NODD
+  (`npm i @gonrocca/nodd`) se hace directo y con los tests corridos de verdad.
+  En interactivo va en la pausa después de clarify, antes de `¿Continuamos?`;
+  en automático se dice y el run sigue. El resumen final lo repite en una
+  línea. Nunca bloquea, no cambia la ruta ni saltea fases.
+- El skill `sdd-routing` aclara que el trabajo chico del día a día se atiende
+  normal (es terreno de NODD si está instalado), y el README suma "zero or
+  NODD?": features con zero, lo chico con NODD.
+
+### Fixed — el resume buscaba un archivo que plan ya no escribe
+
+El algoritmo de resume esperaba `.sdd/<slug>/requirements.md`, pero plan escribe
+`spec.md`: un run con el plan completo se reanudaba como `no-plan` y volvía a
+explorar. Ahora busca `spec.md` y acepta `requirements.md` sólo para runs viejos.
+La prueba de un `pasa` previo mira primero `rounds.json` + `veredicto-r<N>.md` y
+recién después Cortex y `~/.pi/zero-runs.jsonl`.
+
 ## [0.1.84] - 2026-09-27
 
 ### Fixed — el autotune aprende de lo que pasó, no de lo que el modelo tipeó

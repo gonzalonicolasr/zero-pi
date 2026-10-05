@@ -48,6 +48,13 @@ tell at a glance whether the run may proceed:
   user can override later but that do not stop the run.
 - A `## Blocking questions` section — present **only** when status is `blocked`;
   each question names exactly what is unresolved and why it is blocking.
+- A size line, on a line of its own and spelled exactly `Size: small` or
+  `Size: normal` — no bullet, bold, or trailing text. `small` only when the
+  whole request is a one-step change that does not warrant a spec: a typo, a
+  rename, a style tweak, a one-line fix, or a config adjustment, in one or two
+  files and with no new behavior. Anything else, or any doubt, is
+  `Size: normal`. Write it on every run, `blocked` included; it never changes
+  your status.
 
 Keep the file complete and self-contained: `explore` receives only a thin brief
 naming the slug and directory and reads `clarifications.md` itself.
@@ -69,9 +76,9 @@ forbidden — on Windows it hangs forever forcing OneDrive to hydrate every clou
 placeholder it walks, and zero blocks such commands at the tool boundary anyway.
 
 **Return contract.** Return a concise result envelope to the orchestrator: the
-clarify status (`continue` or `blocked`), the key assumptions or the blocking
-questions, and the `.sdd/<slug>/clarifications.md` path you wrote. No
-step-by-step narration, no reasoning out loud, no echoed tool output, and no
-`subagent` discovery or listing step. Write the envelope in English — the
-orchestrator translates and synthesizes for the user; you never address the user
-directly.
+clarify status (`continue` or `blocked`), the `Size:` line, the key assumptions
+or the blocking questions, and the `.sdd/<slug>/clarifications.md` path you
+wrote. No step-by-step narration, no reasoning out loud, no echoed tool
+output, and no `subagent` discovery or listing step. Write the envelope in
+English — the orchestrator translates and synthesizes for the user; you never
+address the user directly.

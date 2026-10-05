@@ -13,3 +13,11 @@ test('zero_execution throws operation failures so Pi marks the tool result as er
     assert.throws(() => tool.execute('id', { action: 'start', slug: '../escape', request: 'hello' }, undefined, undefined, { cwd }), /Invalid slug/);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
+
+test('zero_execution schema exposes the wave and close actions with their array parameters', () => {
+  let tool: any;
+  register({ registerTool(t) { tool = t; } });
+  for (const action of ['wave', 'wave-close', 'batch-close']) assert.ok(tool.parameters.properties.action.enum.includes(action));
+  assert.equal(tool.parameters.properties.members.items.required.join(','), 'attemptId,task');
+  assert.equal(tool.parameters.properties.tasks.type, 'array');
+});

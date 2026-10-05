@@ -44,7 +44,10 @@ or a sandbox around arbitrary scripts. Caps are not optional.
 
 **The round count is durable — it does not live in your head.** After every
 veredicto, record the round with `zero_execution` `action: "round", runId: "<runId>",
-verdict: "<corregir|replantear|pasa>"`. It appends the round to
+attemptId: "<veredicto attemptId>", verdict: "<corregir|replantear|pasa>"`. The
+tool writes `.sdd/<slug>/veredicto-r<N>.md` from the veredicto child's confirmed
+output (the verdict on disk; the child never writes it), refuses a `verdict`
+that contradicts the output's closing `VEREDICTO:` line, appends the round to
 `.sdd/<slug>/rounds.json` and returns the routing state:
 
 - `proceed` — rounds left; continue the loop as the verdict dictates.
@@ -65,8 +68,8 @@ summary.
 ## Resuming a run
 
 `/forge --continue` resumes an interrupted run instead of starting fresh. Resume
-uses the `.sdd/<feature-slug>/` artifacts — `requirements.md`,
-`design.md`, and `tasks.md` with its `[ ]`/`[x]` checklist. The execution identity pointer and durable ledger below additionally preserve
+uses the `.sdd/<feature-slug>/` artifacts — `spec.md` (legacy runs:
+`requirements.md`), `design.md`, and `tasks.md` with its `[ ]`/`[x]` checklist. The execution identity pointer and durable ledger below additionally preserve
 usage attribution and readiness decisions; never infer/reset them from chat.
 
 Before applying the resume-point algorithm, call `zero_execution` with
@@ -96,13 +99,16 @@ operation idempotently; never invent a decision from a missing checklist.
 **Resume-point algorithm.** For the selected `<slug>`:
 
 0. If no complete `.sdd/<slug>/clarifications.md` exists **and** the run has not
-   reached explore/plan yet (no `requirements.md`/`spec.md`/`design.md`) → state
+   reached explore/plan yet (no `spec.md`/`requirements.md`/`design.md`) → state
    `clarifying`; resume at **clarify**, then explore. A truncated
    `clarifications.md` is rebuilt, not trusted.
-1. If `.sdd/<slug>/requirements.md` is missing → state `no-plan`; resume at
-   **explore**, then plan (the run barely started; rebuild the plan artifacts).
+1. If `.sdd/<slug>/spec.md` is missing (and so is the legacy
+   `.sdd/<slug>/requirements.md`) → state `no-plan`; resume at **explore**, then
+   plan (the run barely started; rebuild the plan artifacts). Plan writes
+   `spec.md`; `requirements.md` only counts for runs that predate it. This is
+   the run's own spec, never the canonical store `.sdd/specs/requirements.md`.
 2. Else if `.sdd/<slug>/design.md` or `.sdd/<slug>/tasks.md` is missing → state
-   `no-plan`; resume at **plan** (requirements survived; finish the plan).
+   `no-plan`; resume at **plan** (the spec survived; finish the plan).
 3. Else (all three plan artifacts exist):
    - If a complete `.sdd/<slug>/checklist.md` exists with `Decision: replan`
      → state `no-plan`; resume at **plan** with that checklist's blockers, then
@@ -116,10 +122,14 @@ operation idempotently; never invent a decision from a missing checklist.
      **build**, starting at the first `[ ]` task. Already-`[x]` tasks are done —
      do not redo them.
    - Else (every task `[x]`):
-     - Look for best-effort proof of a prior `pasa` verdict, in order: the
-       Cortex `zero-run/<slug>` trace (`memoria_search` for that `topic_key`)
-       reporting a `pasa` final verdict, then a line in `~/.pi/zero-runs.jsonl`
-       with `"feature":"<slug>"` and `"verdict":"pasa"`.
+     - Look for proof of a prior `pasa` verdict, in order: first the disk —
+       `.sdd/<slug>/rounds.json` whose last verdict is `pasa` **and**
+       `.sdd/<slug>/veredicto-r<last>.md` (`<last>` = its `rounds`) ending in
+       `VEREDICTO: pasa`; then the Cortex `zero-run/<slug>` trace
+       (`memoria_search` for that `topic_key`) reporting a `pasa` final verdict;
+       then a line in `~/.pi/zero-runs.jsonl` with `"feature":"<slug>"` and
+       `"verdict":"pasa"`. The disk pair is the primary proof; the other two
+       cover runs that predate `veredicto-r<N>.md`.
      - Proof found → state `done`; report the run already completed
        successfully and do nothing — no re-run, no clobber.
      - No proof (Cortex unreachable, file absent, `--no-mcp`) → state `built`;
@@ -130,8 +140,8 @@ operation idempotently; never invent a decision from a missing checklist.
 **Sanity-checking artifacts on resume.** A phase may have been killed
 mid-write, leaving a truncated `clarifications.md`, `design.md`, `tasks.md`, or
 `checklist.md`. When you brief the resumed phase's sub-agent, instruct it to
-sanity-check the artifacts it depends on (plan checks `requirements.md`/
-`design.md` look complete; analyze checks `tasks.md`/`checklist.md`; build
+sanity-check the artifacts it depends on (plan checks `spec.md` (legacy
+`requirements.md`)/`design.md` look complete; analyze checks `tasks.md`/`checklist.md`; build
 checks `tasks.md` parses as a checklist) and rebuild an obviously-incomplete one
 rather than trust it. A truncated `clarifications.md` or `checklist.md` is
 treated the same as any other truncated artifact — rebuilt, never trusted.
@@ -173,7 +183,9 @@ Announce: maximum **2 analyze replan decisions per execution**, stopping on the
 second as **bloqueado/no verificado**, separate from build/veredicto rounds.
 If the tool is unavailable, STOP: do not silently fall back to an in-chat cap.
 
-For **every phase, build batch and phase-delivery retry**, in this order:
+For **every phase, build batch, parallel-wave task and phase-delivery retry**,
+in this order (a parallel wave runs steps 1–3 once per task, back to back, then
+waits for all of them):
 
 1. Call `zero_execution` with `action: "attempt", runId: "<runId>",
    phase: "<phase>", round: <current round>, batch: <batch number or 1>`.
@@ -278,6 +290,19 @@ deliver, so it never touches the iteration cap and is never recorded as a
 round. This gate is additive — it does not replace the `## Plan quality
 gate` or the `## Analyze gate`, and it never starts a review pass.
 
+## Request size notice
+
+After clarify delivers, read the `Size:` line of `.sdd/<slug>/clarifications.md`
+(a line of its own: `Size: small` or `Size: normal`). A missing or unreadable
+line counts as `normal`. On `small`, tell the user **once**, in one Spanish line:
+
+  Esto parece chico para forge: con NODD (npm i @gonrocca/nodd) lo hacés directo y con los tests corridos de verdad.
+
+In interactive mode it goes in the post-clarify phase summary, right before
+`¿Continuamos?`, so the user can stop there. In automatic mode say it and keep
+going. The final summary repeats it in one line. The notice never blocks, never
+changes the route, and never skips or shortens a phase; on `normal` say nothing.
+
 ## Plan quality gate
 
 After **plan** returns, run `/zero-validate <slug>` when the command is available. Treat structural validation errors as a plan failure: summarize the defects, re-run **plan** with those exact defects once, and validate again before entering build. Warnings (for example an intentionally-missing optional proposal) can proceed only when you name the warning in the phase summary. The gate specifically protects the dependency graph: every task must carry `files`, `depends`, `evidence`, and `review`; dependencies must point backward to known task ids; and the review workload total must match.
@@ -345,27 +370,80 @@ re-run — drive this loop:
      holds **4 tasks** — whichever comes first.
    - A single task whose own estimate exceeds 800 is its own batch.
    - If estimates are missing or unparseable, group by the 4-task cap alone.
-4. Invoke `zero-build` once per batch, in listed order. Each brief is a fresh
-   sub-agent (no carried conversation) and names the batch's task numbers
-   explicitly (for example, "implement tasks 4–6 only, then return"). Include the
-   dependency constraint in the brief: "do not start a task until its `depends:`
-   entries are `[x]`." Emit the build phase-start line for each batch, noting
-   the batch as `lote <i>/<n>`, so the loop stays visible. Wait for each batch to
-   return before starting the next.
-5. Repeat until `tasks.md` has no `[ ]` task left, then run **veredicto** once.
-   Never run veredicto between batches.
+4. **Before each batch, call `zero_execution` `action: "wave", runId: "<runId>"`.**
+   It computes the next step from `tasks.md` by code — the rule above plus the
+   parallel waves below — and returns `mode`, the step's task ids, `remaining`
+   (steps left, this one included) and `round`. Use its task ids; never group
+   by hand when the tool is available. `mode: "blocked"` → stop and re-run
+   **plan** (its `reason` names the bad dependency). `mode: "done"` → step 6.
+   `<n>` in `lote <i>/<n>` is `<i> - 1 + remaining`.
+5. Run the step, then close it **by code**:
+   - **`mode: "sequential"`** — one `zero-build` attempt/workflow for the
+     batch. Each brief is a fresh sub-agent (no carried conversation) and names
+     the batch's task numbers explicitly (for example, "implement tasks 4–6
+     only, then return"). Include the dependency constraint in the brief: "do
+     not start a task until its `depends:` entries are `[x]`." Emit the build
+     phase-start line noting the batch as `lote <i>/<n>`. Wait for it, apply the
+     Phase result gate, then call `zero_execution` `action: "batch-close",
+     runId, attemptId, batch: <i>, total: <n>, tasks: [<batch ids>]`: it appends
+     the child's output to `.sdd/<slug>/build-r<N>.md` under
+     `## Batch <i>/<n>: <ids>`.
+   - **`mode: "parallel"`** (2–3 tasks) — a **parallel wave**. For each task,
+     back to back without waiting in between: `attempt` (same round, its own
+     batch number — distinct per task), launch **its own** async workflow
+     (`runs.run` with exactly one child, the shape in `## Execution identity`;
+     never `runs.all`, never several children in one workflow, never a
+     worktree — every child works in the same checkout), then `attach` that
+     workflow to that attempt. Each child brief names its single task and says
+     it is a **parallel-wave child**: implement only that task, do not edit
+     `tasks.md` or `tdd-evidence.md`, write the TDD evidence to
+     `.sdd/<slug>/tdd-evidence/<T###>.md`, run only that task's focused tests,
+     and declare to NODD only its own task's files plus that evidence path.
+     Briefs stay thin and fresh exactly like a sequential batch's.
+     Emit one phase-start line for the wave:
+     `Fase build · ronda <n> · tanda <i> (paralelo: T002, T003) · <modelo> (<provider>) — …`.
+     Wait for **all** of them, call `status`, read each output and apply the
+     Phase result gate per child, then call `zero_execution`
+     `action: "wave-close", runId, batch: <i>, total: <n>, members:
+     [{attemptId, task, ok}]` — `ok: false` for a child that was delivered but
+     failed the gate. The tool ticks `[x]` only delivered, accepted tasks,
+     appends each `tdd-evidence/<T###>.md` to `tdd-evidence.md` under
+     `## T### (parallel wave <i>)`, appends the wave's outputs to
+     `build-r<N>.md` under `## Wave <i>/<n>: …`, and returns `failed`. **Each
+     failed task retries once, alone, as a sequential batch** (`batch-close`
+     included) before the next `wave` call; a second failure is a failed phase
+     gate: STOP and report it.
+6. Repeat until `wave` returns `done` (no `[ ]` task left), then run
+   **veredicto** once. Never run veredicto between batches or waves. The full
+   suite runs in the next sequential batch or in veredicto, which already runs it.
+   The veredicto brief references `.sdd/<slug>/build-r<N>.md` (the round's build
+   envelopes) by path.
+
+**Parallel waves.** A task is a wave candidate only when its header line carries
+`[P]` (plan proposes, code confirms). The wave starts with the first eligible
+`[ ]` task — that task must itself carry `[P]` — and adds, in order, later
+eligible `[P]` tasks whose dependencies are already `[x]` and whose normalized
+`files:` do not overlap any task already in the wave, up to **3**. A wave of one
+falls back to the sequential rule, and a sequential batch stops before a `[P]`
+task that, with the tasks after it, could open a wave of two or more. This is the shared contract with the Claude
+Code forge mod (`docs/forge-contract.md`); the `wave` action implements it — do
+not re-derive it in chat. If the `wave` action is unavailable, group
+sequentially by the rule in step 3 and never run in parallel.
 
 **Single-batch features behave exactly like before:** when every unchecked task
 fits one batch, build is invoked exactly once.
 
-**Batches are not rounds.** An entire batched build — however many batches it
-took — is one build phase and counts as one build/veredicto round. Batch count
-never touches the iteration cap. A `corregir` verdict re-runs the whole build
+**Batches are not rounds.** An entire batched build — however many batches and
+parallel waves it took, retries included — is one build phase and counts as one
+build/veredicto round. Batch and wave count never touch the iteration cap. A `corregir` verdict re-runs the whole build
 phase (re-batching whatever tasks its defects reopened) as the next round.
 
-**Resume is unaffected.** Each batch marks its tasks `[x]` as they land, so an
-interrupted batched build resumes from the first `[ ]` task and recovers the
-same execution ledger; no new readiness allowance is created.
+**Resume is unaffected.** Each sequential batch marks its tasks `[x]` as they
+land and `wave-close` ticks a wave's tasks, so an interrupted build resumes from
+the first `[ ]` task and recovers the same execution ledger; no new readiness
+allowance is created. A wave interrupted before `wave-close` leaves its tasks
+`[ ]`: if its attempts are attached and delivered, call `wave-close` for them
+before the next `wave`; otherwise re-run them.
 
 ## Strict TDD forwarding
 
@@ -385,7 +463,10 @@ on the sub-agent to discover it alone.
   Follow RED → GREEN → TRIANGULATE → REFACTOR and record the TDD Cycle Evidence
   table.` When mode is `off`, forward `Strict TDD mode: off`.
 - The build writes its evidence to `.sdd/<slug>/tdd-evidence.md`; veredicto
-  audits it. Reference that artifact by path in the briefs — never paste it.
+  audits it. Reference that artifact by path in the briefs — never paste it. A
+  parallel-wave child writes `.sdd/<slug>/tdd-evidence/<T###>.md` instead, and
+  `wave-close` folds it into `tdd-evidence.md`; forward the same TDD line to
+  every wave child.
 - A veredicto that fails the TDD audit (missing evidence, a reported-green test
   that now fails, or a CRITICAL assertion violation) returns `corregir`, which
   re-runs build as the next round exactly like any other defect list.
@@ -447,6 +528,7 @@ build/veredicto loop, also include the round number. One line per phase:
 - `Fase plan · <modelo> (<provider>) — escribo requisitos, diseño y tareas`
 - `Fase analyze · <modelo> (<provider>) — reviso si el plan está listo (continue/replan)`
 - `Fase build · ronda <n> · <modelo> (<provider>) — implemento las tareas y corro los tests`
+  (per batch: `· lote <i>/<n>`; per parallel wave: `· tanda <i> (paralelo: T002, T003)`)
 - `Fase veredicto · ronda <n> · <modelo> (<provider>) — reviso la build y doy el veredicto`
 
 **Phase summary.** When a phase finishes, emit a bounded summary — never
@@ -481,6 +563,7 @@ continue, stop, or feedback.
 **Run end.** When the run ends, state the final verdict and say plainly whether
 the result is **verificado** (a `pasa` verdict) or **no verificado** (the
 iteration cap reached without `pasa`). Never claim success without a `pasa`.
+On a `Size: small` run, add the one NODD line from `## Request size notice`.
 
 **Always visible.** Trimming noise must never make the run look frozen: the
 phase name is always stated at phase start, and the round number is always

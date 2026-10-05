@@ -21,6 +21,21 @@ export interface TaskRecord {
   evidence: string | null;
   review: number | null;
   reviewRaw: string | null;
+  done: boolean;
+  parallel: boolean;
+}
+
+function matchTaskHeader(line: string): { id: string; done: boolean; title: string } | null {
+  let m = line.match(/^\s*- \[([ xX])\]\s+\*\*(T\d+)\.\s+([^*]+)\*\*/);
+  if (m) return { id: m[2], done: m[1] !== " ", title: m[3] };
+  m = line.match(/^###\s+(T\d+)\s+[—-]\s+(.+)$/);
+  if (m) {
+    const box = m[2].match(/^\[([ xX])\]\s*/);
+    return { id: m[1], done: Boolean(box && box[1] !== " "), title: box ? m[2].slice(box[0].length) : m[2] };
+  }
+  m = line.match(/^#{2,3}\s+\[([ xX])\]\s+(T\d+)\s*(?:[—-]\s*(.+))?$/);
+  if (m) return { id: m[2], done: m[1] !== " ", title: m[3] ?? "" };
+  return null;
 }
 
 export interface WorkloadSection {
@@ -49,9 +64,10 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
   };
 
   for (const line of lines) {
-    const task = line.match(/^\s*- \[[ xX]\]\s+\*\*(T\d+)\.\s+([^*]+)\*\*/) ?? line.match(/^###\s+(T\d+)\s+[—-]\s+(.+)$/) ?? line.match(/^##\s+\[[ xX]\]\s+(T\d+)\s*(?:[—-]\s*(.+))?$/);
+    const task = matchTaskHeader(line);
     if (task) {
-      current = { id: task[1], title: (task[2] ?? "").trim(), files: [], depends: null, evidence: null, review: null, reviewRaw: null };
+      const parallel = line.includes("[P]");
+      current = { id: task.id, title: task.title.replace(/\s*\[P\]/g, "").trim(), files: [], depends: null, evidence: null, review: null, reviewRaw: null, done: task.done, parallel };
       tasks.push(current);
       collectingFiles = false;
       continue;
