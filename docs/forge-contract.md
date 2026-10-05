@@ -88,6 +88,45 @@ verdad). El aviso **nunca bloquea ni cambia la ruta**. En modo interactivo va
 en la pausa que sigue a clarify, así el usuario puede parar ahí. En automático
 se anota y el run sigue. El resumen final lo repite en una línea.
 
+## Handoff desde NODD (`/nodd-promote`)
+
+`/nodd-promote <slug>` (NODD, `~/projects/nodd/extensions/nodd-promote.ts`)
+escribe **un solo archivo**: `.sdd/<slug>/requirements.md`. Su contenido trae la
+línea `Promoted from the NODD run \`<slug>\`.` y las secciones Objective,
+Problem, Scope, Constraints, Remaining work y "Already resolved — do not redo".
+NODD no escribe ni conoce el registro de zero, y así se queda.
+
+Un directorio es un **handoff de NODD** cuando cumple las cuatro condiciones:
+
+1. tiene `requirements.md` con la línea `Promoted from the NODD run`;
+2. no tiene identidad de zero: ni `execution.json` (zero-pi) ni `run.json` (el
+   mod);
+3. no tiene `design.md` ni `tasks.md`;
+4. no tiene `request.md`.
+
+`/forge --continue <slug>` (zero-pi) y `/forge continue <slug>` (el mod)
+**adoptan** el handoff en lugar de frenar:
+
+- Abren un run nuevo con ese mismo slug. `request.md` es el texto de
+  `requirements.md`, copiado tal cual.
+- **Se saltea clarify.** La declaración de NODD ya fijó el objetivo, el alcance y
+  las restricciones. No hay línea `Size:` ni aviso de NODD.
+- El run arranca en **explore**, que trae los code roots que el plan necesita, y
+  sigue igual que cualquier run: plan, analyze, build y veredicto, con el mismo
+  tope de rondas.
+- Los briefs de explore y plan nombran `requirements.md`. Lo que está bajo
+  "Already resolved — do not redo" es contexto ya hecho: no se replanea ni se
+  rehace.
+- `--continue` sin slug también lo ve: un handoff cuenta como un run sin
+  terminar.
+
+Un `requirements.md` sin la línea de NODD, o un directorio que ya tiene
+identidad, no es un handoff y sigue las reglas de siempre, con una excepción.
+Un `requirements.md` **con** la línea de NODD nunca cuenta como spec viejo
+(`legacy`). Si un run adoptado se corta antes de que plan escriba `spec.md`, al
+retomarlo vuelve a **explore**, sin clarify, y no a plan, porque no hay hallazgos
+de explore de los que planear.
+
 ## Archivos por ronda
 
 | Archivo | Quién lo escribe | Contenido |

@@ -268,30 +268,59 @@ function buildAttempt(ledger: ExecutionLedger, attemptId: unknown): ExecutionAtt
   return a;
 }
 const VERDICT_LINE = /^[\s*_>#-]*VEREDICTO[\s*_]*:[\s*_`]*(pasa|corregir|replantear)\b/gim;
+const NODD_MARK = /^Promoted from the NODD run\b/m;
+
+export function noddHandoffDefect(dir: string): string | undefined {
+  const requirements = readText(join(dir, "requirements.md"));
+  if (requirements === undefined) return "no requirements.md";
+  if (!NODD_MARK.test(requirements)) return "requirements.md has no 'Promoted from the NODD run' line";
+  for (const file of ["execution.json", "run.json", "design.md", "tasks.md", "request.md"]) {
+    if (existsSync(join(dir, file))) return `${file} already exists`;
+  }
+  return undefined;
+}
+function runSlug(value: unknown): string {
+  const slug = token(value, "slug");
+  if (["specs", "archive"].includes(slug)) throw new Error("Invalid slug");
+  return slug;
+}
+function open(cwd: string, slug: string, request: string | Buffer): ExecutionLedger {
+  const dir = join(cwd, ".sdd", slug);
+  mkdirSync(dir, { recursive: true });
+  const latest = selectExecution(cwd);
+  const ledger: ExecutionLedger = { v: 1, cwd, runId: randomUUID(), slug, createdAt: Math.max(Date.now(), (latest?.createdAt ?? 0) + 1), replanCap: 2, attempts: [], models: snapshotModels() };
+  writeFileSync(join(dir, "request.md"), request, { flag: "wx", mode: 0o600 });
+  save(ledger);
+  writeFileSync(join(dir, "execution.json"), JSON.stringify({ v: 1, cwd, runId: ledger.runId }), { flag: "wx", mode: 0o600 });
+  return ledger;
+}
 
 export function executionOperation(cwd: string, input: ExecutionInput): any {
   return locked(cwd, () => {
     cwd = project(cwd);
     if (input.action === "start") {
-      const slug = token(input.slug, "slug");
-      if (["specs", "archive"].includes(slug)) throw new Error("Invalid slug");
+      const slug = runSlug(input.slug);
       if (typeof input.request !== "string" || !input.request.trim()) throw new Error("Complete verbatim request required");
       const dir = join(cwd, ".sdd", slug);
       if (existsSync(dir) && readdirSync(dir).length) throw new Error("Run exists; resume or explicitly confirm artifact removal first");
-      mkdirSync(dir, { recursive: true });
-      const latest = selectExecution(cwd);
-      const ledger: ExecutionLedger = { v: 1, cwd, runId: randomUUID(), slug, createdAt: Math.max(Date.now(), (latest?.createdAt ?? 0) + 1), replanCap: 2, attempts: [], models: snapshotModels() };
-      writeFileSync(join(dir, "request.md"), input.request, { flag: "wx", mode: 0o600 });
-      save(ledger);
-      writeFileSync(join(dir, "execution.json"), JSON.stringify({ v: 1, cwd, runId: ledger.runId }), { flag: "wx", mode: 0o600 });
-      return state(ledger);
+      return state(open(cwd, slug, input.request));
+    }
+    if (input.action === "adopt") {
+      const slug = runSlug(input.slug);
+      const dir = join(cwd, ".sdd", slug);
+      const defect = noddHandoffDefect(dir);
+      if (defect) throw new Error(`Not a NODD handoff (${defect}); nothing adopted`);
+      return { ...state(open(cwd, slug, readFileSync(join(dir, "requirements.md")))), adopted: true, resumeAt: "explore" };
     }
     let runId = input.runId;
     if (input.action === "resume") {
       const slug = token(input.slug, "slug");
       let pointer;
       try { pointer = JSON.parse(readFileSync(join(cwd, ".sdd", slug, "execution.json"), "utf8")); }
-      catch { throw new Error("Execution identity missing/corrupt (legacy); blocked/not verified. Do not reset readiness accounting on resume."); }
+      catch {
+        if (!noddHandoffDefect(join(cwd, ".sdd", slug))) throw new Error(`Execution identity missing: .sdd/${slug}/ is a NODD handoff (/nodd-promote). Call zero_execution action "adopt" with slug "${slug}", then resume at explore.`);
+        throw new Error("Execution identity missing/corrupt (legacy); blocked/not verified. Do not reset readiness accounting on resume.");
+      }
       if (pointer.v !== 1 || pointer.cwd !== cwd) throw new Error("Execution pointer corrupt; blocked/not verified");
       runId = pointer.runId;
       const ledger = readExecution(cwd, runId!);

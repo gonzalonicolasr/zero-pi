@@ -73,3 +73,17 @@ test("clarify writes the exact Size line and the orchestrator turns `small` into
   assert.match(o, /On a `Size: small` run, add the one NODD line/);
   assert.match(skill, /NODD's territory/);
 });
+
+test("a NODD /nodd-promote handoff is adopted on --continue, skips clarify and resumes at explore; plain legacy still blocks", () => {
+  const o = read("prompts/orchestrator.md"), f = read("prompts/forge.md");
+  assert.ok(o.includes('action: "adopt", slug: "<slug>"'));
+  assert.match(o, /Promoted from the NODD run/);
+  assert.match(o, /`nodd-handoff`/);
+  assert.match(o, /"Unfinished" = state `nodd-handoff`, `clarifying`/);
+  assert.match(o, /skips? \*\*clarify\*\*[\s\S]{0,400}resume at \*\*explore\*\*/i);
+  assert.match(o, /Already resolved — do not redo[\s\S]{0,300}context/);
+  assert.match(o, /never a legacy spec/);
+  assert.match(o, /still stops as blocked\/not verified/);
+  assert.match(o, /`\.sdd\/<slug>\/spec\.md` is missing \(and so is the legacy/);
+  assert.match(f, /NODD handoff[\s\S]{0,300}adopt/);
+});

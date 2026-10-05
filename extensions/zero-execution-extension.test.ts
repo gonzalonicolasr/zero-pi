@@ -21,3 +21,10 @@ test('zero_execution schema exposes the wave and close actions with their array 
   assert.equal(tool.parameters.properties.members.items.required.join(','), 'attemptId,task');
   assert.equal(tool.parameters.properties.tasks.type, 'array');
 });
+
+test('zero_execution schema and description expose adopt for the NODD handoff', () => {
+  let tool: any;
+  register({ registerTool(t) { tool = t; } });
+  assert.ok(tool.parameters.properties.action.enum.includes('adopt'));
+  assert.match(tool.description, /adopt\(slug\)[^.]*NODD/);
+});

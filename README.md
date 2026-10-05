@@ -437,7 +437,9 @@ extension by the same author: it makes the agent declare a route before
 writing and refuses to mark a task done until the tests were actually seen
 running. They complement each other. When clarify sizes a `/forge` request as
 `Size: small`, the run says so once and suggests NODD — it never blocks or
-changes the route.
+changes the route. The other way around, when NODD work outgrows it,
+`/nodd-promote <slug>` hands it to zero and `/forge --continue <slug>` adopts
+that handoff: no clarify, it starts at explore and keeps what NODD already did.
 
 ## 🔗 Relationship to `zero`
 

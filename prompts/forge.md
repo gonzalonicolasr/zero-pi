@@ -37,7 +37,10 @@ a **resume** run, not a fresh one:
   `## Resuming a run` section, which scans `.sdd/*/` for an unfinished run.
 - `--continue <slug>` → resume mode targeting `.sdd/<slug>/` directly. If that
   directory does not exist, report "no such run: <slug>" and stop — do **not**
-  start a fresh run under that slug.
+  start a fresh run under that slug. A directory that `/nodd-promote` left as a
+  NODD handoff (only a `requirements.md` that says `Promoted from the NODD run`)
+  is not missing and not legacy: the orchestrator adopts it with
+  `zero_execution` `action: "adopt"`, skips clarify and starts at explore.
 - Anything else (a feature request, or no arguments) → a fresh run: the
   arguments are the feature request below.
 

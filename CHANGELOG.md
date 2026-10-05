@@ -5,6 +5,38 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.86] - 2026-10-05
+
+### Fixed — `/forge --continue` adopta el handoff de NODD
+
+`/nodd-promote <slug>` escribe sólo `.sdd/<slug>/requirements.md` y dice que se
+siga con `/forge --continue <slug>`. Ese `--continue` llamaba a `resume`, que no
+encontraba `execution.json` y frenaba el run como legacy bloqueado: el handoff
+nunca funcionaba. Ahora sigue el contrato compartido con el mod forge
+(`docs/forge-contract.md`, "Handoff desde NODD").
+
+- **Acción nueva `adopt` en `zero_execution`** (`slug`). Sólo acepta un handoff
+  de NODD: `requirements.md` con la línea `Promoted from the NODD run`, sin
+  `execution.json` ni `run.json`, sin `design.md` ni `tasks.md` y sin
+  `request.md`. Hace lo mismo que `start` (ledger, puntero `execution.json`,
+  modelos del momento), con `request.md` = los bytes exactos de
+  `requirements.md` escritos con `wx`, y devuelve `adopted: true` y
+  `resumeAt: "explore"`. Cualquier otra cosa la rechaza con un error claro y sin
+  escribir nada; una segunda llamada falla porque la identidad ya existe.
+- **`resume` nombra el handoff.** Sobre un handoff sin adoptar el error dice que
+  se llame a `adopt`. Un directorio legacy sin identidad que no es handoff sigue
+  frenando como antes.
+- **El orquestador adopta en vez de frenar.** Se saltea clarify (sin línea
+  `Size:` ni aviso de NODD), arranca en explore y sigue con plan, analyze, build y
+  veredicto con los mismos topes. Los briefs de explore y plan nombran
+  `requirements.md` y aclaran que lo de "Already resolved — do not redo" es
+  contexto ya hecho, no trabajo. `--continue` sin slug lo cuenta como run sin
+  terminar (`nodd-handoff`).
+- **Un `requirements.md` de NODD no es una spec legacy.** El fallback legacy de
+  0.1.85 lo tomaba como spec y mandaba el run a plan sin explore; ahora el
+  algoritmo de reanudación lo ignora, así que un handoff adoptado que se cortó
+  antes de `spec.md` vuelve a explore, no a plan.
+
 ## [0.1.85] - 2026-10-05
 
 ### Added — tandas paralelas en build y el veredicto queda en disco

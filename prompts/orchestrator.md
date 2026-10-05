@@ -83,14 +83,43 @@ by path to recover any unattached workflow or delivered-but-unrecorded analyze
 outcome before launching another phase. Complete the pending attach/analyze
 operation idempotently; never invent a decision from a missing checklist.
 
+**NODD handoff.** The one directory without identity that does not stop is a
+NODD handoff (`docs/forge-contract.md`, "Handoff desde NODD"). `/nodd-promote
+<slug>` writes only `.sdd/<slug>/requirements.md`, so the directory is a handoff
+when all four hold: `requirements.md` has a line starting
+`Promoted from the NODD run`; there is no `execution.json` and no `run.json`;
+there is no `design.md` and no `tasks.md`; there is no `request.md`. On such a
+directory `resume` fails with an error that names the handoff. Do not stop:
+call `zero_execution` with `action: "adopt", slug: "<slug>"`. It copies
+`requirements.md` byte for byte into `request.md`, opens the execution identity
+and ledger exactly as `start` does, and returns `adopted: true` and
+`resumeAt: "explore"`; then call `status` with the returned runId as usual. If
+`adopt` refuses, stop as blocked and relay its reason. An adopted handoff:
+
+- skips **clarify**: NODD already fixed the objective, scope and constraints.
+  No `clarifications.md`, no `Size:` line and no `## Request size notice`;
+- resume at **explore**, then plan, `/zero-validate`, analyze, build and
+  veredicto like any run, with the same build/veredicto round cap, the same
+  2-replan analyze cap and the same veredicto gate;
+- the explore and plan briefs name the absolute `.sdd/<slug>/requirements.md`
+  (also copied to `request.md`) and state that everything under
+  `## Already resolved — do not redo` is finished, verified context, not work:
+  do not re-explore it as a target, re-plan it or turn it into tasks. Plan only
+  `## Remaining work` and whatever the Objective still implies.
+
+Any other missing identity — a `requirements.md` without the NODD line, or a
+directory that already has identity files — is the legacy case above and
+still stops as blocked/not verified.
+
 **Selecting the run.**
 
 - `--continue <slug>` — skip the scan and target `.sdd/<slug>/` directly. Never
   disambiguate. (`forge.md` already reports "no such run" and stops if the
   directory is absent.)
 - `--continue` with no slug — scan `.sdd/*/` excluding `.executions/`, `specs/`, `archive/` and classify every run by its
-  resume-point state (below). "Unfinished" = state `clarifying`, `no-plan`,
-  `analyzing`, `building`, or `built` (anything except `done`).
+  resume-point state (below). "Unfinished" = state `nodd-handoff`, `clarifying`, `no-plan`,
+  `analyzing`, `building`, or `built` (anything except `done`). A NODD
+  handoff is an unfinished run; selecting it adopts it as above.
   - Exactly one unfinished run → resume it silently.
   - More than one → list each unfinished run with its slug and detected resume
     point, and ask the user which to resume.
@@ -98,12 +127,21 @@ operation idempotently; never invent a decision from a missing checklist.
 
 **Resume-point algorithm.** For the selected `<slug>`:
 
-0. If no complete `.sdd/<slug>/clarifications.md` exists **and** the run has not
+A `requirements.md` carrying the `Promoted from the NODD run` line is the run's
+request, never a legacy spec: steps 0 and 1 ignore it. That keeps an adopted
+handoff that was interrupted before plan wrote `spec.md` (it now has `request.md`
+and `execution.json`, so it is no longer a handoff) on its own path: no clarify,
+resume at **explore** — not at plan without findings.
+
+- If the directory is a NODD handoff (the four conditions above) → state
+  `nodd-handoff`; `adopt` it, then resume at **explore**.
+
+0. If the run is not an adopted NODD handoff, no complete `.sdd/<slug>/clarifications.md` exists **and** the run has not
    reached explore/plan yet (no `spec.md`/`requirements.md`/`design.md`) → state
    `clarifying`; resume at **clarify**, then explore. A truncated
    `clarifications.md` is rebuilt, not trusted.
 1. If `.sdd/<slug>/spec.md` is missing (and so is the legacy
-   `.sdd/<slug>/requirements.md`) → state `no-plan`; resume at **explore**, then
+   `.sdd/<slug>/requirements.md`; a NODD one does not count) → state `no-plan`; resume at **explore**, then
    plan (the run barely started; rebuild the plan artifacts). Plan writes
    `spec.md`; `requirements.md` only counts for runs that predate it. This is
    the run's own spec, never the canonical store `.sdd/specs/requirements.md`.
@@ -169,7 +207,8 @@ non-existent `.sdd/<slug>/` proceeds as a fresh run with no prompt.
 
 ## Execution identity, async receipts and durable handoffs
 
-Before the first clarify, call the `zero_execution` tool with `action: "start",
+A NODD handoff opens its identity with `adopt` instead (see
+`## Resuming a run`). Otherwise, before the first clarify, call the `zero_execution` tool with `action: "start",
 slug: "<slug>", request: "<complete original feature request verbatim>"`.
 It persists `request.md` verbatim (including whitespace), an execution pointer
 `.sdd/<slug>/execution.json`, and the accounting ledger at
@@ -302,6 +341,7 @@ In interactive mode it goes in the post-clarify phase summary, right before
 `¿Continuamos?`, so the user can stop there. In automatic mode say it and keep
 going. The final summary repeats it in one line. The notice never blocks, never
 changes the route, and never skips or shortens a phase; on `normal` say nothing.
+An adopted NODD handoff runs no clarify, so it has no `Size:` line and no notice.
 
 ## Plan quality gate
 

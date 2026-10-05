@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { executionOperation, readExecution, executionPath, reconcileExecution } from "./zero-execution.ts";
+import { executionOperation, readExecution, executionPath, reconcileExecution, selectExecution } from "./zero-execution.ts";
 import register from "./zero-execution-extension.ts";
 const capture = JSON.parse(readFileSync(new URL("./fixtures/forge-runtime.json", import.meta.url), "utf8"));
 function fixture(fn: (cwd: string) => void) { const cwd = mkdtempSync(join(tmpdir(), "forge-ledger-")); try { fn(cwd); } finally { rmSync(cwd, { recursive: true, force: true }); } }
@@ -402,4 +402,114 @@ test("round refuses an undelivered or non-veredicto attempt and a missing output
   const empty = launch(cwd, runId, "veredicto", 3);
   assert.throws(() => executionOperation(cwd, { action: "round", runId, attemptId: empty, verdict: "pasa", cap: 3 }), /output/);
   assert.equal(existsSync(join(cwd, ".sdd/feat/rounds.json")), false);
+}));
+
+// ── NODD handoff: /nodd-promote writes only requirements.md ──────────────────
+// Shape copied from ~/projects/nodd/src/promote.ts `promotedRequirements`; kept
+// as a literal so this package never imports across repos.
+const noddRequirements = [
+  "# Retry failed uploads",
+  "",
+  "Promoted from the NODD run `uploader-retry`. NODD kept the inline route until the work",
+  "outgrew it; this document is the handoff, not a fresh start.",
+  "",
+  "## Objective",
+  "",
+  "Retry a failed upload up to three times with exponential backoff.",
+  "",
+  "## Problem",
+  "",
+  "A transient 503 from the bucket fails the whole sync.",
+  "",
+  "## Scope",
+  "",
+  "src/uploader.ts only; the CLI flags stay as they are.",
+  "",
+  "## Constraints",
+  "",
+  "No new dependency.",
+  "",
+  "## Remaining work",
+  "",
+  "- T002 — Backoff between attempts",
+  "- T003 — Surface the final error",
+  "",
+  "## Already resolved — do not redo",
+  "",
+  "The work below is **already done and verified**. It must not be redone, re-planned or",
+  "re-implemented. Treat it as existing context; plan only what remains.",
+  "",
+  "- **T001 — Detect retryable errors**",
+  "  - verified by: `npm test -- uploader`",
+  "  - observed: success",
+  "  - review candidate: 3f2a9c1",
+  "",
+].join("\n");
+function handoff(cwd: string, slug = "uploader-retry", text = noddRequirements) {
+  const dir = join(cwd, ".sdd", slug); mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "requirements.md"), text);
+  return dir;
+}
+function snapshot(dir: string) {
+  return Object.fromEntries(readdirSync(dir).sort().map(f => [f, readFileSync(join(dir, f), "utf8")]));
+}
+
+test("adopt turns a NODD handoff into a run: request.md is requirements.md byte for byte, identity and ledger exist", () => withRuns(cwd => {
+  const dir = handoff(cwd);
+  const out = executionOperation(cwd, { action: "adopt", slug: "uploader-retry" });
+  assert.equal(out.adopted, true); assert.equal(out.resumeAt, "explore");
+  assert.equal(out.slug, "uploader-retry"); assert.equal(out.state, "proceed"); assert.equal(out.replans, 0);
+  assert.ok(readFileSync(join(dir, "request.md")).equals(readFileSync(join(dir, "requirements.md"))));
+  const pointer = JSON.parse(readFileSync(join(dir, "execution.json"), "utf8"));
+  assert.equal(pointer.runId, out.runId);
+  const ledger = readExecution(cwd, out.runId);
+  assert.equal(ledger.slug, "uploader-retry"); assert.deepEqual(ledger.attempts, []);
+  assert.equal(ledger.models?.plan, "personal/claude-opus-5");
+  assert.equal(readFileSync(join(dir, "requirements.md"), "utf8"), noddRequirements);
+}));
+
+test("adopt refuses anything that is not a NODD handoff and writes nothing in the run directory", () => fixture(cwd => {
+  const cases: [string, (dir: string) => void, RegExp][] = [
+    ["no marker", dir => writeFileSync(join(dir, "requirements.md"), "# Legacy spec\n\n## Requirements\n- R1\n"), /Promoted from the NODD run/],
+    ["execution.json", dir => writeFileSync(join(dir, "execution.json"), '{"v":1}'), /execution\.json/],
+    ["run.json", dir => writeFileSync(join(dir, "run.json"), "{}"), /run\.json/],
+    ["design.md", dir => writeFileSync(join(dir, "design.md"), "# Design\n"), /design\.md/],
+    ["tasks.md", dir => writeFileSync(join(dir, "tasks.md"), "# Tasks\n"), /tasks\.md/],
+    ["request.md", dir => writeFileSync(join(dir, "request.md"), "original request\n"), /request\.md/],
+  ];
+  for (const [label, mutate, reason] of cases) {
+    const slug = `case-${label.replace(/\W/g, "-")}`;
+    const dir = handoff(cwd, slug); mutate(dir);
+    const before = snapshot(dir);
+    assert.throws(() => executionOperation(cwd, { action: "adopt", slug }), reason, label);
+    assert.deepEqual(snapshot(dir), before, label);
+  }
+  assert.throws(() => executionOperation(cwd, { action: "adopt", slug: "absent" }), /requirements\.md/);
+  assert.equal(existsSync(join(cwd, ".sdd/absent")), false);
+  assert.throws(() => executionOperation(cwd, { action: "adopt", slug: "../escape" }), /slug/);
+  assert.equal(selectExecution(cwd), null);
+}));
+
+test("resume on an un-adopted handoff names adopt; after adopt, resume and status keep the same identity", () => fixture(cwd => {
+  handoff(cwd);
+  assert.throws(() => executionOperation(cwd, { action: "resume", slug: "uploader-retry" }), /NODD handoff[\s\S]*adopt/);
+  const adopted = executionOperation(cwd, { action: "adopt", slug: "uploader-retry" });
+  const resumed = executionOperation(cwd, { action: "resume", slug: "uploader-retry" });
+  assert.equal(resumed.runId, adopted.runId); assert.equal(resumed.state, "proceed");
+  const status = executionOperation(cwd, { action: "status", runId: resumed.runId });
+  assert.deepEqual([status.runId, status.attempts, status.missing, status.issues], [adopted.runId, 0, 0, []]);
+}));
+
+test("adopt is not repeatable: the second call finds the identity it wrote and changes nothing", () => fixture(cwd => {
+  const dir = handoff(cwd);
+  const first = executionOperation(cwd, { action: "adopt", slug: "uploader-retry" });
+  const before = snapshot(dir);
+  assert.throws(() => executionOperation(cwd, { action: "adopt", slug: "uploader-retry" }), /execution\.json/);
+  assert.deepEqual(snapshot(dir), before);
+  assert.equal(executionOperation(cwd, { action: "resume", slug: "uploader-retry" }).runId, first.runId);
+}));
+
+test("a plain legacy run without identity still fails closed on resume, with no adopt hint", () => fixture(cwd => {
+  handoff(cwd, "legacy", "# Legacy spec\n\n- R1\n");
+  assert.throws(() => executionOperation(cwd, { action: "resume", slug: "legacy" }), err => /legacy/.test((err as Error).message) && !/adopt/.test((err as Error).message));
 }));
