@@ -252,10 +252,10 @@ test("writer phases get nodd_declare only when NODD is installed", () => {
   // Without NODD the tool does not exist, and pi-subagents fails a child whose
   // `tools:` names an unregistered tool — so it is added only when present.
   for (const phase of PHASES) {
-    const writes = PHASE_TOOLS[phase].includes("write");
+    const declares = PHASE_TOOLS[phase].includes("write") || phase === "veredicto";
     const withNodd = buildAgentFile(phase, "body", "d", undefined, undefined, { nodd: true });
     const without = buildAgentFile(phase, "body", "d", undefined, undefined, { nodd: false });
-    assert.equal(/^tools: .*nodd_declare/m.test(withNodd), writes, `${phase} with NODD`);
+    assert.equal(/^tools: .*nodd_declare/m.test(withNodd), declares, `${phase} with NODD`);
     assert.equal(without.includes("nodd_declare"), false, `${phase} without NODD`);
   }
   assert.equal(buildAgentFile("build", "body", "d", undefined).includes("nodd_declare"), false, "default is off");

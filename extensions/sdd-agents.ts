@@ -120,7 +120,7 @@ export function buildAgentFile(
   // tool exists only when NODD is installed, and pi-subagents fails a child
   // whose `tools:` names an unregistered tool — hence the flag.
   const tools = [...PHASE_TOOLS[phase]];
-  if (opts.nodd && tools.includes("write")) tools.push("nodd_declare");
+  if (opts.nodd && (tools.includes("write") || phase === "veredicto")) tools.push("nodd_declare");
   front.push(`tools: ${tools.join(", ")}`);
   if (!PHASE_COMPLETION_GUARD[phase]) front.push("completionGuard: false");
   // `inheritProjectContext: false` keeps the user's global AGENTS.md out of

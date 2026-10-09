@@ -56,6 +56,7 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
   const lines = typeof text === "string" ? text.split(/\r?\n/) : [];
   let current: TaskRecord | null = null;
   let collectingFiles = false;
+  let evidenceIndent: number | null = null;
 
   const pushFile = (line: string): void => {
     if (!current) return;
@@ -64,6 +65,15 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
   };
 
   for (const line of lines) {
+    if (evidenceIndent !== null && current) {
+      const indent = line.match(/^\s*/)![0].length;
+      if (line.trim() !== "" && indent > evidenceIndent) {
+        const item = line.trim().replace(/^-\s+/, "");
+        current.evidence = current.evidence ? `${current.evidence}; ${item}` : item;
+        continue;
+      }
+      if (line.trim() !== "") evidenceIndent = null;
+    }
     const task = matchTaskHeader(line);
     if (task) {
       const parallel = line.includes("[P]");
@@ -86,6 +96,7 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
     if (/^\s*-\s+evidence:/.test(line)) {
       collectingFiles = false;
       current.evidence = line.replace(/^\s*-\s+evidence:\s*/, "").trim();
+      if (current.evidence === "") evidenceIndent = line.match(/^\s*/)![0].length;
       continue;
     }
     if (/^\s*-\s+review:/.test(line)) {

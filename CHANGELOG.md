@@ -5,6 +5,25 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.88] - 2026-10-09
+
+### Fixed — NODD frenaba al veredicto y un validador quisquilloso hacía repetir el plan
+
+Dos desperdicios que se vieron en la corrida real de punta a punta del 5/10:
+
+- **El veredicto no tenía cómo declararse a NODD.** No tiene herramienta de
+  escritura, así que su informe y la copia temporal donde prueba mutaciones los
+  escribe por bash, y NODD los frenó 4 veces con "no route has been declared".
+  Ahora recibe `nodd_declare`, igual que las fases que escriben, y su prompt le
+  dice cómo declararse (`change` + `inline`, nombrando su archivo de salida). La
+  declaración no lo habilita a tocar código: las mutaciones van sobre una copia
+  en `mktemp -d`, fuera del proyecto.
+- **`/zero-validate` daba `missing-evidence` falso** cuando el plan escribía la
+  evidencia en sub-viñetas debajo de `- evidence:`, porque leía sólo ese renglón.
+  Eso obligó a correr el plan entero una segunda vez. Ahora junta las
+  sub-viñetas, igual que ya hacía con `files:`. El mod forge de Claude Code
+  recibió el mismo arreglo.
+
 ## [0.1.87] - 2026-10-05
 
 ### Fixed — `/forge` frenaba siempre después de explore con pi-subagents 0.70

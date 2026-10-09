@@ -117,3 +117,32 @@ test("validateArtifactSet: reports all missing artifacts", () => {
   const defects = validateArtifactSet({ proposal: false, spec: true, design: false, tasks: true });
   assert.deepEqual(defects.map((d) => d.kind), ["missing-proposal", "missing-design"]);
 });
+
+test("parseTasks: evidence written as nested sub-bullets counts as evidence", () => {
+  const text = [
+    "### T001 — Implement suma [P]",
+    "",
+    "- files:",
+    "  - `src/suma.js` (new)",
+    "- depends: []",
+    "- evidence:",
+    "  - `node --test test/suma.test.js` fails before src/suma.js exists",
+    "  - `npm test` stays green",
+    "- review: ~15 changed lines",
+    "",
+    "### T002 — Empty evidence",
+    "",
+    "- files:",
+    "  - `src/resta.js` (new)",
+    "- depends: []",
+    "- evidence:",
+    "- review: ~15 changed lines",
+  ].join("\n");
+  const parsed = parseTasks(text);
+  const t1 = parsed.tasks.find((t) => t.id === "T001")!;
+  assert.match(t1.evidence ?? "", /node --test test\/suma\.test\.js/);
+  assert.match(t1.evidence ?? "", /npm test/);
+  assert.equal(t1.review, 15);
+  assert.deepEqual(parsed.defects.filter((d) => d.task === "T001").map((d) => d.kind), []);
+  assert.deepEqual(parsed.defects.filter((d) => d.task === "T002").map((d) => d.kind), ["missing-evidence"]);
+});

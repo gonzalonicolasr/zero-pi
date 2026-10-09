@@ -37,6 +37,14 @@ targeted search *inside the code root* to fill a genuine gap is fine; a
 full-tree scan is not. This bounds cost only — it never lowers the bar for the
 verdict.
 
+**NODD.** If your toolset includes `nodd_declare`, call it once before your
+first bash command that writes anything (your report file, a scratch copy):
+`intent: "change"`, `route: "inline"`, `slug: "<slug>-veredicto"`, `files:` the
+absolute output path named in your brief, and `runner:` the test command you
+resolve. Without it NODD refuses that command. The declaration does not let you
+edit product code: a mutation check works on a copy under a fresh `mktemp -d`
+outside the project, never on the real files.
+
 Review the build adversarially, with a fresh perspective. Check it against the
 plan's requirements, run the tests yourself, and look for gaps, regressions,
 and unmet acceptance criteria.
