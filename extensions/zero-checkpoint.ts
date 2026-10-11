@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -14,6 +15,24 @@ export interface CheckpointResult {
   dirty: boolean;
   untracked: string[];
   message?: string;
+}
+
+export function spawnCheckpointRunner(cwd: string): CheckpointRunner {
+  return {
+    run(command, args) {
+      try {
+        const r = spawnSync(command, [...args], { cwd, encoding: "utf8" });
+        return {
+          status: typeof r.status === "number" ? r.status : 1,
+          stdout: r.stdout ?? "",
+          stderr: r.stderr ?? "",
+          error: r.error?.message,
+        };
+      } catch (err) {
+        return { status: 1, stdout: "", stderr: "", error: err instanceof Error ? err.message : String(err) };
+      }
+    },
+  };
 }
 
 export function checkpointId(date = new Date()): string {

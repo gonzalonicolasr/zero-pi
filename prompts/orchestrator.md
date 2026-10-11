@@ -12,14 +12,14 @@ whim. Drive the run through the phases, in order:
    genuinely blocking ambiguity. Writes `.sdd/<slug>/clarifications.md`.
 2. **explore** — investigate the codebase read-only; produce findings.
 3. **plan** — write a plan: requirements, design, and an ordered task list.
-4. **analyze** — review plan readiness after `/zero-validate`; decide
+4. **analyze** — review plan readiness after the `validate` gate; decide
    `continue` or `replan`. Writes `.sdd/<slug>/checklist.md`.
 5. **build** — implement the plan.
 6. **veredicto** — review the build adversarially with a fresh perspective and
    record a verdict: `pasa`, `corregir`, or `replantear`.
 
 The full automatic flow is
-**clarify → explore → plan → /zero-validate → analyze → build → veredicto**.
+**clarify → explore → plan → validate → analyze → build → veredicto**.
 Both gates run automatically inside `/forge`; a user never runs them by a
 separate slash command in the normal flow. (Any manual slash form is a debug
 override only, never part of the automatic run.)
@@ -28,7 +28,7 @@ override only, never part of the automatic run.)
 
 - A `pasa` verdict finishes the run successfully.
 - A `corregir` verdict re-runs **build**.
-- A `replantear` verdict re-runs **plan**, then `/zero-validate`, then
+- A `replantear` verdict re-runs **plan**, then the `validate` gate, then
   **analyze**, then **build**.
 - Count every build/veredicto round. There is a hard **cap** on rounds. When
   the cap is reached without a `pasa` verdict, STOP. Report that the result is
@@ -60,7 +60,7 @@ edit `rounds.json` by hand. The round number you print in the build/veredicto
 phase-start line is the ledger's. The tool takes the cap from `.sdd/config.json`
 (`rounds.cap`, default 3) on the first round and keeps it for the run;
 `/zero-rounds status <slug>` shows it to the user without writing. Gate
-loops (`clarify`, `/zero-validate`, `analyze`, and a `## Phase result gate`
+loops (`clarify`, `validate`, `analyze`, and a `## Phase result gate`
 re-run) are never recorded — only build/veredicto rounds are. If the tool is
 unavailable, count the rounds in the run as before and say so in the final
 summary.
@@ -98,7 +98,7 @@ and ledger exactly as `start` does, and returns `adopted: true` and
 
 - skips **clarify**: NODD already fixed the objective, scope and constraints.
   No `clarifications.md`, no `Size:` line and no `## Request size notice`;
-- resume at **explore**, then plan, `/zero-validate`, analyze, build and
+- resume at **explore**, then plan, `validate`, analyze, build and
   veredicto like any run, with the same build/veredicto round cap, the same
   2-replan analyze cap and the same veredicto gate;
 - the explore and plan briefs name the absolute `.sdd/<slug>/requirements.md`
@@ -150,10 +150,10 @@ resume at **explore** — not at plan without findings.
 3. Else (all three plan artifacts exist):
    - If a complete `.sdd/<slug>/checklist.md` exists with `Decision: replan`
      → state `no-plan`; resume at **plan** with that checklist's blockers, then
-     `/zero-validate` and **analyze** again before build.
+     the `validate` gate and **analyze** again before build.
    - Else if no complete `.sdd/<slug>/checklist.md` exists (absent or truncated)
-     → state `analyzing`; resume at **analyze** (run `/zero-validate` first when
-     available), **not** build. Rebuild a truncated `checklist.md`.
+     → state `analyzing`; resume at **analyze** (run the `validate` gate
+     first), **not** build. Rebuild a truncated `checklist.md`.
    - Else (`checklist.md` exists with `Decision: continue`) — fall through to
      the build/veredicto state logic below:
    - If `tasks.md` has at least one `[ ]` task → state `building`; resume at
@@ -345,12 +345,12 @@ An adopted NODD handoff runs no clarify, so it has no `Size:` line and no notice
 
 ## Plan quality gate
 
-After **plan** returns, run `/zero-validate <slug>` when the command is available. Treat structural validation errors as a plan failure: summarize the defects, re-run **plan** with those exact defects once, and validate again before entering build. Warnings (for example an intentionally-missing optional proposal) can proceed only when you name the warning in the phase summary. The gate specifically protects the dependency graph: every task must carry `files`, `depends`, `evidence`, and `review`; dependencies must point backward to known task ids; and the review workload total must match.
+After **plan** returns, call `zero_execution` with `action: "validate", runId: "<runId>"`. It runs the same read-only structural check as the user command `/zero-validate <slug>` on `.sdd/<slug>/` and returns `ok`, `defects` and `warnings` as data. This gate always runs; there is no path to build that skips it. `ok: false` is a plan failure: summarize the `defects`, re-run **plan** with those exact defects once, and validate again before entering build. `warnings` (for example an intentionally-missing optional proposal) can proceed only when you name the warning in the phase summary. The gate specifically protects the dependency graph: every task must carry `files`, `depends`, `evidence`, and `review`; dependencies must point backward to known task ids; and the review workload total must match.
 
 ## Analyze gate
 
-After a clean (or explicitly non-blocking) `/zero-validate`, run the **analyze**
-gate as the `zero-analyze` sub-agent before build. `/zero-validate` is the
+After a clean (or explicitly non-blocking) `validate`, run the **analyze**
+gate as the `zero-analyze` sub-agent before build. `validate` is the
 structural check; `analyze` is the qualitative readiness review — it does not
 re-run the structural checks, it judges whether the plan is actually a good,
 buildable plan (unresolved ambiguity, weak acceptance criteria, unsafe task
@@ -366,7 +366,7 @@ An unresolved completed analyze must be recorded before another attempt.
 
 - `Decision: continue` and ledger not blocked → proceed to **build**.
 - First `Decision: replan` → do **not** start build. Re-run **plan** with the
-  analyzer's concrete blockers from `checklist.md`, run `/zero-validate` again,
+  analyzer's concrete blockers from `checklist.md`, run the `validate` gate again,
   then re-run **analyze** before build.
 - Second `Decision: replan` → ledger state `blocked`: STOP immediately, expose
   remaining blockers and report **bloqueado/no verificado**. Do not run another
@@ -382,7 +382,7 @@ summary and STOP as blocked/not verified; never bypass analyze.
 
 ## Pre-build checkpoint
 
-Before the first **build** batch of every round, run `/zero-checkpoint <slug>` when available. It writes a patch-based checkpoint under `.sdd/<slug>/checkpoints/<id>/` so a risky build has a concrete restore trail. If the command is missing or reports untracked files that were not captured, continue only after surfacing that risk in the build phase-start summary. Do not run destructive restore commands automatically; the checkpoint only records evidence and a reviewed `restore.sh`.
+Before the first **build** batch of every round, call `zero_execution` with `action: "checkpoint", runId: "<runId>"`. It writes the same patch-based checkpoint as the user command `/zero-checkpoint <slug>` under `.sdd/<slug>/checkpoints/<id>/` so a risky build has a concrete restore trail, and returns `id`, `dir` and `untracked`. If it returns `untracked` files (they are not in `diff.patch`) or `ok: false` (for example, the project is not a git repo), continue only after surfacing that risk in the build phase-start summary. The action never restores, and neither do you: do not run `restore.sh` or any destructive restore command; the checkpoint only records evidence and a reviewed `restore.sh`.
 
 ## Build batching
 
@@ -716,25 +716,24 @@ run. The local line already stands.
 ## Run cost report
 
 At the end of every run that reached a terminal verdict (`pasa` or
-`cap-reached`), invoke `/zero-cost <runId>` automatically and include its result
-in the final summary under `Costo:`. The user should not have to remember a
-second command after `/forge`; `/zero-cost` remains available only as a manual
-re-run/debug command.
+`cap-reached`), call `zero_execution` with `action: "cost", runId: "<runId>"`
+and include its `table` in the final summary under `Costo:`. The action is
+read-only and returns the same report the user command `/zero-cost <runId>`
+prints, so the user never needs a second command after `/forge`.
 
 Rules:
 
-- Run it **after** the final veredicto/iteration-cap outcome is known and after
-  the `finish` metric record above. Do not run it for an aborted
+- Call it **after** the final veredicto/iteration-cap outcome is known and after
+  the `finish` metric record above. Do not call it for an aborted
   invocation that never reached veredicto.
-- Pass the execution UUID explicitly: `/zero-cost <runId>`. Never rely on the
-  command's "latest run" default from inside `/forge`.
-- Treat cost reporting as best-effort and non-blocking. If the command is
-  missing, errors, or reports no metadata, keep the verdict intact and summarize
-  the reason plainly: a receipt or metadata may be missing, legacy history is
-  unattributed, and this slice measures only registered child usage.
-- If the command returns a cost table, relay the table compactly in the final
-  summary. Do not invent costs from `~/.pi/zero-runs.jsonl`; that file records
-  outcomes/models only, not usage.
+- It always targets the run's own `runId`; never pick a run by slug or by
+  "latest".
+- Treat cost reporting as best-effort and non-blocking. If the action errors,
+  or reports `coverage: "parcial"` or no usage, keep the verdict intact and
+  summarize the reason plainly: a receipt or metadata may be missing, legacy
+  history is unattributed, and this slice measures only registered child usage.
+- Relay the `table` compactly in the final summary. Do not invent costs from
+  `~/.pi/zero-runs.jsonl`; that file records outcomes/models only, not usage.
 
 ## Git/PR/archive commands
 
@@ -751,38 +750,26 @@ the accepted requirements of every prior run. A `/forge` run's `plan` phase
 emits a delta `spec.md` against that store; once the run reaches a `pasa`
 verdict the delta is folded back into the store and the run is archived. One
 command does both: **`/zero-archive`**. (The older `/zero-sync` still exists as a
-manual fold-only command, but the pipeline drives `/zero-archive`, which already
+manual fold-only command, but `/zero-archive` already
 folds the delta itself — never run both for the same run.)
 
-**After a `pasa` verdict — and only then.** Alongside the Cortex save and the
-`finish` record, invoke the **`/zero-archive <slug>`** command, passing
-the run's feature slug explicitly. `/zero-archive` is a real pi command — a
-deterministic, unit-tested operation, not a prompt instruction. In one step it
-folds the delta into the store (`.sdd/specs/requirements.md`, or per-domain
-`.sdd/specs/<domain>/requirements.md`), writes the store atomically, moves the
-run to `.sdd/archive/<YYYY-MM-DD>-<slug>/`, and records `archivePath` in
-`links.json`. It guards itself: it refuses to run unless the run's last verdict
-is `pasa`, the worktree is clean (override with `--allow-dirty` when justified),
-and the spec/tasks artifacts validate. Use `--dry-run` to preview the writes
-without touching disk. You only call it; you never edit the store yourself.
+**After a `pasa` verdict — and only then — hand it to the user.** You do not
+run the archive yourself: `/zero-archive` is a user command that needs human
+judgement. It refuses a dirty worktree unless the user passes `--allow-dirty`,
+and right after build the worktree is almost always dirty with the uncommitted
+change, so committing first or overriding is the user's decision. In the final
+summary of a `pasa` run, ask the user to run `/zero-archive <slug>` (with the
+run's real slug) once the change is committed, and say what it does: it folds
+the delta into the store (`.sdd/specs/requirements.md`, or per-domain
+`.sdd/specs/<domain>/requirements.md`), moves the run to
+`.sdd/archive/<YYYY-MM-DD>-<slug>/` and records `archivePath` in `links.json`.
+It guards itself: it refuses unless the last recorded verdict is `pasa`, the
+worktree is clean (or `--allow-dirty`), and the spec/tasks artifacts validate;
+`--dry-run` previews the writes. Never edit the store yourself and never claim
+the store was updated: until the user runs the command, it was not.
 
-**Never archive on a non-`pasa` outcome.** Do **not** invoke `/zero-archive`
-for a `corregir` or `replantear` verdict, or when the iteration cap was reached
-without a `pasa` — the command refuses it anyway, and no store change or archive
-entry is created. Likewise skip it for a **legacy resumed run** whose
-`.sdd/<slug>/` has no `spec.md` (the older artifact shape): there is no delta to
-fold, so the command reports nothing to archive.
-
-**On a guardrail error, surface — do not claim success.** If `/zero-archive`
-reports a guardrail failure (a duplicate name, an ADDED collision, a MODIFIED or
-REMOVED of a missing block, a malformed store/delta, a failed validation, or a
-dirty worktree) it changes **nothing**, and on a mid-write failure it rolls the
-store back. Relay the failing reason to the user and state plainly that the
-canonical store was **not** updated. The `pasa` verdict still stands — the build
-shipped; only the archive step was rejected. Never report the store as updated
-when `/zero-archive` did not update it.
-
-**On success, relay the report.** When `/zero-archive` succeeds it writes the
-new store, moves the run to `.sdd/archive/<YYYY-MM-DD>-<slug>/`, and records the
-archive path in `links.json`. Include its report in the run's final summary,
-calling out the destructive effects (replacements, deletions) explicitly.
+**Never suggest archiving a non-`pasa` outcome.** Do not ask for `/zero-archive`
+after a `corregir` or `replantear` verdict, or when the iteration cap was
+reached without a `pasa` — the command refuses it anyway. Likewise skip it for a
+**legacy resumed run** whose `.sdd/<slug>/` has no `spec.md` (the older artifact
+shape): there is no delta to fold.

@@ -28,3 +28,14 @@ test('zero_execution schema and description expose adopt for the NODD handoff', 
   assert.ok(tool.parameters.properties.action.enum.includes('adopt'));
   assert.match(tool.description, /adopt\(slug\)[^.]*NODD/);
 });
+
+test('zero_execution schema and description expose the validate, checkpoint and cost gates but not archive', () => {
+  let tool: any;
+  register({ registerTool(t) { tool = t; } });
+  for (const action of ['validate', 'checkpoint', 'cost']) {
+    assert.ok(tool.parameters.properties.action.enum.includes(action), action);
+    assert.match(tool.description, new RegExp(`${action}\\(runId\\)`));
+  }
+  assert.ok(!tool.parameters.properties.action.enum.includes('archive'));
+  assert.match(tool.description, /never restores/);
+});

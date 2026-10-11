@@ -183,3 +183,35 @@ export function formatReport(run: RunCost): string {
   for (const p of run.phases) lines.push(`${p.phase} modelos reportados: ${p.model || "unknown"}`);
   return lines.join("\n");
 }
+
+export function unreadableLines(unreadable: readonly { file: string; error: string }[]): string[] {
+  return unreadable.map(u => `Ledger ilegible omitido: ${u.file}: ${u.error}`);
+}
+
+export interface ExecutionCostInput {
+  metas: readonly PhaseMeta[];
+  attempts: number;
+  missing: number;
+  issues: readonly string[];
+  receipts: readonly { delivery: string }[];
+}
+
+export function executionCostReport(
+  ledger: { slug: string; runId: string; cwd: string },
+  result: ExecutionCostInput,
+  unreadable: readonly { file: string; error: string }[],
+): { coverage: "registrada" | "parcial"; run: RunCost | null; text: string } {
+  const coverage = result.attempts > 0 && result.missing === 0 ? "registrada" : "parcial";
+  const run = result.metas.length ? aggregateRun(result.metas, ledger.slug) : null;
+  const lines = [
+    `zero-cost: ${ledger.slug} · ${ledger.runId} · ${ledger.cwd}`,
+    `Cobertura ${coverage}: ${result.metas.length}/${result.attempts} intentos registrados con usage. Solo hijos; no es el costo completo de Forge/padre.`,
+    "Resume acumula nuevos hijos en la misma ejecución; reintentos incluidos una vez. Hijos no registrados no son detectables.",
+  ];
+  if (run) lines.push(formatReport(run));
+  else lines.push("Sin usage atribuible todavía: total desconocido, no cero.");
+  const failed = result.receipts.filter(r => ["failed", "stopped", "paused"].includes(r.delivery)).length;
+  lines.push(`Entregas fallidas/detenidas/pausadas registradas: ${failed} (su usage disponible está incluido).`);
+  lines.push(...result.issues, ...unreadableLines(unreadable));
+  return { coverage, run, text: lines.join("\n") };
+}

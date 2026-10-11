@@ -87,3 +87,21 @@ test("a NODD /nodd-promote handoff is adopted on --continue, skips clarify and r
   assert.match(o, /`\.sdd\/<slug>\/spec\.md` is missing \(and so is the legacy/);
   assert.match(f, /NODD handoff[\s\S]{0,300}adopt/);
 });
+
+test("the plan, checkpoint and cost gates run through zero_execution, and archive is handed to the user", () => {
+  const o = read("prompts/orchestrator.md"), f = read("prompts/forge.md");
+  for (const action of ["validate", "checkpoint", "cost"]) {
+    assert.match(o, new RegExp(`zero_execution[^\\n]*action: "${action}"`), action);
+  }
+  assert.match(f, /action: "validate"/); assert.match(f, /action: "cost"/);
+  for (const text of [o, f]) {
+    assert.doesNotMatch(text, /(run|invoke|runs?) `\/zero-(validate|checkpoint|cost)/i);
+    assert.doesNotMatch(text, /when (the command is )?available/i);
+    assert.doesNotMatch(text, /If the command is missing/);
+  }
+  assert.doesNotMatch(o, /invoke the \*\*`\/zero-archive/);
+  assert.match(o, /ask the user to run `\/zero-archive <slug>`/);
+  assert.match(o, /re-run \*\*plan\*\* with those exact defects once/);
+  assert.match(o, /Before the first \*\*build\*\* batch of every round/);
+  assert.match(o, /under `Costo:`/);
+});

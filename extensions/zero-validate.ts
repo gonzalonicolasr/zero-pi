@@ -208,3 +208,18 @@ export function validateArtifactSet(present: { proposal: boolean; spec: boolean;
   }
   return defects;
 }
+
+export const RUN_ARTIFACTS = ["proposal", "spec", "design", "tasks"] as const;
+
+export function validateRunDir(dir: string): { all: ValidationDefect[]; defects: ValidationDefect[]; warnings: ValidationDefect[] } {
+  const read = (a: string): string | null => { try { return readFileSync(join(dir, `${a}.md`), "utf8"); } catch { return null; } };
+  const texts = Object.fromEntries(RUN_ARTIFACTS.map((a) => [a, read(a)])) as Record<(typeof RUN_ARTIFACTS)[number], string | null>;
+  const hasDomainSpec = existsSync(join(dir, "specs"));
+  const presence = Object.fromEntries(RUN_ARTIFACTS.map((a) => [a, a === "spec" ? texts.spec !== null || hasDomainSpec : texts[a] !== null])) as Record<(typeof RUN_ARTIFACTS)[number], boolean>;
+  const all = validateArtifactSet(presence);
+  all.push(...validateSpecInputs(dir));
+  if (texts.tasks !== null) all.push(...validateTasksFile(texts.tasks));
+  for (const legacy of ["requirements.md"]) if (existsSync(join(dir, legacy))) all.push({ kind: "legacy-artifact", path: legacy, message: `${legacy} is a legacy Kiro artifact; keep it only as historical context` });
+  const warning = (d: ValidationDefect): boolean => d.kind.startsWith("missing-proposal") || d.kind === "legacy-artifact";
+  return { all, defects: all.filter((d) => !warning(d)), warnings: all.filter(warning) };
+}

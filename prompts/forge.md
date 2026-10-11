@@ -10,14 +10,18 @@ its sub-agent (`zero-clarify`, `zero-explore`, `zero-plan`, `zero-analyze`,
 **automatically** inside `/forge` — there is no slash command a user must run
 by hand for the normal flow. `clarify` records assumptions in
 `.sdd/<slug>/clarifications.md` and stops only on genuinely blocking ambiguity;
-`analyze` writes `.sdd/<slug>/checklist.md` after `plan`/`/zero-validate` and
+`analyze` writes `.sdd/<slug>/checklist.md` after `plan` and the
+`zero_execution` `action: "validate"` plan gate, and
 returns `continue` (proceed to build) or `replan` (re-run plan with its
 defects). A `corregir` verdict re-runs `build`; a `replantear` verdict re-runs
 `plan`; after a few rounds with no `pasa`, stop and report the result as not
 verified. Ask the user for interactive or automatic mode up front; in
 interactive mode pause after each phase for approval. At terminal run end,
-invoke `/zero-cost <runId>` automatically and include the best-effort cost table
-in the final summary; the user should not have to run a second command. Never
+call `zero_execution` `action: "cost"` with the run's `runId` and include its
+best-effort cost `table` in the final summary; the user should not have to run
+a second command. Before the first build batch of each round, call
+`zero_execution` `action: "checkpoint"`. After a `pasa`, ask the user to run
+`/zero-archive <slug>` in the final summary; never archive yourself. Never
 claim success unless veredicto returned `pasa`.
 
 **Execution accounting is required.** Follow the orchestrator's execution

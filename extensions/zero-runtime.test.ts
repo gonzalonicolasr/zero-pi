@@ -46,5 +46,10 @@ test("installed Pi tool validator accepts zero_execution schema and rejects inva
   assert.deepEqual(validateToolArguments(tool, { name: tool.name, arguments: args }), args);
   const adopt = { action: "adopt", slug: "feature" };
   assert.deepEqual(validateToolArguments(tool, { name: tool.name, arguments: adopt }), adopt);
+  for (const action of ["validate", "checkpoint", "cost"]) {
+    const gate = { action, runId: "run-1" };
+    assert.deepEqual(validateToolArguments(tool, { name: tool.name, arguments: gate }), gate);
+  }
+  assert.throws(() => validateToolArguments(tool, { name: tool.name, arguments: { action: "archive", runId: "run-1" } }), /Validation failed/);
   assert.throws(() => validateToolArguments(tool, { name: tool.name, arguments: { action: "reset" } }), /Validation failed/);
 });

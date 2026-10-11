@@ -4,12 +4,13 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realp
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
-import { COST_PHASES, parseMeta, type CostPhase, type PhaseMeta } from "./zero-cost.ts";
+import { COST_PHASES, executionCostReport, parseMeta, type CostPhase, type PhaseMeta } from "./zero-cost.ts";
 import { readLedger, recordRound, stateOf, writeLedger, VERDICTS, type Verdict } from "./zero-rounds.ts";
 import { RUN_SCHEMA_VERSION } from "./autotune.ts";
 import { loadSddConfig } from "./sdd-config.ts";
 import { PARALLEL_MAX, codeRootsFrom, nextWave, tickTasks, waveSchedule } from "./zero-waves.ts";
-import { parseTasks } from "./zero-validate.ts";
+import { parseTasks, validateRunDir } from "./zero-validate.ts";
+import { createCheckpoint, spawnCheckpointRunner } from "./zero-checkpoint.ts";
 
 export interface ExecutionAttempt {
   id: string;
@@ -433,6 +434,16 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       appendFileSync(runsPath(), `${JSON.stringify(record)}\n`, { mode: 0o600 });
       ledger.finishedAt = finishedAt; save(ledger);
       return { ...state(ledger), recorded: true, record };
+    }
+    if (input.action === "validate") {
+      const { defects, warnings } = validateRunDir(runDir(ledger));
+      return { ...state(ledger), ok: defects.length === 0, defects, warnings };
+    }
+    if (input.action === "checkpoint") return { ...state(ledger), ...createCheckpoint(ledger.slug, cwd, spawnCheckpointRunner(cwd)) };
+    if (input.action === "cost") {
+      const result = reconcile(ledger);
+      const report = executionCostReport(ledger, result, unreadableLedgers(cwd));
+      return { ...state(ledger), coverage: report.coverage, registered: result.metas.length, attempts: result.attempts, total: report.run?.total ?? null, table: report.text };
     }
     if (input.action === "status") { const result = reconcile(ledger); save(ledger); return { ...state(ledger), ...result }; }
     if (input.action === "attempt") {

@@ -5,6 +5,44 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.89] - 2026-10-10
+
+### Fixed — los gates del orquestador eran comandos que sólo puede tipear una persona
+
+El prompt le pedía al orquestador correr `/zero-validate`, `/zero-checkpoint` y
+`/zero-cost`, pero esos son comandos de usuario: el modelo sólo tiene la tool
+`zero_execution`. En la corrida real del 5/10 dijo "no puedo correr
+/zero-checkpoint desde acá" y la tabla de costo nunca apareció. Es el mismo bug
+que 0.1.84 arregló para `/zero-rounds`, y se arregla igual: tres acciones nuevas
+en `zero_execution` que reusan la lógica de los comandos, sin duplicarla.
+
+- **`validate`** (`runId`) corre el mismo chequeo estructural que
+  `/zero-validate <slug>` sobre `.sdd/<slug>/` y devuelve `ok`, `defects`
+  (estructurales) y `warnings` (artefacto opcional o legacy). No escribe nada.
+  La lógica pasó a `validateRunDir` en `zero-validate.ts` y el comando la usa.
+- **`checkpoint`** (`runId`) escribe el mismo checkpoint por patch que
+  `/zero-checkpoint <slug>` y devuelve `id`, `dir`, `dirty` y los `untracked`
+  que no entran en `diff.patch`, o `ok: false` con el motivo (por ejemplo, fuera
+  de un repo git). Nunca restaura. El runner de git pasó a `zero-checkpoint.ts`
+  (`spawnCheckpointRunner`).
+- **`cost`** (`runId`) devuelve el mismo reporte que `/zero-cost <runId>`
+  (`table`, `coverage`, intentos registrados y `total`) sin reescribir el
+  ledger. El armado del reporte pasó a `executionCostReport` en `zero-cost.ts`
+  y el comando lo usa, así que los dos textos son idénticos por construcción.
+- **`/zero-archive` sigue siendo de usuario.** No se expone como acción: frena
+  con el worktree sucio salvo `--allow-dirty`, y justo después de build el
+  worktree casi siempre está sucio con el cambio sin commitear, así que commitear
+  o forzar es una decisión de la persona. Además el `links.json` que escribe no
+  se revierte si falla el movimiento del run. El orquestador ahora le pide al
+  usuario, en el resumen final de un run `pasa`, que corra
+  `/zero-archive <slug>` después de commitear, y nunca dice que el store se
+  actualizó.
+
+El prompt pierde las salidas del tipo "cuando el comando esté disponible" que
+dejaban saltear los gates: el `validate` corre siempre después de plan (un
+error repite plan una vez), el `checkpoint` antes de la primera tanda de build de
+cada ronda y la tabla de `cost` va en el resumen final, como antes.
+
 ## [0.1.88] - 2026-10-09
 
 ### Fixed — NODD frenaba al veredicto y un validador quisquilloso hacía repetir el plan

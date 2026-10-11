@@ -1,4 +1,4 @@
-import { aggregateRun, formatReport } from "./zero-cost.ts";
+import { executionCostReport, unreadableLines } from "./zero-cost.ts";
 import { reconcileExecution, selectExecution, unreadableLedgers } from "./zero-execution.ts";
 
 type NotifyType = "info" | "warning" | "error";
@@ -11,7 +11,8 @@ export function runZeroCost(args: string, ctx: PiCommandContext, options: { cwd?
   const cwd = options.cwd ?? ctx.cwd ?? process.cwd();
   const ledger = selectExecution(cwd, args.trim() || undefined);
   // Ledgers enumeration could not read: reported as issues, never as zero usage.
-  const unreadable = unreadableLedgers(cwd).map(u => `Ledger ilegible omitido: ${u.file}: ${u.error}`);
+  const skipped = unreadableLedgers(cwd);
+  const unreadable = unreadableLines(skipped);
   if (!ledger) {
     const head = unreadable.length
       ? `zero-cost: ${args.trim() || "run"} — parcial/sin atribución. Hay ledgers de ejecución ilegibles en este cwd; su usage no se suma ni se convierte en cero. Recuperación humana requerida.`
@@ -19,19 +20,8 @@ export function runZeroCost(args: string, ctx: PiCommandContext, options: { cwd?
     ctx.ui.notify([head, ...unreadable].join("\n"), "info");
     return;
   }
-  const result = reconcileExecution(cwd, ledger.runId);
-  const coverage = result.attempts > 0 && result.missing === 0 ? "registrada" : "parcial";
-  const lines = [
-    `zero-cost: ${ledger.slug} · ${ledger.runId} · ${ledger.cwd}`,
-    `Cobertura ${coverage}: ${result.metas.length}/${result.attempts} intentos registrados con usage. Solo hijos; no es el costo completo de Forge/padre.`,
-    "Resume acumula nuevos hijos en la misma ejecución; reintentos incluidos una vez. Hijos no registrados no son detectables.",
-  ];
-  if (result.metas.length) lines.push(formatReport(aggregateRun(result.metas, ledger.slug)));
-  else lines.push("Sin usage atribuible todavía: total desconocido, no cero.");
-  const failed = result.receipts.filter(r => ["failed", "stopped", "paused"].includes(r.delivery)).length;
-  lines.push(`Entregas fallidas/detenidas/pausadas registradas: ${failed} (su usage disponible está incluido).`);
-  lines.push(...result.issues, ...unreadable);
-  ctx.ui.notify(lines.join("\n"), "info");
+  const report = executionCostReport(ledger, reconcileExecution(cwd, ledger.runId), skipped);
+  ctx.ui.notify(report.text, "info");
 }
 export default function register(pi?: PiExtensionAPI): void {
   if (!pi?.registerCommand) return;

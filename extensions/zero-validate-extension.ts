@@ -1,19 +1,14 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { validateArtifactSet, validateSpecInputs, validateTasksFile, type ValidationDefect } from "./zero-validate.ts";
+import { validateRunDir, type ValidationDefect } from "./zero-validate.ts";
 import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 const SDD_DIR = ".sdd";
-const ARTIFACTS = ["proposal", "spec", "design", "tasks"] as const;
 
 type NotifyType = "info" | "warning" | "error";
 interface PiCommandContext { ui: { notify(message: string, type?: NotifyType): void } }
 interface PiExtensionAPI { registerCommand(name: string, options: { description?: string; handler: (args: string, ctx: PiCommandContext) => void | Promise<void> }): void }
-
-function readFileOrNull(path: string): string | null {
-  try { return readFileSync(path, "utf8"); } catch { return null; }
-}
 
 function resolveSlug(arg: string): string | null {
   const explicit = arg.trim();
@@ -38,16 +33,7 @@ function runValidate(args: string, ctx: PiCommandContext): void {
     return;
   }
   if (!isSafeSlug(slug)) { notify(unsafeSlugMessage("zero-validate", slug), "error"); return; }
-  const dir = join(SDD_DIR, slug);
-  const texts = Object.fromEntries(ARTIFACTS.map((a) => [a, readFileOrNull(join(dir, `${a}.md`))])) as Record<(typeof ARTIFACTS)[number], string | null>;
-  const hasDomainSpec = existsSync(join(dir, "specs"));
-  const presence = Object.fromEntries(ARTIFACTS.map((a) => [a, a === "spec" ? texts.spec !== null || hasDomainSpec : texts[a] !== null])) as Record<(typeof ARTIFACTS)[number], boolean>;
-  const defects = validateArtifactSet(presence);
-  defects.push(...validateSpecInputs(dir));
-  if (texts.tasks !== null) defects.push(...validateTasksFile(texts.tasks));
-  for (const legacy of ["requirements.md"]) if (existsSync(join(dir, legacy))) defects.push({ kind: "legacy-artifact", path: legacy, message: `${legacy} is a legacy Kiro artifact; keep it only as historical context` });
-
-  const structural = defects.filter((d) => !d.kind.startsWith("missing-proposal") && d.kind !== "legacy-artifact");
+  const { all: defects, defects: structural } = validateRunDir(join(SDD_DIR, slug));
   if (structural.length > 0) {
     notify(`zero-validate: encontré defectos estructurales en ${slug}; revisalos antes de sync:\n${formatDefects(defects)}`, "error");
   } else if (defects.length > 0) {

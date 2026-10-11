@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { executionOperation, readExecution, executionPath, reconcileExecution, selectExecution } from "./zero-execution.ts";
 import register from "./zero-execution-extension.ts";
+import { runZeroCost } from "./zero-cost-extension.ts";
+import { spawnSync } from "node:child_process";
 const capture = JSON.parse(readFileSync(new URL("./fixtures/forge-runtime.json", import.meta.url), "utf8"));
 function fixture(fn: (cwd: string) => void) { const cwd = mkdtempSync(join(tmpdir(), "forge-ledger-")); try { fn(cwd); } finally { rmSync(cwd, { recursive: true, force: true }); } }
 function start(cwd: string, slug = "same") { return executionOperation(cwd, { action: "start", slug, request: " exact request\n\nwith trailing spaces  \n" }); }
@@ -523,4 +525,100 @@ test("findings and status read artifacts that pi-subagents names without an inde
   const st = executionOperation(cwd, { action: "status", runId });
   assert.equal(st.metas.length, 1);
   assert.equal(st.missing, 0);
+}));
+
+function treeSnapshot(root: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const walk = (dir: string) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) { out[`${p}/`] = ""; walk(p); } else out[p] = readFileSync(p, "utf8");
+    }
+  };
+  walk(root);
+  return out;
+}
+const cleanTasks = "- [ ] **T1. A** — x\n      - files: `a.ts`\n      - depends: []\n      - evidence: npm test\n      - review: ~1 changed lines\n\n## Review Workload\n\n| Task | Estimate |\n| ---- | -------- |\n| T1 | ~1 |\n\n**Total: ~1 changed lines**\n";
+function plan(cwd: string, slug: string, tasks = cleanTasks) {
+  const dir = join(cwd, ".sdd", slug);
+  writeFileSync(join(dir, "proposal.md"), "p");
+  writeFileSync(join(dir, "design.md"), "d");
+  writeFileSync(join(dir, "spec.md"), "## ADDED\n\n### REQ: a\n\nBody\n\nAcceptance criteria:\n- ok");
+  writeFileSync(join(dir, "tasks.md"), tasks);
+}
+
+test("validate returns a clean plan as data and writes nothing", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  plan(cwd, "feat");
+  const before = treeSnapshot(cwd);
+  const out = executionOperation(cwd, { action: "validate", runId });
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.defects, []);
+  assert.deepEqual(out.warnings, []);
+  assert.equal(out.slug, "feat");
+  assert.deepEqual(treeSnapshot(cwd), before);
+}));
+
+test("validate returns structural defects and optional-artifact warnings separately, still read-only", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  plan(cwd, "feat", "- [ ] **T1. Bad** — x\n");
+  rmSync(join(cwd, ".sdd/feat/proposal.md"));
+  const before = treeSnapshot(cwd);
+  const out = executionOperation(cwd, { action: "validate", runId });
+  assert.equal(out.ok, false);
+  assert.ok(out.defects.length > 0);
+  assert.ok(out.defects.every((d: any) => !d.kind.startsWith("missing-proposal")));
+  assert.deepEqual(out.warnings.map((d: any) => d.kind), ["missing-proposal"]);
+  assert.deepEqual(treeSnapshot(cwd), before);
+}));
+
+test("checkpoint writes the patch checkpoint of the worktree, reports untracked files and never restores", () => fixture(cwd => {
+  const git = (...args: string[]) => { const r = spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd, encoding: "utf8" }); assert.equal(r.status, 0, r.stderr); return r.stdout; };
+  git("init", "-q");
+  writeFileSync(join(cwd, "app.ts"), "one\n");
+  git("add", "app.ts"); git("commit", "-q", "-m", "base");
+  const { runId } = start(cwd, "feat");
+  writeFileSync(join(cwd, "app.ts"), "two\n");
+  writeFileSync(join(cwd, "new.ts"), "fresh\n");
+  const statusBefore = git("status", "--short");
+  const out = executionOperation(cwd, { action: "checkpoint", runId });
+  assert.equal(out.ok, true);
+  assert.match(out.id, /^\d{8}-\d{6}$/);
+  assert.equal(out.dir, join(cwd, ".sdd", "feat", "checkpoints", out.id));
+  assert.equal(out.dirty, true);
+  assert.ok(out.untracked.includes("new.ts"));
+  assert.match(readFileSync(join(out.dir, "diff.patch"), "utf8"), /\+two/);
+  assert.ok(existsSync(join(out.dir, "restore.sh")));
+  assert.equal(readFileSync(join(cwd, "app.ts"), "utf8"), "two\n");
+  assert.equal(readFileSync(join(cwd, "new.ts"), "utf8"), "fresh\n");
+  assert.equal(git("status", "--short").split("\n").filter(l => !l.includes(".sdd")).join("\n"), statusBefore.split("\n").filter(l => !l.includes(".sdd")).join("\n"));
+}));
+
+test("checkpoint outside a git repo returns ok:false with the reason and writes no checkpoint", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const out = executionOperation(cwd, { action: "checkpoint", runId });
+  assert.equal(out.ok, false);
+  assert.match(out.message, /git/);
+  assert.equal(existsSync(join(cwd, ".sdd/feat/checkpoints")), false);
+}));
+
+test("cost returns the same table /zero-cost prints for the ledger, without rewriting the ledger", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  launch(cwd, runId, "explore", 1, { output: "## Code roots\n" });
+  attempt(cwd, runId, "plan");
+  const ledgerBefore = readFileSync(executionPath(cwd, runId), "utf8");
+  const out = executionOperation(cwd, { action: "cost", runId });
+  assert.equal(readFileSync(executionPath(cwd, runId), "utf8"), ledgerBefore);
+  let printed = "";
+  runZeroCost(runId, { ui: { notify(m: string) { printed = m; } } }, { cwd });
+  assert.equal(out.table, printed);
+  assert.equal(out.coverage, "parcial");
+  assert.deepEqual([out.registered, out.attempts], [1, 2]);
+  assert.equal(out.total.input, capture.meta.usage.input);
+  assert.match(out.table, /TOTAL/);
+}));
+
+test("archive is not a tool action: it stays a user command", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  assert.throws(() => executionOperation(cwd, { action: "archive", runId }), /Unknown/);
 }));

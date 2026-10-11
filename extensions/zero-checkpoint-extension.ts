@@ -1,8 +1,7 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 
-import { createCheckpoint, formatCheckpointReport, parseCheckpointArgs, type CheckpointRunner } from "./zero-checkpoint.ts";
+import { createCheckpoint, formatCheckpointReport, parseCheckpointArgs, spawnCheckpointRunner } from "./zero-checkpoint.ts";
 import { isSafeSlug, unsafeSlugMessage } from "./sdd-slug.ts";
 
 const SDD_DIR = ".sdd";
@@ -23,25 +22,7 @@ function resolveSlug(explicit: string | null): string | null {
   }
 }
 
-function defaultRunner(cwd: string): CheckpointRunner {
-  return {
-    run(command, args) {
-      try {
-        const r = spawnSync(command, [...args], { cwd, encoding: "utf8" });
-        return {
-          status: typeof r.status === "number" ? r.status : 1,
-          stdout: r.stdout ?? "",
-          stderr: r.stderr ?? "",
-          error: r.error?.message,
-        };
-      } catch (err) {
-        return { status: 1, stdout: "", stderr: "", error: err instanceof Error ? err.message : String(err) };
-      }
-    },
-  };
-}
-
-export function runCheckpoint(args: string, ctx: PiCommandContext, runner = defaultRunner(process.cwd())): void {
+export function runCheckpoint(args: string, ctx: PiCommandContext, runner = spawnCheckpointRunner(process.cwd())): void {
   const notify = (m: string, t?: NotifyType) => { try { ctx.ui.notify(m, t); } catch {} };
   const parsed = parseCheckpointArgs(args ?? "");
   const slug = resolveSlug(parsed.slug);
