@@ -50,6 +50,15 @@ test("parseDepends accepts empty and task-id lists", () => {
   assert.deepEqual(parseDepends("T1, `T2`, T2"), ["T1", "T2"]);
 });
 
+test("parseTasks: a tag between the id and the dash is named as a malformed header", () => {
+  const parsed = parseTasks("### T001 [P] [Story:S1] — Add slugify\n\n- files:\n  - `src/a.js` (new)\n- depends: []\n- evidence: `npm test`\n- review: ~10 changed lines\n");
+  assert.equal(parsed.tasks.length, 0);
+  const defect = parsed.defects.find((d) => d.kind === "malformed-task-header");
+  assert.ok(defect, JSON.stringify(parsed.defects));
+  assert.match(defect.message, /T001/);
+  assert.match(defect.message, /"### T001 — Add slugify \[P\] \[Story:S1\]"/);
+});
+
 test("parseTasks: partially conformant task yields per-task defects", () => {
   const parsed = parseTasks("- [ ] **T1. Bad** — no metadata\n");
   assert.deepEqual(parsed.defects.map((d) => d.kind), ["missing-files", "missing-depends", "missing-evidence", "missing-review"]);

@@ -82,6 +82,18 @@ export function parseTasks(text: string): { tasks: TaskRecord[]; workload: Workl
       collectingFiles = false;
       continue;
     }
+    const stray = line.match(/^(?:#{2,3}\s+(?:\[[ xX]\]\s+)?|\s*-\s+\[[ xX]\]\s+\**)(T\d+)\b/);
+    if (stray) {
+      const rest = line.slice(stray[0].length);
+      const dash = rest.search(/[—-]/);
+      const tags = (dash >= 0 ? rest.slice(0, dash) : rest).match(/\[[^\]]+\]/g) ?? [];
+      const title = dash >= 0 ? rest.slice(dash + 1).trim() : "<title>";
+      const fix = [`### ${stray[1]} —`, title, ...tags].join(" ");
+      defects.push({ kind: "malformed-task-header", task: stray[1], message: `${stray[1]} header is not a task header: "${line.trim()}". Tags go after the title: "${fix}"` });
+      current = null;
+      collectingFiles = false;
+      continue;
+    }
     if (!current) continue;
     if (/^\s*-\s+files:/.test(line)) {
       collectingFiles = true;

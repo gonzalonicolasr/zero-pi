@@ -5,6 +5,48 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.90] - 2026-10-11
+
+### Fixed — NODD bloqueaba a plan aunque había declarado sus archivos
+
+En la corrida real del 10/10 (perfil `solo-openai`), plan declaró los artefactos
+de `.sdd/<slug>/` con ruta absoluta, como pide su prompt, y después los escribió
+con ruta relativa (`.sdd/<slug>/spec.md`). NODD compara las rutas tal cual se
+escriben: la relativa contó como un archivo no declarado y el gate `delegate`
+la rechazó (seis lecturas, o dos archivos escritos, sin delegar). Plan falló
+dos veces seguidas y el run quedó bloqueado antes de analyze.
+
+- El párrafo **NODD** de clarify, analyze, plan y build ahora pide pasarle a
+  `write` y `edit` la misma ruta absoluta que se declaró, y dice por qué.
+  Probado en vivo: con el prompt nuevo plan escribió los cinco artefactos sin un
+  solo rechazo.
+
+### Fixed — una cabecera de tarea mal armada daba un error que no orientaba
+
+Plan escribió `### T001 [P] [Story:S1] — Título`. El contrato pone los tags
+después del título; el validador no leía esa línea como tarea, y el único
+defecto que salía era "Review Workload total 130 does not match computed 0".
+El reintento de plan arrancó sin saber qué arreglar.
+
+- `/zero-validate` y la acción `validate` devuelven `malformed-task-header` por
+  cada línea que parece una cabecera de tarea y no lo es, con la línea y el
+  arreglo exacto (`### T001 — Título [P] [Story:S1]`).
+- El prompt de plan dice dónde van `[P]` y `[Story:Sn]`: al final de la
+  cabecera, nunca entre el id y el guion. El mod forge ya lo decía.
+
+### Fixed — `/zero-archive` decía "worktree sucio" con todo commiteado
+
+Con NODD instalado, cada proyecto termina con `.nodd/` y `.pi/` sin trackear
+(los escriben NODD y pi-subagents solos). `/zero-archive`, `/zero-branch` y
+`/zero-git-validate` los contaban como cambios sin commitear, así que después
+de commitear el trabajo archive se negaba igual, y la única salida era
+`--allow-dirty`.
+
+- `isDirty` ignora esos dos directorios cuando están sin trackear. Cualquier
+  otro archivo suelto, o un cambio a algo trackeado (también dentro de ellos),
+  sigue contando. Probado en vivo: commit del run de prueba y `/zero-archive`
+  archivó sin `--allow-dirty`.
+
 ## [0.1.89] - 2026-10-10
 
 ### Fixed — los gates del orquestador eran comandos que sólo puede tipear una persona

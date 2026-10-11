@@ -28,6 +28,14 @@ test("git-runner wraps successful commands", async () => {
   assert.deepEqual(f.calls, [["branch", "--show-current"], ["status", "--porcelain"]]);
 });
 
+test("git-runner: untracked NODD and pi state alone is not a dirty worktree", async () => {
+  const f = fake([{ out: "?? .nodd/\n?? .pi/\n" }, { out: "?? .nodd/\n?? src/new.ts\n" }, { out: " M .nodd/x.md\n" }]);
+  const git = createGitRunner(f.spawn as any);
+  assert.equal(await git.isDirty(), false);
+  assert.equal(await git.isDirty(), true, "other untracked files still count");
+  assert.equal(await git.isDirty(), true, "a tracked change still counts");
+});
+
 test("git-runner returns structured errors for non-zero and spawn errors", async () => {
   const f = fake([{ code: 1, err: "missing" }, { error: new Error("ENOENT") }]);
   const git = createGitRunner(f.spawn as any);

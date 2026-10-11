@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 
+const TOOL_STATE_DIRS = [".nodd/", ".pi/"];
+
 export interface GitResult { ok: boolean; stdout: string; stderr: string; code: number }
 export type SpawnLike = typeof spawn;
 
@@ -34,7 +36,10 @@ export function createGitRunner(spawnImpl: SpawnLike = spawn): GitRunner {
   return {
     run,
     async currentBranch() { return (await run(["branch", "--show-current"])).stdout; },
-    async isDirty() { return (await run(["status", "--porcelain"])).stdout.trim() !== ""; },
+    async isDirty() {
+      const lines = (await run(["status", "--porcelain"])).stdout.split("\n").filter((line) => line.trim() !== "");
+      return lines.some((line) => !(line.startsWith("?? ") && TOOL_STATE_DIRS.some((dir) => line.slice(3).startsWith(dir))));
+    },
     async branchExists(branch: string, remote = false) { return (await run(remote ? ["ls-remote", "--exit-code", "--heads", "origin", branch] : ["rev-parse", "--verify", branch])).ok; },
     createBranch(branch: string, base?: string) { return run(base ? ["switch", "-c", branch, base] : ["switch", "-c", branch]); },
     switchBranch(branch: string) { return run(["switch", branch]); },

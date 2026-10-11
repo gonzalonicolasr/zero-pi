@@ -17,10 +17,12 @@ sanity-check any `proposal.md`, `spec.md`, or `design.md` you depend on — if o
 is obviously incomplete (truncated mid-write), rebuild it instead of trusting
 it.
 
-**NODD.** If your toolset includes `nodd_declare`, call it once before your first
-write: `intent: "change"`, `route: "inline"`, `slug: "<slug>-plan"`, `files:` the
-absolute paths of the `.sdd/<slug>/` artifacts you will write. Without it NODD
-refuses your first write.
+**NODD.** If your toolset includes `nodd_declare`, call it once before your
+first write: `intent: "change"`, `route: "inline"`, `slug: "<slug>-plan"`,
+`files:` the absolute paths of the `.sdd/<slug>/` artifacts you will write.
+Without it NODD refuses your first write. Give `write` and `edit` the same
+absolute path you declared: NODD compares paths as written, so a relative
+`.sdd/...` path counts as undeclared and is refused.
 
 Using the explore findings, write the plan: the requirements (what must be
 true), the design (how it will be built), and an ordered list of small,
@@ -88,7 +90,7 @@ Use this exact checklist shape so build/validate/review can parse it without red
 
 Rules:
 - Task ids are monotonic `T###`; keep existing completed ids stable on resume.
-- Add `[P]` only for tasks that are truly parallel-safe, and `[Story:S1]`/`[Story:S2]` when the plan has independently testable stories.
+- Add `[P]` only for tasks that are truly parallel-safe, and `[Story:S1]`/`[Story:S2]` when the plan has independently testable stories. Both tags go at the end of the header line, after the title (`### T002 — Add parser [P] [Story:S1]`), never between the id and the dash: the validator does not read that line as a task and plan runs again.
 - `files:` is mandatory and uses exact paths; append `(new)` for created files.
 - `depends:` is mandatory. Use `depends: []` for root tasks, or a comma-separated list of earlier task ids (`depends: T001, T002`) for prerequisites. Dependencies must point only backward so the written task order is already a valid topological order.
 - `evidence:` is mandatory and names a concrete verification command or artifact.

@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -259,6 +260,14 @@ test("writer phases get nodd_declare only when NODD is installed", () => {
     assert.equal(without.includes("nodd_declare"), false, `${phase} without NODD`);
   }
   assert.equal(buildAgentFile("build", "body", "d", undefined).includes("nodd_declare"), false, "default is off");
+});
+
+test("writer phases write the same absolute paths they declare to NODD", () => {
+  for (const phase of PHASES.filter((p) => PHASE_TOOLS[p].includes("write"))) {
+    const prompt = readFileSync(new URL(`../prompts/phases/${phase}.md`, import.meta.url), "utf8");
+    const nodd = prompt.slice(prompt.indexOf("**NODD.**"));
+    assert.match(nodd.slice(0, nodd.indexOf("\n\n")).replace(/\s+/g, " "), /same absolute path you declared/, phase);
+  }
 });
 
 test("noddInstalled reads pi's package list", () => {
