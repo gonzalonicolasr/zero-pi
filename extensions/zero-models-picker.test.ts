@@ -20,6 +20,7 @@ import {
   type PickerState,
 } from "./zero-models-picker.ts";
 import type { PhaseModels, PhaseProviders, PhaseThinking } from "./zero-models.ts";
+import { accountsFromAuthFiles } from "./cpam-accounts.ts";
 import type { AutotuneMode } from "./autotune.ts";
 import type { AutotunePending } from "./autotune-extension.ts";
 
@@ -1381,3 +1382,85 @@ test("buildPreviewRows uses default models when a phase model is missing", () =>
   assert.match(rows[7].text, /veredicto\s+→ claude-opus-4-8 · xhigh/);
 });
 
+
+const CPAM_ACCOUNTS = accountsFromAuthFiles([
+  { prefix: "wibond", email: "grocca@wibond.co" },
+  { prefix: "personal", email: "gonn.nicolas@gmail.com" },
+  { prefix: "prolite", email: "gonn.nicolas@gmail.com" },
+]);
+
+test("phase rows carry the CPAM account their model is billed to", () => {
+  const state = makeState({
+    accounts: CPAM_ACCOUNTS,
+    models: makeModels({ plan: "wibond/claude-sonnet-5-5", build: "claude-opus-5" }),
+    providers: makeProviders({ plan: "cliproxy", build: "cliproxy", veredicto: "anthropic" }),
+  });
+  const byPhase = new Map(state.entries.map((e) => [e.value, e.account]));
+  assert.equal(byPhase.get("plan"), "wibond");
+  assert.equal(byPhase.get("build"), "cpam");
+  assert.equal(byPhase.get("veredicto"), undefined);
+});
+
+test("model rows under cliproxy name their account", () => {
+  const state = makeState({
+    accounts: CPAM_ACCOUNTS,
+    groups: new Map([["cliproxy", ["prolite/gpt-6-sol", "wibond/claude-sonnet-5-5", "ds/deepseek-flash"]]]),
+  });
+  state.screen = "model";
+  state.drillPhase = "build";
+  state.drillProvider = "cliproxy";
+  const rows = rebuildEntries(state).entries.filter((e) => e.kind === "model");
+  assert.deepEqual(
+    rows.map((e) => [e.value, e.account]),
+    [
+      ["prolite/gpt-6-sol", "prolite"],
+      ["wibond/claude-sonnet-5-5", "wibond"],
+      ["ds/deepseek-flash", "ds"],
+    ],
+  );
+});
+
+test("profile rows list the distinct accounts the profile bills", () => {
+  const state = makeMenu({
+    accounts: CPAM_ACCOUNTS,
+    profiles: {
+      laburo: {
+        models: { clarify: "wibond/claude-sonnet-5-5", plan: "personal/claude-opus-5-5", build: "prolite/gpt-6-sol" },
+        providers: { clarify: "cliproxy", plan: "cliproxy", build: "cliproxy" },
+        thinking: {},
+      },
+    },
+    activeProfile: "laburo",
+  });
+  const row = state.entries.find((e) => e.kind === "profile");
+  assert.equal(row?.account, "personal, prolite, wibond");
+});
+
+test("the apply-pending row names the account of the suggested model", () => {
+  const state = makeMenu({
+    accounts: CPAM_ACCOUNTS,
+    providers: makeProviders({ build: "cliproxy" }),
+    pending: [makePending({ to: "wibond/claude-opus-5-5" })],
+  });
+  const row = state.entries.find((e) => e.kind === "apply-pending");
+  const label = row?.label ?? "";
+  assert.ok(label.includes("build → wibond/claude-opus-5-5"), label);
+  assert.ok(!label.includes(" · wibond"), label);
+});
+
+test("buildPreviewRows puts the account in a suffix, the work one in warning", () => {
+  const rows = buildPreviewRows(
+    {
+      name: "mix",
+      models: { plan: "wibond/claude-sonnet-5-5", build: "personal/claude-opus-5-5" },
+      providers: { plan: "cliproxy", build: "cliproxy" },
+      thinking: {},
+      isActive: false,
+    },
+    CPAM_ACCOUNTS,
+  );
+  assert.equal(rows[4]?.suffix, "wibond");
+  assert.equal(rows[4]?.suffixColor, "warning");
+  assert.equal(rows[6]?.suffix, undefined, "the prefix in the id already names a personal account");
+  assert.equal(rows[2]?.suffix, undefined);
+});

@@ -1,3 +1,4 @@
+import { loadCpamAccounts } from "./cpam-auth-files.ts";
 import { executionCostReport, unreadableLines } from "./zero-cost.ts";
 import { reconcileExecution, selectExecution, unreadableLedgers } from "./zero-execution.ts";
 
@@ -20,7 +21,7 @@ export function runZeroCost(args: string, ctx: PiCommandContext, options: { cwd?
     ctx.ui.notify([head, ...unreadable].join("\n"), "info");
     return;
   }
-  const report = executionCostReport(ledger, reconcileExecution(cwd, ledger.runId), skipped);
+  const report = executionCostReport(ledger, reconcileExecution(cwd, ledger.runId), skipped, loadCpamAccounts());
   ctx.ui.notify(report.text, "info");
 }
 export default function register(pi?: PiExtensionAPI): void {

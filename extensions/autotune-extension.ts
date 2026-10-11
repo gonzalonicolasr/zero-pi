@@ -33,6 +33,8 @@ import {
   type AutotuneCostGuard,
 } from "./autotune.ts";
 import { parseMeta, type PhaseMeta } from "./zero-cost.ts";
+import { accountFor, withAccount } from "./cpam-accounts.ts";
+import { loadCpamAccounts } from "./cpam-auth-files.ts";
 
 /** The four core SDD phases autotune reads models for and attributes blame to,
  *  in pipeline order. This is deliberately NOT the full six-phase list in
@@ -224,6 +226,13 @@ function evaluateAndTune(ctx: PiSessionContext): void {
   const adjustments: Adjustment[] = decideAdjustments(stats, currentModels, knownModels, costStats, costGuard);
   if (adjustments.length === 0) return; // nothing to do — return silently.
 
+  const accounts = loadCpamAccounts();
+  const phaseProviders = isObject(data.providers) ? data.providers : {};
+  const shown = (phase: string, model: string): string => {
+    const provider = phaseProviders[phase];
+    return withAccount(model, accountFor(model, accounts, typeof provider === "string" ? provider : undefined));
+  };
+
   if (mode === "auto") {
     // Apply every adjustment, write `zero.json` ONCE preserving all other keys,
     // then emit one notification per change (AC 5.4, 6.1 — never silent).
@@ -237,7 +246,7 @@ function evaluateAndTune(ctx: PiSessionContext): void {
       "utf8",
     );
     for (const adj of adjustments) {
-      notify(`zero autotune: ${adj.phase} ${adj.from} → ${adj.to} (${adj.reason})`, "info");
+      notify(`zero autotune: ${adj.phase} ${shown(adj.phase, adj.from)} → ${shown(adj.phase, adj.to)} (${adj.reason})`, "info");
     }
     return;
   }
@@ -257,7 +266,7 @@ function evaluateAndTune(ctx: PiSessionContext): void {
   );
   for (const adj of pending) {
     notify(
-      `zero autotune sugiere: ${adj.phase} → ${adj.to} — corré /zero-models para aplicar`,
+      `zero autotune sugiere: ${adj.phase} → ${shown(adj.phase, adj.to)} — corré /zero-models para aplicar`,
       "info",
     );
   }

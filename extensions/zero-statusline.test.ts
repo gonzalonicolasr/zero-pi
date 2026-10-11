@@ -3,6 +3,7 @@
 // Run with: npm test
 
 import { test } from "node:test";
+import { accountsFromAuthFiles } from "./cpam-accounts.ts";
 import assert from "node:assert/strict";
 
 import {
@@ -136,4 +137,13 @@ test("composeStatusline: tokens emits zeros when one side is provided and the ot
   const plain = out.replace(/\x1b\[[0-9;]*m/g, "");
   assert.ok(plain.includes("↑1.5K"));
   assert.ok(plain.includes("↓0"));
+});
+
+test("composeStatusline: the CPAM account follows the model, work account in rose", () => {
+  accountsFromAuthFiles([{ prefix: "wibond", email: "grocca@wibond.co" }]);
+  const strip = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "");
+  const out = composeStatusline({ model: "claude-sonnet-5-5", account: "wibond" });
+  assert.equal(strip(out), "claude-sonnet-5-5 · wibond");
+  assert.ok(out.includes("\x1b[38;2;255;106;122mwibond"));
+  assert.equal(strip(composeStatusline({ model: "gpt-6-sol", account: "personal" })), "gpt-6-sol · personal");
 });

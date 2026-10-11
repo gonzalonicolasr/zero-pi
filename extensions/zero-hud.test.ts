@@ -1,6 +1,7 @@
 // Unit tests for the ZERO HUD pure helpers.
 
 import { test } from "node:test";
+import { accountsFromAuthFiles } from "./cpam-accounts.ts";
 import assert from "node:assert/strict";
 
 import {
@@ -206,4 +207,25 @@ test("streamed tokens do not re-render the HUD; message_end does", async () => {
   assert.equal(projections, baseProj, "200 tokens: ninguna proyección de contexto");
   handlers.get("message_end")!({}, ctx);
   assert.equal(renders, base + 1, "message_end renderiza una vez");
+});
+
+test("composeHud names the CPAM account next to the model", () => {
+  const out = stripAnsi(composeHud({ preset: "compact", model: "claude-sonnet-5-5", account: "ag3" }));
+  assert.ok(out.includes("claude-sonnet-5-5 · ag3"));
+  const ascii = stripAnsi(composeHud({ preset: "ascii", model: "claude-sonnet-5-5", account: "wibond" }));
+  assert.ok(ascii.includes("claude-sonnet-5-5 · wibond"));
+});
+
+test("composeHud paints the work account in the warning color", () => {
+  accountsFromAuthFiles([{ prefix: "wibond", email: "grocca@wibond.co" }]);
+  const work = composeHud({ preset: "compact", model: "claude-sonnet-5-5", account: "wibond" });
+  assert.ok(work.includes("\x1b[38;2;255;106;122mwibond"));
+  const personal = composeHud({ preset: "compact", model: "claude-sonnet-5-5", account: "personal" });
+  assert.ok(!personal.includes("\x1b[38;2;255;106;122mpersonal"));
+});
+
+test("composeHud keeps the account when a narrow terminal drops the model", () => {
+  const narrow = stripAnsi(composeHud({ ...FAT_HUD, account: "wibond", width: 44 }));
+  assert.ok(narrow.includes("wibond"), narrow);
+  assert.ok(visibleWidth(narrow) <= 44);
 });

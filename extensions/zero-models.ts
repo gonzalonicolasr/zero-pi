@@ -40,6 +40,8 @@ interface Component {
 }
 
 import { readAutotuneMode, type AutotuneMode } from "./autotune.ts";
+import { accountFor, accountTag, isWorkAccount, withAccount, type CpamAccounts } from "./cpam-accounts.ts";
+import { loadCpamAccounts } from "./cpam-auth-files.ts";
 import {
   fitRows,
   padToWidth,
@@ -318,10 +320,12 @@ export function formatPhases(
   models: PhaseModels,
   providers: PhaseProviders,
   thinking: PhaseThinking,
+  accounts?: CpamAccounts,
 ): string {
   return PHASES.map((phase) => {
     const provider = providers[phase];
     let label = provider ? `${provider}/${models[phase]}` : models[phase];
+    if (accounts) label = withAccount(label, accountFor(models[phase], accounts, provider));
     if (thinking[phase]) label += ` · thinking ${thinking[phase]}`;
     return `  ${phase.padEnd(10)} ${label}`;
   }).join("\n");
@@ -570,6 +574,20 @@ export const MIN_SPLIT_WIDTH = 76;
 export interface BoxRow {
   text: string;
   color?: string;
+  suffix?: string;
+  suffixColor?: string;
+}
+
+const SUFFIX_SEP = " · ";
+
+function rowTail(row: BoxRow): string {
+  return row.suffix ? `${SUFFIX_SEP}${row.suffix}` : "";
+}
+
+export function accountRowSuffix(account: string | undefined, text = ""): Pick<BoxRow, "suffix" | "suffixColor"> {
+  account = accountTag(text, account);
+  if (!account) return {};
+  return isWorkAccount(account) ? { suffix: account, suffixColor: "warning" } : { suffix: account };
 }
 
 /**
@@ -584,7 +602,7 @@ export interface BoxRow {
  */
 export function frameBox(rows: readonly BoxRow[], width: number, theme: PiTheme): string[] {
   if (width < MIN_BOX_WIDTH) {
-    return rows.map((row) => truncateToWidth(row.text, Math.max(0, width)));
+    return rows.map((row) => truncateToWidth(`${row.text}${rowTail(row)}`, Math.max(0, width)));
   }
   const inner = width - 4;
   const frame = (s: string): string => theme.fg(FRAME_COLOR, s);
@@ -594,10 +612,23 @@ export function frameBox(rows: readonly BoxRow[], width: number, theme: PiTheme)
   const side = frame(BOX.vertical);
 
   const body = rows.map((row) => {
+    const tail = rowTail(row);
+    const tailWidth = tail ? visibleWidth(tail) : 0;
+    if (tail && tailWidth < inner) {
+      const head = truncateToWidth(row.text, inner - tailWidth);
+      const fill = " ".repeat(Math.max(0, inner - visibleWidth(head) - tailWidth));
+      const paint = (color: string | undefined, text: string): string => (color ? theme.fg(color, text) : text);
+      const content =
+        paint(row.color, head) +
+        paint(row.color, SUFFIX_SEP) +
+        paint(row.suffixColor ?? row.color, row.suffix ?? "") +
+        fill;
+      return `${side} ${content} ${side}`;
+    }
     // Size on plain text, then colorize — never measure an ANSI string. The
     // sizing is by *display* cells and marks a cut with an ellipsis, so a wide
     // glyph can never push the closing `│` off the line.
-    const sized = padToWidth(row.text, inner);
+    const sized = padToWidth(`${row.text}${tail}`, inner);
     const content = row.color ? theme.fg(row.color, sized) : sized;
     return `${side} ${content} ${side}`;
   });
@@ -607,7 +638,7 @@ export function frameBox(rows: readonly BoxRow[], width: number, theme: PiTheme)
 /** Widest row of a block, in display cells. */
 function contentWidth(rows: readonly BoxRow[]): number {
   let max = 0;
-  for (const row of rows) max = Math.max(max, visibleWidth(row.text));
+  for (const row of rows) max = Math.max(max, visibleWidth(`${row.text}${rowTail(row)}`));
   return max;
 }
 
@@ -820,8 +851,8 @@ function createPickerComponent(
 
     const list: BoxRow[] = state.entries.map((entry, index) =>
       index === state.cursor
-        ? { text: `> ${entry.label}`, color: "accent" }
-        : { text: `  ${entry.label}`, color: "dim" },
+        ? { text: `> ${entry.label}`, color: "accent", ...accountRowSuffix(entry.account, entry.label) }
+        : { text: `  ${entry.label}`, color: "dim", ...accountRowSuffix(entry.account, entry.label) },
     );
 
     const preview = getPreviewTarget(state);
@@ -831,7 +862,7 @@ function createPickerComponent(
         list,
         cursor: state.cursor,
         footer: [{ text: "" }, { text: PICKER_HELP, color: "dim" }],
-        preview: preview ? buildPreviewRows(preview) : undefined,
+        preview: preview ? buildPreviewRows(preview, state.accounts) : undefined,
         width,
         maxRows,
       },
@@ -937,6 +968,7 @@ export default function register(pi?: PiExtensionAPI): void {
     handler: async (args: string, ctx: PiCommandContext): Promise<void> => {
       try {
         const data = readZeroJson();
+        const accounts = loadCpamAccounts();
         const models = readModels(data);
         const providers = readProviders(data);
         const thinking = readThinking(data);
@@ -1035,9 +1067,12 @@ export default function register(pi?: PiExtensionAPI): void {
           // Con un perfil activo, editar una fase edita ese perfil.
           const persisted = mirrorToActiveProfile(merged);
           writeFileSync(zeroJsonPath(), `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
-          const shown = providers[assignment.phase]
-            ? `${providers[assignment.phase]}/${assignment.model}`
-            : assignment.model;
+          const shown = withAccount(
+            providers[assignment.phase]
+              ? `${providers[assignment.phase]}/${assignment.model}`
+              : assignment.model,
+            accountFor(assignment.model, accounts, providers[assignment.phase]),
+          );
           const level = nextThinking[assignment.phase];
           const profileTag = formatActiveProfile(persisted);
           ctx.ui.notify(
@@ -1062,6 +1097,7 @@ export default function register(pi?: PiExtensionAPI): void {
           pending,
           groups,
           fallbackModels: FALLBACK_MODELS,
+          accounts,
         });
 
         // The picker is a self-contained `ctx.ui.custom()` component — it
@@ -1079,7 +1115,7 @@ export default function register(pi?: PiExtensionAPI): void {
           // `zero.json` byte-for-byte unchanged, and report the leave-as-is
           // state — the existing "sin cambios" notification text.
           ctx.ui.notify(
-            `zero · modelos SDD (sin cambios):\n${formatPhases(models, providers, thinking)}\n` +
+            `zero · modelos SDD (sin cambios):\n${formatPhases(models, providers, thinking, accounts)}\n` +
               `  autotune   ${autotuneMode}${profileLine}`,
             "info",
           );
@@ -1136,7 +1172,7 @@ export default function register(pi?: PiExtensionAPI): void {
           writeFileSync(zeroJsonPath(), `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
 
           const summary = [
-            `zero · modelos SDD guardados:\n${formatPhases(edits.models, edits.providers, edits.thinking)}`,
+            `zero · modelos SDD guardados:\n${formatPhases(edits.models, edits.providers, edits.thinking, accounts)}`,
           ];
           summary.push(`  autotune   ${edits.autotuneMode}`);
           const savedProfile = formatActiveProfile(persisted);
@@ -1145,7 +1181,7 @@ export default function register(pi?: PiExtensionAPI): void {
           ctx.ui.notify(summary.join("\n"), "info");
         } else {
           ctx.ui.notify(
-            `zero · modelos SDD (sin cambios):\n${formatPhases(edits.models, edits.providers, edits.thinking)}\n` +
+            `zero · modelos SDD (sin cambios):\n${formatPhases(edits.models, edits.providers, edits.thinking, accounts)}\n` +
               `  autotune   ${edits.autotuneMode}${profileLine}`,
             "info",
           );

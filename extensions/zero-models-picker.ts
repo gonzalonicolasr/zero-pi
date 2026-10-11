@@ -16,6 +16,7 @@ import type { Phase, PhaseModels, PhaseProviders, PhaseThinking, ThinkingLevel }
 import type { AutotuneMode } from "./autotune.ts";
 import type { AutotunePending } from "./autotune-extension.ts";
 import { isValidProfileName, type Profile } from "./zero-models-profiles.ts";
+import { accountFor, accountTag, isWorkAccount, withAccount, type CpamAccounts } from "./cpam-accounts.ts";
 
 /** The SDD phases, in pipeline order — re-stated locally so the pure module
  *  carries no value import. Must stay in lockstep with `PHASES` in
@@ -90,6 +91,7 @@ export interface MenuEntry {
   label: string;
   /** Payload: phase name, provider id, model id, or autotune mode. */
   value: string;
+  account?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +148,7 @@ export interface PickerState {
   groups: Map<string, string[]>;
   /** Fallback model list when the registry is empty. */
   fallbackModels: readonly string[];
+  accounts: CpamAccounts;
   /** Drill-down context: the phase being edited (provider/model screens). */
   drillPhase: Phase | null;
   /** Drill-down context: provider chosen so far (model screen). */
@@ -211,9 +214,13 @@ function phaseLabel(
 }
 
 /** Render the `★ aplicar sugerencia` label from the pending adjustments. */
-function applyLabel(pending: readonly AutotunePending[]): string {
+function applyLabel(
+  pending: readonly AutotunePending[],
+  accounts: CpamAccounts,
+  providers: PhaseProviders,
+): string {
   return `★ aplicar sugerencia: ${pending
-    .map((p) => `${p.phase} → ${p.to}`)
+    .map((p) => `${p.phase} → ${withAccount(p.to, accountFor(p.to, accounts, providers[p.phase]))}`)
     .join(", ")}`;
 }
 
@@ -233,6 +240,7 @@ export function createPickerState(input: {
   pending: AutotunePending[];
   groups: Map<string, string[]>;
   fallbackModels: readonly string[];
+  accounts?: CpamAccounts;
   /** Perfiles leídos de zero.json. Opcional: sin perfiles el picker se
    *  comporta exactamente como antes de que existieran. */
   profiles?: Record<string, Profile>;
@@ -261,6 +269,7 @@ export function createPickerState(input: {
     pending: [...input.pending],
     groups: input.groups,
     fallbackModels: input.fallbackModels,
+    accounts: input.accounts ?? {},
     drillPhase: null,
     drillProvider: null,
     drillModel: null,
@@ -358,7 +367,7 @@ function mainEntries(state: PickerState): MenuEntry[] {
   if (state.pending.length > 0) {
     entries.push({
       kind: "apply-pending",
-      label: applyLabel(state.pending),
+      label: applyLabel(state.pending, state.accounts, state.edits.providers),
       value: "apply",
     });
   }
@@ -371,6 +380,7 @@ function mainEntries(state: PickerState): MenuEntry[] {
       kind: "profile",
       label: profileRowLabel(state, name),
       value: name,
+      account: profileAccounts(state.edits.profiles[name], state.accounts),
     });
   }
 
@@ -418,6 +428,16 @@ function profileSummary(profile: Profile): string {
   return [...providers].sort().join(", ");
 }
 
+function profileAccounts(profile: Profile | undefined, accounts: CpamAccounts): string | undefined {
+  if (!profile) return undefined;
+  const seen = new Set<string>();
+  for (const phase of PHASES) {
+    const account = accountFor(profile.models[phase], accounts, profile.providers[phase]);
+    if (account) seen.add(account);
+  }
+  return seen.size > 0 ? [...seen].sort().join(", ") : undefined;
+}
+
 /** Filas de la pantalla `profile-actions` — qué hacer con el perfil elegido. */
 function profileActionEntries(state: PickerState): MenuEntry[] {
   const name = state.drillProfile ?? "";
@@ -463,6 +483,7 @@ function phaseEntries(state: PickerState): MenuEntry[] {
       state.edits.thinking,
     ),
     value: phase,
+    account: accountFor(state.edits.models[phase], state.accounts, state.edits.providers[phase]),
   }));
 }
 
@@ -489,7 +510,8 @@ function modelEntries(state: PickerState): MenuEntry[] {
       : state.fallbackModels;
   const entries: MenuEntry[] = [];
   for (const model of models) {
-    entries.push({ kind: "model", label: model, value: model });
+    const account = accountFor(model, state.accounts, state.drillProvider ?? undefined);
+    entries.push(account ? { kind: "model", label: model, value: model, account } : { kind: "model", label: model, value: model });
   }
   entries.push({ kind: "custom-model", label: CUSTOM_MODEL_LABEL, value: "" });
   return entries;
@@ -982,6 +1004,8 @@ export interface PreviewTarget {
 export interface PreviewRow {
   text: string;
   color?: "accent" | "dim" | "muted";
+  suffix?: string;
+  suffixColor?: "warning";
 }
 
 /**
@@ -1074,7 +1098,7 @@ export function getPreviewTarget(state: PickerState): PreviewTarget | null {
  * Muestra el nombre del perfil, las 6 fases alineadas con su modelo, proveedor
  * y nivel de thinking, y un resumen de proveedores al pie.
  */
-export function buildPreviewRows(target: PreviewTarget): PreviewRow[] {
+export function buildPreviewRows(target: PreviewTarget, accounts: CpamAccounts = {}): PreviewRow[] {
   const rows: PreviewRow[] = [];
   const statusSuffix = target.isActive ? " (activo)" : "";
   rows.push({ text: `vista previa · ${target.name}${statusSuffix}` });
@@ -1089,9 +1113,13 @@ export function buildPreviewRows(target: PreviewTarget): PreviewRow[] {
     const thinkingPart = thinking ? ` · ${thinking}` : "";
     const phasePadded = phase.padEnd(9, " ");
 
-    rows.push({
-      text: `${phasePadded} → ${modelWithProvider}${thinkingPart}`,
-    });
+    const row: PreviewRow = { text: `${phasePadded} → ${modelWithProvider}${thinkingPart}` };
+    const account = accountTag(row.text, accountFor(model, accounts, provider));
+    if (account) {
+      row.suffix = account;
+      if (isWorkAccount(account)) row.suffixColor = "warning";
+    }
+    rows.push(row);
   }
 
   rows.push({ text: "" });

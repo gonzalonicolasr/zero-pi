@@ -602,3 +602,56 @@ test("frameTwoBoxes falls back to one pane below MIN_SPLIT_WIDTH", () => {
   const lines = frameTwoBoxes([{ text: "Left Only" }], [{ text: "Right Preview" }], MIN_SPLIT_WIDTH - 1, dummyTheme);
   assert.ok(!lines.join("\n").includes("Right Preview"));
 });
+
+const CPAM = { wibond: "wibond", ag3: "ag3" };
+
+test("formatPhases names the CPAM account right after each cliproxy model", () => {
+  const models: PhaseModels = {
+    clarify: "ag3/gemini-3.8-flash-high",
+    explore: "claude-opus-5",
+    plan: "wibond/claude-sonnet-5-5",
+    analyze: "ds/deepseek-flash",
+    build: "claude-opus-4-7",
+    veredicto: "m-v",
+  };
+  const providers: PhaseProviders = {
+    clarify: "cliproxy",
+    explore: "cliproxy",
+    plan: "cliproxy",
+    analyze: "cliproxy",
+    build: "anthropic",
+    veredicto: "",
+  };
+  const out = formatPhases(models, providers, { plan: "xhigh" }, CPAM);
+  assert.ok(/clarify\s+cliproxy\/ag3\/gemini-3\.8-flash-high$/m.test(out), "the prefix in the id is already the account");
+  assert.ok(out.includes("cliproxy/claude-opus-5 · cpam"));
+  assert.ok(out.includes("cliproxy/wibond/claude-sonnet-5-5 · thinking xhigh"));
+  assert.ok(/analyze\s+cliproxy\/ds\/deepseek-flash$/m.test(out));
+  assert.ok(/anthropic\/claude-opus-4-7$/m.test(out), "non-CPAM model has no account");
+  assert.ok(/veredicto\s+m-v$/m.test(out));
+});
+
+test("frameBox clips the label, never the account suffix", () => {
+  const rows: BoxRow[] = [{ text: "plan → cliproxy/wibond/claude-sonnet-5-5 · xhigh", suffix: "grocca@wibond" }];
+  const line = frameBox(rows, 34, dummyTheme)[1] ?? "";
+  assert.ok(line.includes("… · grocca@wibond"), line);
+  assert.equal(visibleWidth(line), 34);
+});
+
+test("frameBox paints the account suffix with its own color", () => {
+  const tagTheme = { fg: (color: string, text: string) => `<${color}>${text}</${color}>` };
+  const line =
+    frameBox(
+      [{ text: "plan → modelo", color: "dim", suffix: "grocca@wibond", suffixColor: "warning" }],
+      60,
+      tagTheme,
+    )[1] ?? "";
+  assert.ok(line.includes("<warning>grocca@wibond</warning>"), line);
+  assert.ok(line.includes("<dim>plan → modelo</dim>"), line);
+});
+
+test("frameBox keeps a short suffixed row unclipped and padded", () => {
+  const line = frameBox([{ text: "build → x", suffix: "gonn.nicolas" }], 40, dummyTheme)[1] ?? "";
+  assert.ok(line.includes("build → x · gonn.nicolas"));
+  assert.equal(visibleWidth(line), 40);
+});

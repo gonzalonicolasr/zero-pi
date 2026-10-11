@@ -1,6 +1,7 @@
 // Child usage normalization and reporting. Execution attribution belongs to
 // zero-execution.ts, never prompt text or a cross-project artifact scan.
 
+import { accountFor, withAccount, type CpamAccounts } from "./cpam-accounts.ts";
 import { formatTokens } from "./format-tokens.ts";
 
 /** The SDD phases a run is composed of, in pipeline order — the `clarify` and
@@ -159,7 +160,15 @@ export function formatUsd(n: number | null): string {
 }
 
 /** Render an aligned per-phase + total report. */
-export function formatReport(run: RunCost): string {
+function modelsWithAccounts(models: string, accounts: CpamAccounts | undefined): string {
+  if (!accounts || !models) return models;
+  return models
+    .split(", ")
+    .map((model) => withAccount(model, accountFor(model, accounts)))
+    .join(", ");
+}
+
+export function formatReport(run: RunCost, accounts?: CpamAccounts): string {
   if (run.phases.length === 0) return "zero-cost: no encontré datos de costo para ese run.";
   const head = `zero-cost: ${run.slug ?? "(run reciente)"}`;
   // Header and cells share this one padding contract so they cannot drift apart.
@@ -180,7 +189,7 @@ export function formatReport(run: RunCost): string {
   const t = run.total;
   lines.push(data("TOTAL", t.subAgents, t.input, t.output, t.cacheRead, t.cacheWrite, t.toolCount, t.durationMs, t.cost));
   lines.push("Solo hijos registrados; no incluye padre, compacciones ni total Forge. Duración = suma de hijos, no tiempo de pared.", "USD reportado por runtime/proveedor; $0.00 no implica tokens/cuota gratis. unknown = costo no reportado.");
-  for (const p of run.phases) lines.push(`${p.phase} modelos reportados: ${p.model || "unknown"}`);
+  for (const p of run.phases) lines.push(`${p.phase} modelos reportados: ${modelsWithAccounts(p.model, accounts) || "unknown"}`);
   return lines.join("\n");
 }
 
@@ -200,6 +209,7 @@ export function executionCostReport(
   ledger: { slug: string; runId: string; cwd: string },
   result: ExecutionCostInput,
   unreadable: readonly { file: string; error: string }[],
+  accounts?: CpamAccounts,
 ): { coverage: "registrada" | "parcial"; run: RunCost | null; text: string } {
   const coverage = result.attempts > 0 && result.missing === 0 ? "registrada" : "parcial";
   const run = result.metas.length ? aggregateRun(result.metas, ledger.slug) : null;
@@ -208,7 +218,7 @@ export function executionCostReport(
     `Cobertura ${coverage}: ${result.metas.length}/${result.attempts} intentos registrados con usage. Solo hijos; no es el costo completo de Forge/padre.`,
     "Resume acumula nuevos hijos en la misma ejecución; reintentos incluidos una vez. Hijos no registrados no son detectables.",
   ];
-  if (run) lines.push(formatReport(run));
+  if (run) lines.push(formatReport(run, accounts));
   else lines.push("Sin usage atribuible todavía: total desconocido, no cero.");
   const failed = result.receipts.filter(r => ["failed", "stopped", "paused"].includes(r.delivery)).length;
   lines.push(`Entregas fallidas/detenidas/pausadas registradas: ${failed} (su usage disponible está incluido).`);

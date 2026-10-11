@@ -63,6 +63,8 @@
     "extensions/zero-tui-layout.ts",
     "extensions/zero-banner.ts",
     "extensions/zero-hud.ts",
+    "extensions/cpam-accounts.ts",
+    "extensions/cpam-auth-files.ts",
     "extensions/zero-theme.ts",
     "extensions/zero-pretty-code-fences.ts",
     "extensions/markdown-cleanup.ts",

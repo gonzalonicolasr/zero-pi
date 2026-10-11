@@ -15,6 +15,9 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
+import { accountFor, isWorkAccount } from "./cpam-accounts.ts";
+import { loadCpamAccounts } from "./cpam-auth-files.ts";
+
 const execAsync = promisify(exec);
 
 // ─── Color palette (matches the zero-sunset theme `vars`) ─────────────────────
@@ -61,6 +64,7 @@ export function shortModel(id: string | undefined): string | undefined {
 /** The shape of one statusline render. All fields optional — missing parts skip. */
 export interface StatuslineParts {
   model?: string;
+  account?: string;
   tokensIn?: number;
   tokensOut?: number;
   diffAdded?: number;
@@ -79,7 +83,9 @@ const SEP = fg(DIM, " · ");
 export function composeStatusline(p: StatuslineParts): string {
   const parts: string[] = [];
 
-  if (p.model) parts.push(fg(CORAL, p.model));
+  const account = p.account ? fg(isWorkAccount(p.account) ? ROSE : STEEL, p.account) : undefined;
+  if (p.model) parts.push(account ? `${fg(CORAL, p.model)}${SEP}${account}` : fg(CORAL, p.model));
+  else if (account) parts.push(account);
 
   if (p.tokensIn != null || p.tokensOut != null) {
     const inS = fg(GOLD, `↑${formatTokenCount(p.tokensIn ?? 0)}`);
@@ -112,6 +118,7 @@ interface PiUI {
 interface PiModel {
   id?: string;
   name?: string;
+  provider?: string;
   contextWindow?: number;
 }
 interface PiSessionEntry {
@@ -230,6 +237,7 @@ function render(ctx: PiCtx): void {
     const tokens = computeSessionTokens(ctx.sessionManager);
     const text = composeStatusline({
       model: shortModel(ctx.model?.id ?? ctx.model?.name),
+      account: accountFor(ctx.model?.id, loadCpamAccounts(), ctx.model?.provider),
       tokensIn: tokens.input,
       tokensOut: tokens.output,
       diffAdded: added,

@@ -12,6 +12,8 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
+import { accountFor, isWorkAccount } from "./cpam-accounts.ts";
+import { loadCpamAccounts } from "./cpam-auth-files.ts";
 import { truncateToWidth, visibleWidth } from "./zero-tui-layout.ts";
 
 const execAsync = promisify(exec);
@@ -243,6 +245,7 @@ export function phaseFromInput(text: string): Phase | undefined {
 export interface HudParts {
   phase?: Phase;
   model?: string;
+  account?: string;
   tokensIn?: number;
   tokensOut?: number;
   cacheRead?: number;
@@ -282,8 +285,14 @@ function buildHud(preset: HudPreset, parts: HudParts): string {
     out.push(segment("phase", value, phaseColor(parts.phase), preset));
   }
 
+  const account = parts.account
+    ? preset === "ascii" ? parts.account : fg(isWorkAccount(parts.account) ? ROSE : STEEL, parts.account)
+    : undefined;
   if (parts.model && preset !== "minimal") {
-    out.push(fg(CORAL, parts.model));
+    const model = preset === "ascii" ? parts.model : fg(CORAL, parts.model);
+    out.push(account ? `${model}${preset === "ascii" ? " · " : dim(" · ")}${account}` : model);
+  } else if (account) {
+    out.push(account);
   }
 
   if (parts.tokensIn != null || parts.tokensOut != null) {
@@ -358,6 +367,7 @@ interface PiUI {
 interface PiModel {
   id?: string;
   name?: string;
+  provider?: string;
   contextWindow?: number;
 }
 interface PiCtx {
@@ -436,6 +446,7 @@ function render(ctx: PiCtx): void {
       width: terminalColumns(),
       phase: activePhase,
       model: shortModel(ctx.model?.id ?? ctx.model?.name),
+      account: accountFor(ctx.model?.id, loadCpamAccounts(), ctx.model?.provider),
       tokensIn: usage.input,
       tokensOut: usage.output,
       cacheRead: usage.cacheRead,

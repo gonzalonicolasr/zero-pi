@@ -179,3 +179,18 @@ test("formatReport: empty run is a friendly message", () => {
   const out = formatReport(aggregateRun([], null));
   assert.match(out, /no encontré|sin datos/i);
 });
+
+test("formatReport: reported models name their CPAM account", () => {
+  const run = aggregateRun(
+    [
+      meta({ phase: "build", slug: "f", model: "cliproxy/wibond/claude-sonnet-5-5", timestamp: 1 }),
+      meta({ phase: "build", slug: "f", model: "personal/claude-opus-5-5", timestamp: 2 }),
+      meta({ phase: "veredicto", slug: "f", model: "anthropic/claude-opus-4-7", timestamp: 3 }),
+    ],
+    "f",
+  );
+  const report = formatReport(run, { wibond: "wibond", personal: "personal" });
+  assert.match(report, /build modelos reportados: cliproxy\/wibond\/claude-sonnet-5-5, personal\/claude-opus-5-5$/m);
+  assert.match(report, /veredicto modelos reportados: anthropic\/claude-opus-4-7$/m);
+  assert.doesNotMatch(formatReport(run), / · /);
+});
