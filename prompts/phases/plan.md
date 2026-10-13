@@ -21,8 +21,7 @@ it.
 first write: `intent: "change"`, `route: "inline"`, `slug: "<slug>-plan"`,
 `files:` the absolute paths of the `.sdd/<slug>/` artifacts you will write.
 Without it NODD refuses your first write. Give `write` and `edit` the same
-absolute path you declared: NODD compares paths as written, so a relative
-`.sdd/...` path counts as undeclared and is refused.
+absolute path you declared, so the write always matches the declaration.
 
 Using the explore findings, write the plan: the requirements (what must be
 true), the design (how it will be built), and an ordered list of small,

@@ -42,10 +42,9 @@ first write: `intent: "change"`, `route: "inline"`, `slug: "<slug>-build"`,
 `tasks.md` and `tdd-evidence.md` under `.sdd/<slug>/` — or, as a parallel-wave
 child, your task's `files:` plus `.sdd/<slug>/tdd-evidence/<T###>.md` only — and
 `runner:` the test command you resolve below. Without it NODD refuses your first
-write. Give `write` and `edit` the same absolute path you declared: NODD
-compares paths as written, so a relative path counts as undeclared and is
-refused. Writing a file you did not declare is still refused after heavy
-reading — declare what the batch touches, not less.
+write. Give `write` and `edit` the same absolute path you declared, so the
+write always matches the declaration. Writing a file you did not declare is
+still refused after heavy reading — declare what the batch touches, not less.
 
 Implement the planned tasks in dependency order, test-first where practical. `tasks.md` is a dependency-aware graph: every task has a `depends:` line. Before starting a task, verify each listed dependency is already `[x]`; if a dependency is unchecked, complete that dependency first (when it is in your assigned batch) or stop and report the blocked task (when it is outside the assigned batch). Never skip ahead just because a later task looks easier. Keep every change within the plan's scope — do not expand it on your own initiative.
 

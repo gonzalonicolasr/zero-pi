@@ -38,7 +38,7 @@ export function createGitRunner(spawnImpl: SpawnLike = spawn): GitRunner {
     async currentBranch() { return (await run(["branch", "--show-current"])).stdout; },
     async isDirty() {
       const lines = (await run(["status", "--porcelain"])).stdout.split("\n").filter((line) => line.trim() !== "");
-      return lines.some((line) => !(line.startsWith("?? ") && TOOL_STATE_DIRS.some((dir) => line.slice(3).startsWith(dir))));
+      return lines.some((line) => !(line.startsWith("?? ") && TOOL_STATE_DIRS.some((dir) => `/${line.slice(3).replace(/^"|"$/g, "")}`.includes(`/${dir}`))));
     },
     async branchExists(branch: string, remote = false) { return (await run(remote ? ["ls-remote", "--exit-code", "--heads", "origin", branch] : ["rev-parse", "--verify", branch])).ok; },
     createBranch(branch: string, base?: string) { return run(base ? ["switch", "-c", branch, base] : ["switch", "-c", branch]); },

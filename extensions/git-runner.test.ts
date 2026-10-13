@@ -36,6 +36,15 @@ test("git-runner: untracked NODD and pi state alone is not a dirty worktree", as
   assert.equal(await git.isDirty(), true, "a tracked change still counts");
 });
 
+test("git-runner: untracked tool state in a monorepo subfolder or with a quoted path is not dirty", async () => {
+  const f = fake([{ out: "?? packages/zero-pi/.nodd/\n?? packages/zero-pi/.pi/\n" }, { out: "?? \".nodd/a b.md\"\n" }, { out: "?? src/foo.nodd/\n" }, { out: " M packages/zero-pi/.nodd/x.md\n" }]);
+  const git = createGitRunner(f.spawn as any);
+  assert.equal(await git.isDirty(), false, "subfolder tool state");
+  assert.equal(await git.isDirty(), false, "quoted tool state");
+  assert.equal(await git.isDirty(), true, "a .nodd suffix is not a tool state segment");
+  assert.equal(await git.isDirty(), true, "a tracked change in a subfolder still counts");
+});
+
 test("git-runner returns structured errors for non-zero and spawn errors", async () => {
   const f = fake([{ code: 1, err: "missing" }, { error: new Error("ENOENT") }]);
   const git = createGitRunner(f.spawn as any);

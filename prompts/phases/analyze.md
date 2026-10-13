@@ -64,8 +64,7 @@ boundary is yours to honor.
 first write: `intent: "change"`, `route: "inline"`, `slug: "<slug>-analyze"`,
 `files:` the absolute paths of the `.sdd/<slug>/` artifacts you will write.
 Without it NODD refuses your first write. Give `write` and `edit` the same
-absolute path you declared: NODD compares paths as written, so a relative
-`.sdd/...` path counts as undeclared and is refused.
+absolute path you declared, so the write always matches the declaration.
 
 **Scope every search to the project, never the filesystem root.** A `find`,
 `grep -r`, or `rg` rooted at `/`, a bare drive (`/c`, `C:\`), or `~`/`$HOME` is

@@ -59,6 +59,35 @@ test("parseTasks: a tag between the id and the dash is named as a malformed head
   assert.match(defect.message, /"### T001 — Add slugify \[P\] \[Story:S1\]"/);
 });
 
+test("parseTasks: the original tagged heading still suggests tags after the title", () => {
+  const defect = parseTasks("### T001 [P] [Story:S1] — Add parser\n").defects.find((d) => d.kind === "malformed-task-header");
+  assert.ok(defect);
+  assert.match(defect.message, /"### T001 — Add parser \[P\] \[Story:S1\]"/);
+});
+
+test("parseTasks: a hyphen inside a tag or the title does not split the suggestion", () => {
+  const tagged = parseTasks("### T001 [US-1] — Add parser\n").defects.find((d) => d.kind === "malformed-task-header");
+  assert.ok(tagged);
+  assert.match(tagged.message, /"### T001 — Add parser \[US-1\]"/);
+  const colon = parseTasks("### T001: Add foo-bar\n").defects.find((d) => d.kind === "malformed-task-header");
+  assert.ok(colon);
+  assert.match(colon.message, /"### T001 — Add foo-bar"/);
+});
+
+test("parseTasks: a spec-kit checkbox line with tags is still a malformed header", () => {
+  const defect = parseTasks("- [ ] T001 [P] [US1] Add parser\n").defects.find((d) => d.kind === "malformed-task-header");
+  assert.ok(defect);
+  assert.match(defect.message, /"### T001 — Add parser \[P\] \[US1\]"/);
+});
+
+test("parseTasks: a checklist line mentioning a task id is not a header and keeps the task body", () => {
+  const parsed = parseTasks("### T1 — Add parser\n\n- [ ] T1 verified manually\n- files:\n  - `src/a.js` (new)\n- depends: []\n- evidence: `npm test`\n- review: ~10 changed lines\n");
+  assert.deepEqual(parsed.defects, []);
+  assert.equal(parsed.tasks.length, 1);
+  assert.deepEqual(parsed.tasks[0].files, [{ path: "src/a.js", isNew: true }]);
+  assert.deepEqual(parsed.tasks[0].depends, []);
+});
+
 test("parseTasks: partially conformant task yields per-task defects", () => {
   const parsed = parseTasks("- [ ] **T1. Bad** — no metadata\n");
   assert.deepEqual(parsed.defects.map((d) => d.kind), ["missing-files", "missing-depends", "missing-evidence", "missing-review"]);

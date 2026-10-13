@@ -5,6 +5,41 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.91] - 2026-10-13
+
+### Added — cada modelo muestra su cuenta del CPAM
+
+El HUD, la statusline, el picker de modelos, los costos y autotune nombran la
+cuenta del CPAM de cada modelo con su prefijo corto (`priv8`, `personal`,
+`ag3`…) en vez del mail largo, y las cuentas de trabajo se marcan siempre.
+
+### Fixed — el aviso de cabecera mal armada saltaba de más
+
+El aviso de 0.1.90 marcaba también una línea común de checklist que nombra una
+tarea (`- [ ] T1 verificado a mano`): la validación fallaba, plan volvía a
+correr, y la tarea donde aparecía la línea perdía sus `files:` y `depends:`.
+Ahora sólo se marcan los encabezados `##`/`###` que empiezan con un id y las
+casillas con el id en negrita o seguido de una etiqueta (`- [ ] T001 [P] …`).
+
+La corrección sugerida buscaba el primer guion en cualquier lado: con
+`### T001 [US-1] — Add parser` proponía `### T001 — 1] — Add parser`. Ahora
+toma las etiquetas que siguen al id y el separador con espacios a los dos
+lados, y propone `### T001 — Add parser [US-1]`.
+
+### Fixed — `isDirty` sólo ignoraba el estado de NODD y pi en la raíz
+
+En un monorepo git lista la carpeta como `packages/zero-pi/.nodd/`, y
+`/zero-branch` y `/zero-archive` volvían a decir "worktree sucio". Una entrada
+sin seguimiento cuenta como estado de herramientas cuando su ruta tiene un
+segmento `.nodd/` o `.pi/`, también entre comillas.
+
+### Changed — los prompts ya no dan un motivo falso sobre NODD
+
+Los cuatro prompts que escriben decían que NODD rechaza una ruta `.sdd/...`
+relativa. Desde NODD 0.9.2 las rutas relativas se resuelven contra la carpeta
+de trabajo. La instrucción de escribir la misma ruta absoluta que se declaró
+sigue, porque las versiones anteriores de NODD la necesitan.
+
 ## [0.1.90] - 2026-10-11
 
 ### Fixed — NODD bloqueaba a plan aunque había declarado sus archivos
