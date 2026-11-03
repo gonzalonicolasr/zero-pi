@@ -155,7 +155,7 @@ no como medición de este candidato. **Sin porcentaje de ahorro ni A/B de calida
 - `zero_execution` es una tool Pi registrada por `zero-execution-extension.ts`.
   Forge la invoca con `start` (request completo verbatim), `resume`, `attempt`,
   `attach`, `status`, `findings` y `analyze`; los prompts conectan todos los seams.
-  No lanza agentes ni parsea/re-escribe workflowScript.
+  No lanza agentes ni parsea/re-escribe el script del workflow.
 - Estado: `.sdd/<slug>/execution.json` apunta a
   `.sdd/.executions/<runId>.json`, con cwd canónico, UUID, intentos con fase/
   ronda/lote, identidad workflow y receipt/child. Las escrituras de ledger son

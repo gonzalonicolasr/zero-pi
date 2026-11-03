@@ -5,6 +5,32 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [0.1.92] - 2026-11-03
+
+### Fixed — `/forge` lanzaba las fases con un parámetro que pi-subagents ya no tiene
+
+El orquestador lanzaba cada fase con `workflowScript`, que pi-subagents quitó en
+la 0.7x (hoy se instala la 0.79.1). La primera llamada de cada fase fallaba y el
+orquestador tenía que adivinar la forma nueva: Opus la encontraba, pero un
+orquestador chico (`gemini-3-flash`) inventaba la carpeta del recibo, zero
+rechazaba las entregas de explore y analyze, y el run seguía de largo.
+
+Ahora el script de cada intento se escribe en
+`.sdd/<slug>/workflows/<attemptId>.js` y se lanza con
+`subagent({ workflow: "<ruta absoluta>", … })`, en un turno aparte del write:
+lanzado en paralelo, el launch llegaba antes que el archivo y fallaba con
+ENOENT.
+
+### Fixed — el orquestador decidía con la fase todavía corriendo
+
+Con `claude-opus-4-6-thinking` de orquestador, `analyze`, `round` y compañía se
+llamaban sin esperar al hijo: zero rechazaba cada entrega como "delivery
+unverified" y el orquestador terminaba copiando el veredicto a mano desde los
+archivos de sesión. El prompt ahora exige `bg_wait` sobre el workflow antes de
+cada decisión, y ante el rechazo esperar y reintentar. Probado de punta a punta
+con ese mismo orquestador: 0 entregas rechazadas (antes 14) y el run bajó de
+28 a 16 minutos.
+
 ## [0.1.91] - 2026-10-13
 
 ### Added — cada modelo muestra su cuenta del CPAM

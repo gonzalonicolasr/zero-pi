@@ -1,5 +1,5 @@
 // Forge execution identity and readiness accounting. No task-text attribution or
-// workflowScript parsing. Runtime files are read only through attached receipts.
+// workflow script parsing. Runtime files are read only through attached receipts.
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";

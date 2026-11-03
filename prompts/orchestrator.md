@@ -231,21 +231,35 @@ waits for all of them):
    Retain its `attemptId`. A retry gets a new attempt ID but not a build round
    or a replan charge. An interrupted unlaunched attempt remains visible as
    partial coverage; never silently discard it.
-2. Launch one async workflow for this phase/batch. The exact launch shape is
-   `subagent({ async: true, context: "fresh", cwd: "<absolute project cwd>",
-   artifacts: true, workflowScript: 'return runs.run("<attemptId>", {
-   agent: "zero-<phase>", context: "fresh", task: "<thin English brief>",
-   output: "<absolute output path>", outputMode: "file-only" })' })`.
-   Use JSON-safe string escaping when assembling the script. Do not combine
-   phases into one workflow, use retained-child `resume`, or inherit parent
-   conversation. Explicit top-level AND child `context: "fresh"` override a
-   global fork preference; generated `defaultContext: fresh` is defense only.
-   No code rewrites or parses arbitrary workflowScript to enforce this policy.
+2. Launch one async workflow for this phase/batch, in two steps:
+   a. Write the workflow script to the absolute path
+      `.sdd/<slug>/workflows/<attemptId>.js` under the project cwd. Its whole
+      content is `return runs.run("<attemptId>", { agent: "zero-<phase>",
+      context: "fresh", task: "<thin English brief>", output: "<absolute output
+      path>", outputMode: "file-only" });`.
+   b. Only after the write has confirmed, launch it with
+      `subagent({ workflow: "<absolute script path>", async: true,
+      context: "fresh", cwd: "<absolute project cwd>", artifacts: true })` —
+      never in the same turn as the write: parallel calls launch before the file
+      exists and fail with ENOENT. pi-subagents removed the old inline
+      script-string parameter; do not pass it, and do not use the inline `workflow: true`
+      code-block form either (it needs visible reply text that a detached run
+      may not keep).
+   Do not combine phases into one workflow, use retained-child `resume`, or
+   inherit parent conversation. Explicit top-level AND child `context: "fresh"`
+   override a global fork preference; generated `defaultContext: fresh` is
+   defense only. No code rewrites or parses the workflow script to enforce this
+   policy.
 3. Immediately call `zero_execution` with `action: "attach", runId: "<runId>",
    attemptId: "<attemptId>", workflowRunId: "<details.runId>",
    asyncDir: "<details.asyncDir>"` from the actual launch receipt. Never infer
    identity from task text, a slug, or a global artifact search. Wait for async
    completion normally (status/wait); stay responsive and preserve progress.
+   Do not call `analyze`, `findings`, `round`, `batch-close` or
+   `wave-close` for an attempt until `bg_wait` on its workflowRunId reported it
+   done: a decision taken while the child still runs is rejected as
+   "delivery unverified". On that rejection, wait for the same run and retry the
+   decision; never copy outputs from session files by hand.
 4. After completion, call `zero_execution` with `action: "status",
    runId: "<runId>"`. It reads the attached workflow-receipt.json + status.json,
    checks project/workflow/key/agent/fresh context and the explicit child ID,
@@ -256,8 +270,8 @@ waits for all of them):
    alone is non-blocking. Never use usage availability as proof of delivery.
 5. Read the output artifact and apply the full Phase result gate. **Explore
    exception:** set top-level AND child `output: false`, `outputMode: "inline"`
-   (not file-only), keeping `artifacts: true`. Return a compact workflow value,
-   not the findings text: `const child = await runs.run("<attemptId>", {
+   (not file-only), keeping `artifacts: true`. The script file returns a compact
+   workflow value, not the findings text: `const child = await runs.run("<attemptId>", {
    agent: "zero-explore", context: "fresh", task: "<thin brief>", output: false,
    outputMode: "inline" }); return { ok: child.ok, runId: child.runId };`.
    This disables the runtime's output-write injector (bash is considered
