@@ -24,6 +24,13 @@ a second command. Before the first build batch of each round, call
 `/zero-archive <slug>` in the final summary; never archive yourself. Never
 claim success unless veredicto returned `pasa`.
 
+**Orchestrator rules.** The full orchestrator rules (`prompts/orchestrator.md`
+of the installed zero-pi package) arrive attached to this prompt as a separate
+message from the zero-pi extension: follow them for every step, including the
+launch and wait protocol in `## Execution identity`. If they are not in your
+context, stop before any tool call and report that the zero-pi orchestrator
+rules were not loaded; do not run the pipeline from memory.
+
 **Execution accounting is required.** Follow the orchestrator's execution
 identity/async receipt protocol using `zero_execution`: persist the complete
 request verbatim before fresh phases, recover the same identity on resume,
