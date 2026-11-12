@@ -5,6 +5,41 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed — las fases se lanzan con un archivo de script, no con `workflowScript`
+
+pi-subagents 0.79.1 rechaza `workflowScript`, y el `orchestrator.md` del repo
+todavía lo pedía: sólo andaba la copia instalada, parcheada a mano. El parche
+pasa al repo: el script va en `.sdd/<slug>/workflows/<attemptId>.js`, se lanza
+con `subagent({ workflow: <ruta> })`, y ninguna decisión se toma antes de que
+`bg_wait` diga done.
+
+### Added — `/forge` recibe las reglas del orquestador
+
+La extensión de `zero_execution` adjunta `prompts/orchestrator.md` al prompt de
+`/forge` antes del primer turno, en vez de depender de que el modelo decida
+leerlo. Si las reglas no llegan, `forge.md` le dice que pare.
+
+### Changed — `zero_execution attempt` escribe el script de la fase
+
+`attempt` recibe `brief` (y `outputMode: "inline"` en explore), escribe el
+script con un solo `runs.run` y `context: "fresh"` fijos por código, y devuelve
+los argumentos exactos de `subagent`. El orquestador ya no escribe scripts.
+
+### Changed — menos turnos de trámite por fase
+
+`attach` y `bg_wait` van en el mismo turno; `status` sólo corre después de
+clarify y plan, porque `findings`, `analyze`, `round`, `batch-close` y
+`wave-close` ya verifican la entrega. `analyze` (continue), `batch-close`
+(complete) y `wave-close` (sin fallas) devuelven `next`, el mismo valor que
+`wave`.
+
+### Fixed — `batch-close` y `wave-close` cerraban un hijo que seguía corriendo
+
+Grababan la sección como `unverified`/`failed` y el cierre bueno ya no entraba.
+Ahora rechazan antes de escribir, como `round`, `findings` y `analyze`.
+
 ## [0.1.92] - 2026-11-03
 
 ### Fixed — `/forge` lanzaba las fases con un parámetro que pi-subagents ya no tiene
