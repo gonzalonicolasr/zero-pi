@@ -82,3 +82,11 @@ test('zero_execution attempt takes the brief and the explore output mode, and sa
   assert.deepEqual(tool.parameters.properties.outputMode.enum, ['inline', 'file-only']);
   assert.match(tool.description, /attempt\(runId,phase,round,batch,brief[^)]*\)[\s\S]*?workflows\/<attemptId>\.js[\s\S]*?subagent/);
 });
+
+test('zero_execution description names the next step returned by analyze and the closes', () => {
+  let tool: any;
+  register({ registerTool(t) { tool = t; } });
+  assert.match(tool.description, /continue also returns next/);
+  assert.match(tool.description, /or next when none failed/);
+  assert.match(tool.description, /plus next when complete/);
+});

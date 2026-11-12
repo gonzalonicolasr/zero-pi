@@ -673,3 +673,51 @@ test("attempt refuses an empty brief or a wrong output mode before registering a
   assert.equal(bare.script, undefined); assert.equal(bare.subagent, undefined);
   assert.equal(readExecution(cwd, runId).attempts.length, 2);
 }));
+
+// ── fewer orchestrator turns: closes refuse a running child and hand back the next step ──
+/** A build attempt whose workflow is attached but still running: no receipt yet. */
+function running(cwd: string, runId: string, n: number) {
+  const a = executionOperation(cwd, { action: "attempt", runId, phase: "build", round: 1, batch: n });
+  const dir = join(cwd, "runtime", `running-${n}`); mkdirSync(dir, { recursive: true });
+  executionOperation(cwd, { action: "attach", runId, attemptId: a.attemptId, workflowRunId: `running-${n}`, asyncDir: dir });
+  return a.attemptId as string;
+}
+
+test("batch-close and wave-close refuse a child that has not finished, before writing anything", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const dir = join(cwd, ".sdd/feat");
+  writeFileSync(join(dir, "tasks.md"), waveTasks);
+  const busy = running(cwd, runId, 1);
+  assert.throws(() => executionOperation(cwd, { action: "batch-close", runId, attemptId: busy, batch: 1, total: 1, tasks: ["T002"] }), /delivery unverified[\s\S]*bg_wait/i);
+  const done = launch(cwd, runId, "build", 3, { output: "T003 ok\n" });
+  assert.throws(() => executionOperation(cwd, { action: "wave-close", runId, batch: 1, total: 1, members: [{ attemptId: busy, task: "T002" }, { attemptId: done, task: "T003" }] }), /T002[\s\S]*delivery unverified/i);
+  assert.equal(readFileSync(join(dir, "tasks.md"), "utf8"), waveTasks);
+  assert.equal(existsSync(join(dir, "build-r1.md")), false);
+}));
+
+test("analyze continue, a delivered batch-close and a clean wave-close return the next wave; replan, failures and retries do not", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const dir = join(cwd, ".sdd/feat");
+  writeFileSync(join(dir, "tasks.md"), waveTasks);
+  const wave = () => { const { mode, tasks, reason, remaining, round } = executionOperation(cwd, { action: "wave", runId }); return { mode, tasks, reason, remaining, round }; };
+  const keep = launch(cwd, runId, "analyze", 1, { output: "Decision: continue\n" });
+  assert.deepEqual(executionOperation(cwd, { action: "analyze", runId, attemptId: keep, decision: "continue" }).next, wave());
+  const again = launch(cwd, runId, "analyze", 2, { output: "Decision: replan\n" });
+  assert.equal(executionOperation(cwd, { action: "analyze", runId, attemptId: again, decision: "replan" }).next, undefined);
+
+  const a2 = launch(cwd, runId, "build", 12, { output: "T002\n" }), a3 = launch(cwd, runId, "build", 13, { status: "failed", output: "T003 crashed\n" });
+  const partial = executionOperation(cwd, { action: "wave-close", runId, batch: 1, total: 2, members: [{ attemptId: a2, task: "T002" }, { attemptId: a3, task: "T003" }] });
+  assert.deepEqual([partial.failed, partial.next], [["T003"], undefined]);
+  const solo = launch(cwd, runId, "build", 14, { status: "failed", output: "still red\n" });
+  assert.equal(executionOperation(cwd, { action: "batch-close", runId, attemptId: solo, batch: 2, total: 3, tasks: ["T003"] }).next, undefined);
+  const fixed = launch(cwd, runId, "build", 15, { output: "T003 ok\n" });
+  writeFileSync(join(dir, "tasks.md"), readFileSync(join(dir, "tasks.md"), "utf8").replace("- [ ] **T003.", "- [x] **T003."));
+  const closed = executionOperation(cwd, { action: "batch-close", runId, attemptId: fixed, batch: 3, total: 3, tasks: ["T003"] });
+  assert.deepEqual(closed.next, wave()); assert.deepEqual(closed.next.tasks, ["T004"]);
+
+  const { runId: other } = start(cwd, "clean");
+  writeFileSync(join(cwd, ".sdd/clean/tasks.md"), waveTasks);
+  const c2 = launch(cwd, other, "build", 22, { output: "ok\n" }), c3 = launch(cwd, other, "build", 23, { output: "ok\n" });
+  const clean = executionOperation(cwd, { action: "wave-close", runId: other, batch: 1, total: 2, members: [{ attemptId: c2, task: "T002" }, { attemptId: c3, task: "T003" }] });
+  assert.deepEqual(clean.next, { mode: "sequential", tasks: ["T004"], reason: undefined, remaining: 1, round: 1 });
+}));

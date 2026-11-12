@@ -9,6 +9,8 @@ test("Forge async fresh launch contract invokes durable identity, receipt, and r
   assert.match(o, /context: "fresh"/); assert.match(o, /async: true/); assert.doesNotMatch(o, /workflowScript/);
   assert.match(o, /workflow: "<absolute script path>"/); assert.match(o, /until `bg_wait`/);
   assert.match(o, /action: "attempt"[^`]*brief: "<thin English brief>"/); assert.match(o, /Never write or edit that script\s+yourself/);
+  assert.match(o, /in the same turn, `bg_wait`/); assert.match(o, /\*\*Skip `status`\*\* when the next call/);
+  assert.match(o, /completion of \*\*clarify\*\* or \*\*plan\*\*, call `zero_execution` with\s+`action: "status"/); assert.match(o, /already returned `next`/);
   assert.match(o, /workflowRunId/); assert.match(o, /asyncDir/); assert.match(o, /second.*replan|second.*decision/i);
   assert.match(o, /request\.md.*verbatim|verbatim.*request\.md/i); assert.match(o, /outputMode: "file-only"/);
   assert.match(o, /prompt-enforced/i); assert.match(f, /zero_execution/);

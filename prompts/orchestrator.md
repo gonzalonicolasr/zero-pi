@@ -252,24 +252,33 @@ waits for all of them):
    override a global fork preference; generated `defaultContext: fresh` is
    defense only. Code writes the script from the brief; nothing parses or
    rewrites it afterwards.
-3. Immediately call `zero_execution` with `action: "attach", runId: "<runId>",
-   attemptId: "<attemptId>", workflowRunId: "<details.runId>",
-   asyncDir: "<details.asyncDir>"` from the actual launch receipt. Never infer
-   identity from task text, a slug, or a global artifact search. Wait for async
-   completion normally (status/wait); stay responsive and preserve progress.
+3. In the turn right after the launch, call `zero_execution` with
+   `action: "attach", runId: "<runId>", attemptId: "<attemptId>",
+   workflowRunId: "<details.runId>", asyncDir: "<details.asyncDir>"` from the
+   actual launch receipt **and**, in the same turn, `bg_wait` with
+   `id: "<details.runId>"` (a parallel wave: attach every member, then one
+   `bg_wait` with `all: true` in that turn). Both use only the launch receipt.
+   Never infer identity from task text, a slug, or a global artifact search;
+   stay responsive and preserve progress while waiting.
    Do not call `analyze`, `findings`, `round`, `batch-close` or
    `wave-close` for an attempt until `bg_wait` on its workflowRunId reported it
    done: a decision taken while the child still runs is rejected as
    "delivery unverified". On that rejection, wait for the same run and retry the
    decision; never copy outputs from session files by hand.
-4. After completion, call `zero_execution` with `action: "status",
-   runId: "<runId>"`. It reads the attached workflow-receipt.json + status.json,
-   checks project/workflow/key/agent/fresh context and the explicit child ID,
-   and snapshots normalized metadata from exact runtime filenames. Temp/custom
-   paths, missing metadata, detached/failed deliveries and receipt mismatches
-   stay visible as partial, never a global total or fake zero. If context or
-   delivery cannot be verified, stop at the phase gate; missing cost metadata
-   alone is non-blocking. Never use usage availability as proof of delivery.
+4. After completion of **clarify** or **plan**, call `zero_execution` with
+   `action: "status", runId: "<runId>"`. It reads the attached
+   workflow-receipt.json + status.json, checks project/workflow/key/agent/fresh
+   context and the explicit child ID, and snapshots normalized metadata from
+   exact runtime filenames. Temp/custom paths, missing metadata, detached/failed
+   deliveries and receipt mismatches stay visible as partial, never a global
+   total or fake zero. If context or delivery cannot be verified, stop at the
+   phase gate; missing cost metadata alone is non-blocking. Never use usage
+   availability as proof of delivery. **Skip `status`** when the next call for
+   the attempt is `findings`, `analyze`, `round`, `batch-close` or `wave-close`:
+   each runs the same reconciliation for that attempt and refuses a delivery it
+   cannot verify (a running or unverifiable child is rejected before anything
+   is written; a terminal failed child is reported as failed). Their result is
+   your delivery check.
 5. Read the output artifact and apply the full Phase result gate. **Explore
    exception:** `attempt` with `outputMode: "inline"` sets top-level AND child
    `output: false`, `outputMode: "inline"` (not file-only), keeping
@@ -279,7 +288,7 @@ waits for all of them):
    outputMode: "inline" }); return { ok: child.ok, runId: child.runId };`.
    This disables the runtime's output-write injector (bash is considered
    mutation-capable by that injector). Explore returns the complete report;
-   **runtime writes the debug output artifact**. After status reconciliation,
+   **runtime writes the debug output artifact**. Once `bg_wait` reports done,
    call `zero_execution` with `action: "findings", runId: "<runId>",
    attemptId: "<attemptId>"`: the **parent tool** copies the confirmed debug
    output to absolute `.sdd/<slug>/findings.md`, without transporting its text
@@ -433,7 +442,11 @@ re-run — drive this loop:
    (steps left, this one included) and `round`. Use its task ids; never group
    by hand when the tool is available. `mode: "blocked"` → stop and re-run
    **plan** (its `reason` names the bad dependency). `mode: "done"` → step 6.
-   `<n>` in `lote <i>/<n>` is `<i> - 1 + remaining`.
+   `<n>` in `lote <i>/<n>` is `<i> - 1 + remaining`. Skip this call when the
+   call that ended the previous step already returned `next` — `analyze` with
+   `continue` (after its `checkpoint`), a `batch-close` with `delivery:
+   "complete"`, or a `wave-close` with no `failed` task: `next` is the value
+   `wave` would return now (`mode`, `tasks`, `remaining`, `round`), so use it.
 5. Run the step, then close it **by code**:
    - **`mode: "sequential"`** — one `zero-build` attempt/workflow for the
      batch. Each brief is a fresh sub-agent (no carried conversation) and names
@@ -444,7 +457,8 @@ re-run — drive this loop:
      Phase result gate, then call `zero_execution` `action: "batch-close",
      runId, attemptId, batch: <i>, total: <n>, tasks: [<batch ids>]`: it appends
      the child's output to `.sdd/<slug>/build-r<N>.md` under
-     `## Batch <i>/<n>: <ids>`.
+     `## Batch <i>/<n>: <ids>` and returns the verified `delivery`. A `delivery`
+     other than `complete` is a failed Phase result gate: re-run the batch.
    - **`mode: "parallel"`** (2–3 tasks) — a **parallel wave**. For each task,
      back to back without waiting in between: `attempt` (same round, its own
      batch number — distinct per task), launch **its own** async workflow
@@ -459,8 +473,8 @@ re-run — drive this loop:
      Briefs stay thin and fresh exactly like a sequential batch's.
      Emit one phase-start line for the wave:
      `Fase build · ronda <n> · tanda <i> (paralelo: T002, T003) · <modelo> (<provider>) — …`.
-     Wait for **all** of them, call `status`, read each output and apply the
-     Phase result gate per child, then call `zero_execution`
+     Wait for **all** of them (one `bg_wait` with `all: true`), read each output
+     and apply the Phase result gate per child, then call `zero_execution`
      `action: "wave-close", runId, batch: <i>, total: <n>, members:
      [{attemptId, task, ok}]` — `ok: false` for a child that was delivered but
      failed the gate. The tool ticks `[x]` only delivered, accepted tasks,
@@ -470,7 +484,7 @@ re-run — drive this loop:
      failed task retries once, alone, as a sequential batch** (`batch-close`
      included) before the next `wave` call; a second failure is a failed phase
      gate: STOP and report it.
-6. Repeat until `wave` returns `done` (no `[ ]` task left), then run
+6. Repeat until `wave` (or a close's `next`) returns `done` (no `[ ]` task left), then run
    **veredicto** once. Never run veredicto between batches or waves. The full
    suite runs in the next sequential batch or in veredicto, which already runs it.
    The veredicto brief references `.sdd/<slug>/build-r<N>.md` (the round's build

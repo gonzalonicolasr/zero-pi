@@ -300,6 +300,22 @@ function open(cwd: string, slug: string, request: string | Buffer): ExecutionLed
   return ledger;
 }
 
+/** The next build step from tasks.md, the same value `wave` returns; undefined
+ *  without tasks.md so a close or analyze never fails on it. */
+function nextStep(ledger: ExecutionLedger) {
+  const dir = runDir(ledger);
+  const text = readText(join(dir, "tasks.md"));
+  if (text === undefined) return undefined;
+  const roots = [...codeRootsFrom(text, readText(join(dir, "design.md")) ?? ""), ledger.cwd];
+  const next = nextWave(text, roots);
+  return { round: currentRound(ledger), mode: next.mode, tasks: next.tasks, reason: next.mode === "blocked" ? next.reason : undefined, remaining: waveSchedule(text, roots).length };
+}
+/** A close logs a child's envelope once (the section header is idempotent), so it
+ *  must not run while the child is still running: no terminal receipt, no close. */
+function requireTerminal(ledger: ExecutionLedger, a: ExecutionAttempt, label: string): void {
+  const issue = reconcileAttempt(ledger, a);
+  if (!a.receipt) throw new Error(`${label}delivery unverified (${issue ?? "no terminal receipt"}): wait until bg_wait reports the workflow done, then retry the close; if it already did, re-run the batch as a new attempt`);
+}
 /** The one-child workflow script of an attempt, written by code so the launch
  *  shape (one `runs.run`, explicit child `context: "fresh"`, output mode) never
  *  depends on the orchestrator typing it. Same text it wrote by hand before
@@ -383,12 +399,9 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       return { ...state(ledger), rounds: next.rounds, cap: next.cap, verdicts: next.verdicts, routing: stateOf(next), verdictPath };
     }
     if (input.action === "wave") {
-      const dir = runDir(ledger);
-      const text = readText(join(dir, "tasks.md"));
-      if (text === undefined) throw new Error("tasks.md missing; re-run plan");
-      const roots = [...codeRootsFrom(text, readText(join(dir, "design.md")) ?? ""), ledger.cwd];
-      const next = nextWave(text, roots);
-      return { ...state(ledger), round: currentRound(ledger), mode: next.mode, tasks: next.tasks, reason: next.mode === "blocked" ? next.reason : undefined, remaining: waveSchedule(text, roots).length };
+      const next = nextStep(ledger);
+      if (!next) throw new Error("tasks.md missing; re-run plan");
+      return { ...state(ledger), ...next };
     }
     if (input.action === "wave-close") {
       const { i, n } = stepLabel(input);
@@ -397,6 +410,7 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       const ids = taskIds(members.map(m => m?.task), "members");
       if (new Set(members.map(m => m.attemptId)).size !== members.length) throw new Error("members has duplicate attemptIds");
       const attempts = members.map(m => buildAttempt(ledger, m.attemptId));
+      attempts.forEach((a, k) => requireTerminal(ledger, a, `${members[k].task}: `));
       const dir = runDir(ledger), tasksPath = join(dir, "tasks.md");
       const text = readText(tasksPath);
       if (text === undefined) throw new Error("tasks.md missing; blocked");
@@ -423,19 +437,20 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       appendSection(buildPath, `## Wave ${i}/${n}: ${rows.map(r => r.task).join(", ")}`,
         rows.map(r => `### ${r.task} — ${r.status}\n\n${(childOutput(ledger, r.a) ?? "(no output captured)").trim()}`).join("\n\n"));
       save(ledger);
-      return { ...state(ledger), round, ticked: tick.ticked, already: tick.already, failed: rows.filter(r => !r.ok).map(r => r.task), evidenceMissing, buildPath, tasksPath };
+      const failed = rows.filter(r => !r.ok).map(r => r.task);
+      return { ...state(ledger), round, ticked: tick.ticked, already: tick.already, failed, evidenceMissing, buildPath, tasksPath, next: failed.length ? undefined : nextStep(ledger) };
     }
     if (input.action === "batch-close") {
       const { i, n } = stepLabel(input);
       const ids = taskIds(input.tasks, "tasks");
       if (!ids.length) throw new Error("tasks must name the batch task ids");
       const a = buildAttempt(ledger, input.attemptId);
-      reconcileAttempt(ledger, a);
-      const delivery = a.receipt?.state ?? "unverified";
+      requireTerminal(ledger, a, "Build ");
+      const delivery = a.receipt!.state;
       const round = currentRound(ledger), buildPath = join(runDir(ledger), `build-r${round}.md`);
       appendSection(buildPath, `## Batch ${i}/${n}: ${ids.join(", ")}`, childOutput(ledger, a) ?? `(no output captured; delivery: ${delivery})`);
       save(ledger);
-      return { ...state(ledger), round, delivery, buildPath };
+      return { ...state(ledger), round, delivery, buildPath, next: delivery === "complete" ? nextStep(ledger) : undefined };
     }
     if (input.action === "finish") {
       if (ledger.finishedAt) return { ...state(ledger), recorded: true, already: true };
@@ -511,7 +526,8 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       if (a.decision && a.decision !== input.decision) throw new Error("Analyze outcome conflict");
       reconcileAttempt(ledger, a);
       if (a.receipt?.state !== "complete") throw new Error("Analyze delivery unverified; retry delivery, do not charge a replan");
-      a.decision = input.decision as "continue" | "replan"; save(ledger); return { ...state(ledger), attemptId: a.id, decision: a.decision };
+      a.decision = input.decision as "continue" | "replan"; save(ledger);
+      return { ...state(ledger), attemptId: a.id, decision: a.decision, next: a.decision === "continue" ? nextStep(ledger) : undefined };
     }
     throw new Error("Unknown zero_execution action");
   });
