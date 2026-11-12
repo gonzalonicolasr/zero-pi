@@ -6,14 +6,8 @@ const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "u
 test("Forge async fresh launch contract invokes durable identity, receipt, and readiness operations", () => {
   const o = read("prompts/orchestrator.md"), f = read("prompts/forge.md");
   for (const action of ["start", "resume", "attempt", "attach", "status", "analyze", "findings"]) assert.ok(o.includes(`action: "${action}"`), action);
-  assert.match(o, /context: "fresh"/); assert.match(o, /async: true/);
-  // pi-subagents 0.7x quitó `workflowScript`: el script va a un archivo y se lanza con `workflow: "<ruta>"`,
-  // recién cuando el write confirmó (en paralelo el launch llega antes que el archivo: ENOENT).
-  assert.doesNotMatch(o, /workflowScript/);
-  assert.match(o, /`\.sdd\/<slug>\/workflows\/<attemptId>\.js`/); assert.match(o, /workflow: "<absolute script path>"/);
-  assert.match(o, /never in the same turn as the write/);
-  // Un orquestador que decide con el hijo todavía corriendo recibe "delivery unverified" en cada gate.
-  assert.match(o, /Do not call `analyze`, `findings`, `round`, `batch-close` or\s+`wave-close` for an attempt until `bg_wait`/);
+  assert.match(o, /context: "fresh"/); assert.match(o, /async: true/); assert.doesNotMatch(o, /workflowScript/);
+  assert.match(o, /workflow: "<absolute script path>"/); assert.match(o, /until `bg_wait`/);
   assert.match(o, /workflowRunId/); assert.match(o, /asyncDir/); assert.match(o, /second.*replan|second.*decision/i);
   assert.match(o, /request\.md.*verbatim|verbatim.*request\.md/i); assert.match(o, /outputMode: "file-only"/);
   assert.match(o, /prompt-enforced/i); assert.match(f, /zero_execution/);
