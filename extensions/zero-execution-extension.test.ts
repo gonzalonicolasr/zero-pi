@@ -74,3 +74,11 @@ test('forge.md relies on the attached rules and stops when they are missing', ()
   assert.match(forge, /orchestrator rules[\s\S]*attached/i);
   assert.match(forge, /not in your\s+context[\s\S]*stop/i);
 });
+
+test('zero_execution attempt takes the brief and the explore output mode, and says it returns the launch arguments', () => {
+  let tool: any;
+  register({ registerTool(t) { tool = t; } });
+  assert.equal(tool.parameters.properties.brief.type, 'string');
+  assert.deepEqual(tool.parameters.properties.outputMode.enum, ['inline', 'file-only']);
+  assert.match(tool.description, /attempt\(runId,phase,round,batch,brief[^)]*\)[\s\S]*?workflows\/<attemptId>\.js[\s\S]*?subagent/);
+});

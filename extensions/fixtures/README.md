@@ -34,3 +34,10 @@ Installed contracts checked:
 Portable fixture tests and optional installed-runtime tests are separate. The
 latter invoke pure runtime helpers/validators, never launch a child. Successful
 helpers and prompt contracts are not a live Forge or quality-equivalence test.
+
+`handwritten-workflows.json` holds the six phase scripts (clarify → veredicto)
+the orchestrator wrote by hand with `write` in the forgetest `repo-e2e2` run of
+2026-11-03 (pi-subagents 0.79.1), copied verbatim from the session transcript:
+attempt ID, phase, brief (the `task` string) and file content. Only the project
+root was replaced with `/work/forgetest/repo-e2e2`. The `attempt` tests check
+that the script the tool now writes is byte-identical to these.

@@ -8,6 +8,7 @@ test("Forge async fresh launch contract invokes durable identity, receipt, and r
   for (const action of ["start", "resume", "attempt", "attach", "status", "analyze", "findings"]) assert.ok(o.includes(`action: "${action}"`), action);
   assert.match(o, /context: "fresh"/); assert.match(o, /async: true/); assert.doesNotMatch(o, /workflowScript/);
   assert.match(o, /workflow: "<absolute script path>"/); assert.match(o, /until `bg_wait`/);
+  assert.match(o, /action: "attempt"[^`]*brief: "<thin English brief>"/); assert.match(o, /Never write or edit that script\s+yourself/);
   assert.match(o, /workflowRunId/); assert.match(o, /asyncDir/); assert.match(o, /second.*replan|second.*decision/i);
   assert.match(o, /request\.md.*verbatim|verbatim.*request\.md/i); assert.match(o, /outputMode: "file-only"/);
   assert.match(o, /prompt-enforced/i); assert.match(f, /zero_execution/);

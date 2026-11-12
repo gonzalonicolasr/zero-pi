@@ -54,6 +54,8 @@ export interface ExecutionInput {
   total?: number;
   tasks?: string[];
   members?: { attemptId: string; task: string; ok?: boolean }[];
+  brief?: string;
+  outputMode?: string;
 }
 
 /** The run-record phases the autotune aggregates (see autotune.ts RECORD_PHASES). */
@@ -298,6 +300,25 @@ function open(cwd: string, slug: string, request: string | Buffer): ExecutionLed
   return ledger;
 }
 
+/** The one-child workflow script of an attempt, written by code so the launch
+ *  shape (one `runs.run`, explicit child `context: "fresh"`, output mode) never
+ *  depends on the orchestrator typing it. Same text it wrote by hand before
+ *  (fixtures/handwritten-workflows.json); strings are JSON literals, valid JS. */
+function writeWorkflow(ledger: ExecutionLedger, phase: CostPhase, id: string, input: ExecutionInput) {
+  if (typeof input.brief !== "string" || !input.brief.trim()) throw new Error("brief (the thin task text for the child) required to write the workflow script");
+  const explore = phase === "explore", mode = explore ? "inline" : "file-only";
+  if (input.outputMode !== undefined && input.outputMode !== mode) throw new Error(`outputMode for ${phase} must be ${mode}`);
+  const q = JSON.stringify, dir = join(runDir(ledger), "workflows"), script = join(dir, `${id}.js`);
+  const child = `{ agent: ${q(`zero-${phase}`)}, context: "fresh", task: ${q(input.brief)}, ` +
+    (explore ? `output: false, outputMode: "inline" }` : `output: ${q(join(runDir(ledger), "outputs", `${id}.md`))}, outputMode: "file-only" }`);
+  const text = explore
+    ? `const child = await runs.run(${q(id)}, ${child}); return { ok: child.ok, runId: child.runId };\n`
+    : `return runs.run(${q(id)}, ${child});\n`;
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(script, text, { flag: "wx", mode: 0o600 });
+  return { script, subagent: { workflow: script, async: true, context: "fresh", cwd: ledger.cwd, artifacts: true, ...(explore ? { output: false, outputMode: "inline" } : {}) } };
+}
+
 export function executionOperation(cwd: string, input: ExecutionInput): any {
   return locked(cwd, () => {
     cwd = project(cwd);
@@ -450,9 +471,10 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
     if (input.action === "attempt") {
       if (state(ledger).state === "blocked") throw new Error("Readiness replan cap reached; blocked/not verified");
       if (!COST_PHASES.includes(input.phase as CostPhase) || !positive(input.round) || !positive(input.batch)) throw new Error("phase, positive round and batch required");
-      const id = randomUUID();
-      ledger.attempts.push({ id, phase: input.phase as CostPhase, round: input.round!, batch: input.batch! }); save(ledger);
-      return { ...state(ledger), attemptId: id };
+      const phase = input.phase as CostPhase, id = randomUUID();
+      const launch = input.brief === undefined && input.outputMode === undefined ? undefined : writeWorkflow(ledger, phase, id, input);
+      ledger.attempts.push({ id, phase, round: input.round!, batch: input.batch! }); save(ledger);
+      return { ...state(ledger), attemptId: id, ...launch };
     }
     const a = ledger.attempts.find(a => a.id === input.attemptId);
     if (!a) throw new Error("Unknown attemptId");

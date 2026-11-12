@@ -1,0 +1,48 @@
+{
+ "source": "Orchestrator write calls from the forgetest e2e2 run (pi session 2026-11-03), verbatim; only the project root was redacted.",
+ "root": "/work/forgetest/repo-e2e2",
+ "scripts": [
+  {
+   "attemptId": "51a04ae2-7baf-45f6-9175-1ef96d53d5ef",
+   "phase": "clarify",
+   "brief": "Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Request file: /work/forgetest/repo-e2e2/.sdd/parse-duration/request.md. Record assumptions in clarifications.md. Stop only on genuinely blocking ambiguity — the request is detailed enough. Write only under .sdd/parse-duration/.",
+   "path": "/work/forgetest/repo-e2e2/.sdd/parse-duration/workflows/51a04ae2-7baf-45f6-9175-1ef96d53d5ef.js",
+   "content": "return runs.run(\"51a04ae2-7baf-45f6-9175-1ef96d53d5ef\", { agent: \"zero-clarify\", context: \"fresh\", task: \"Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Request file: /work/forgetest/repo-e2e2/.sdd/parse-duration/request.md. Record assumptions in clarifications.md. Stop only on genuinely blocking ambiguity — the request is detailed enough. Write only under .sdd/parse-duration/.\", output: \"/work/forgetest/repo-e2e2/.sdd/parse-duration/outputs/51a04ae2-7baf-45f6-9175-1ef96d53d5ef.md\", outputMode: \"file-only\" });\n"
+  },
+  {
+   "attemptId": "9d7d9b23-5c1f-43a8-8ac9-428dff4fc045",
+   "phase": "explore",
+   "brief": "Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Request file: /work/forgetest/repo-e2e2/.sdd/parse-duration/request.md. Project root: /work/forgetest/repo-e2e2. Explore the codebase read-only. Investigate src/tiempo.js (formatDuration), test/tiempo.test.js, README.md, package.json. Identify the existing API, export style (ESM), test framework (node:test), and any patterns the new parseDuration must follow. Report findings including code roots, relevant files, patterns, unknowns and blockers.",
+   "path": "/work/forgetest/repo-e2e2/.sdd/parse-duration/workflows/9d7d9b23-5c1f-43a8-8ac9-428dff4fc045.js",
+   "content": "const child = await runs.run(\"9d7d9b23-5c1f-43a8-8ac9-428dff4fc045\", { agent: \"zero-explore\", context: \"fresh\", task: \"Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Request file: /work/forgetest/repo-e2e2/.sdd/parse-duration/request.md. Project root: /work/forgetest/repo-e2e2. Explore the codebase read-only. Investigate src/tiempo.js (formatDuration), test/tiempo.test.js, README.md, package.json. Identify the existing API, export style (ESM), test framework (node:test), and any patterns the new parseDuration must follow. Report findings including code roots, relevant files, patterns, unknowns and blockers.\", output: false, outputMode: \"inline\" }); return { ok: child.ok, runId: child.runId };\n"
+  },
+  {
+   "attemptId": "65b910b3-408a-452a-a623-948653f6ad12",
+   "phase": "plan",
+   "brief": "Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Request: /work/forgetest/repo-e2e2/.sdd/parse-duration/request.md. Findings: /work/forgetest/repo-e2e2/.sdd/parse-duration/findings.md. Clarifications: /work/forgetest/repo-e2e2/.sdd/parse-duration/clarifications.md. Code root: /work/forgetest/repo-e2e2. Write spec.md, design.md, and tasks.md under .sdd/parse-duration/. ESM project, node:test, test command: npm test. The project has src/tiempo.js with formatDuration, test/tiempo.test.js, README.md, package.json.",
+   "path": "/work/forgetest/repo-e2e2/.sdd/parse-duration/workflows/65b910b3-408a-452a-a623-948653f6ad12.js",
+   "content": "return runs.run(\"65b910b3-408a-452a-a623-948653f6ad12\", { agent: \"zero-plan\", context: \"fresh\", task: \"Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Request: /work/forgetest/repo-e2e2/.sdd/parse-duration/request.md. Findings: /work/forgetest/repo-e2e2/.sdd/parse-duration/findings.md. Clarifications: /work/forgetest/repo-e2e2/.sdd/parse-duration/clarifications.md. Code root: /work/forgetest/repo-e2e2. Write spec.md, design.md, and tasks.md under .sdd/parse-duration/. ESM project, node:test, test command: npm test. The project has src/tiempo.js with formatDuration, test/tiempo.test.js, README.md, package.json.\", output: \"/work/forgetest/repo-e2e2/.sdd/parse-duration/outputs/65b910b3-408a-452a-a623-948653f6ad12.md\", outputMode: \"file-only\" });\n"
+  },
+  {
+   "attemptId": "7693fcdc-03a0-4070-8b2e-3e6ff126625c",
+   "phase": "analyze",
+   "brief": "Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Read spec.md, design.md, tasks.md from that directory. The validate gate passed with no defects and no warnings. Judge qualitative readiness: unresolved ambiguity, weak acceptance criteria, unsafe task dependencies, missing focused-test evidence, scope creep, review-workload risk. Write checklist.md with Decision: continue or Decision: replan. Write only under .sdd/parse-duration/.",
+   "path": "/work/forgetest/repo-e2e2/.sdd/parse-duration/workflows/7693fcdc-03a0-4070-8b2e-3e6ff126625c.js",
+   "content": "return runs.run(\"7693fcdc-03a0-4070-8b2e-3e6ff126625c\", { agent: \"zero-analyze\", context: \"fresh\", task: \"Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Read spec.md, design.md, tasks.md from that directory. The validate gate passed with no defects and no warnings. Judge qualitative readiness: unresolved ambiguity, weak acceptance criteria, unsafe task dependencies, missing focused-test evidence, scope creep, review-workload risk. Write checklist.md with Decision: continue or Decision: replan. Write only under .sdd/parse-duration/.\", output: \"/work/forgetest/repo-e2e2/.sdd/parse-duration/outputs/7693fcdc-03a0-4070-8b2e-3e6ff126625c.md\", outputMode: \"file-only\" });\n"
+  },
+  {
+   "attemptId": "9184bd8b-42a6-4023-8d13-51b6c2a1be3d",
+   "phase": "build",
+   "brief": "Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Code root: /work/forgetest/repo-e2e2. Implement tasks T001, T002, T003 from tasks.md. Read spec.md and design.md for requirements. Do not start a task until its depends: entries are [x]. Test command: npm test. Strict TDD mode: strict (test command: npm test). Follow RED → GREEN → TRIANGULATE → REFACTOR and record the TDD Cycle Evidence table in .sdd/parse-duration/tdd-evidence.md. After all tasks pass, make a single commit in Spanish. No push. Mark completed tasks [x] in tasks.md.",
+   "path": "/work/forgetest/repo-e2e2/.sdd/parse-duration/workflows/9184bd8b-42a6-4023-8d13-51b6c2a1be3d.js",
+   "content": "return runs.run(\"9184bd8b-42a6-4023-8d13-51b6c2a1be3d\", { agent: \"zero-build\", context: \"fresh\", task: \"Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Code root: /work/forgetest/repo-e2e2. Implement tasks T001, T002, T003 from tasks.md. Read spec.md and design.md for requirements. Do not start a task until its depends: entries are [x]. Test command: npm test. Strict TDD mode: strict (test command: npm test). Follow RED → GREEN → TRIANGULATE → REFACTOR and record the TDD Cycle Evidence table in .sdd/parse-duration/tdd-evidence.md. After all tasks pass, make a single commit in Spanish. No push. Mark completed tasks [x] in tasks.md.\", output: \"/work/forgetest/repo-e2e2/.sdd/parse-duration/outputs/9184bd8b-42a6-4023-8d13-51b6c2a1be3d.md\", outputMode: \"file-only\" });\n"
+  },
+  {
+   "attemptId": "01ac14c2-d0ad-4266-adf1-af7f069159cf",
+   "phase": "veredicto",
+   "brief": "Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Code root: /work/forgetest/repo-e2e2. Round 1. Build envelope: .sdd/parse-duration/build-r1.md. Review the build adversarially. Read spec.md, design.md, tasks.md, tdd-evidence.md. Run npm test and verify all tests pass. Verify src/tiempo.js exports parseDuration, test/tiempo.test.js covers valid cases, error cases, and roundtrip, README.md documents parseDuration, and commit exists in Spanish. Strict TDD mode: strict (test command: npm test). Audit the TDD Cycle Evidence table in .sdd/parse-duration/tdd-evidence.md. Return VEREDICTO: pasa, corregir, or replantear.",
+   "path": "/work/forgetest/repo-e2e2/.sdd/parse-duration/workflows/01ac14c2-d0ad-4266-adf1-af7f069159cf.js",
+   "content": "return runs.run(\"01ac14c2-d0ad-4266-adf1-af7f069159cf\", { agent: \"zero-veredicto\", context: \"fresh\", task: \"Feature slug: parse-duration. Artifact dir: /work/forgetest/repo-e2e2/.sdd/parse-duration/. Code root: /work/forgetest/repo-e2e2. Round 1. Build envelope: .sdd/parse-duration/build-r1.md. Review the build adversarially. Read spec.md, design.md, tasks.md, tdd-evidence.md. Run npm test and verify all tests pass. Verify src/tiempo.js exports parseDuration, test/tiempo.test.js covers valid cases, error cases, and roundtrip, README.md documents parseDuration, and commit exists in Spanish. Strict TDD mode: strict (test command: npm test). Audit the TDD Cycle Evidence table in .sdd/parse-duration/tdd-evidence.md. Return VEREDICTO: pasa, corregir, or replantear.\", output: \"/work/forgetest/repo-e2e2/.sdd/parse-duration/outputs/01ac14c2-d0ad-4266-adf1-af7f069159cf.md\", outputMode: \"file-only\" });\n"
+  }
+ ]
+}

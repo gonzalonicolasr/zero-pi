@@ -622,3 +622,54 @@ test("archive is not a tool action: it stays a user command", () => fixture(cwd 
   const { runId } = start(cwd, "feat");
   assert.throws(() => executionOperation(cwd, { action: "archive", runId }), /Unknown/);
 }));
+
+// ── attempt writes the phase workflow script ─────────────────────────────────
+const handwritten = JSON.parse(readFileSync(new URL("./fixtures/handwritten-workflows.json", import.meta.url), "utf8"));
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+
+test("attempt with a brief writes the same workflow script the orchestrator wrote by hand and returns the exact subagent arguments", () => fixture(cwd => {
+  const { runId, cwd: root } = start(cwd, "parse-duration");
+  for (const s of handwritten.scripts) {
+    const brief = s.brief.replaceAll(handwritten.root, root);
+    const a = executionOperation(cwd, { action: "attempt", runId, phase: s.phase, round: 1, batch: 1, brief });
+    const script = s.path.replaceAll(handwritten.root, root).replace(s.attemptId, a.attemptId);
+    assert.equal(a.script, script, s.phase);
+    assert.equal(readFileSync(script, "utf8"), s.content.replaceAll(handwritten.root, root).replaceAll(s.attemptId, a.attemptId), s.phase);
+    const inline = s.phase === "explore" ? { output: false, outputMode: "inline" } : {};
+    assert.deepEqual(a.subagent, { workflow: script, async: true, context: "fresh", cwd: root, artifacts: true, ...inline }, s.phase);
+  }
+  assert.equal(readExecution(cwd, runId).attempts.length, handwritten.scripts.length);
+}));
+
+test("the written script runs one fresh child with the brief intact, whatever characters the brief carries", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "forge-ledger-"));
+  try {
+    const { runId, cwd: root } = start(cwd, "feat");
+    const brief = 'Quote "x", backslash \\ and a\nnew line — then `ticks` ${not} </script>';
+    for (const phase of ["build", "explore"]) {
+      const a = executionOperation(cwd, { action: "attempt", runId, phase, round: 1, batch: 1, brief });
+      const calls: unknown[][] = [];
+      const runs = { run: async (...args: unknown[]) => { calls.push(args); return { ok: true, runId: "child-1", text: "report" }; } };
+      const value = await new AsyncFunction("runs", readFileSync(a.script, "utf8"))(runs);
+      const output = phase === "explore" ? false : join(root, ".sdd/feat/outputs", `${a.attemptId}.md`);
+      assert.deepEqual(calls, [[a.attemptId, { agent: `zero-${phase}`, context: "fresh", task: brief, output, outputMode: phase === "explore" ? "inline" : "file-only" }]]);
+      if (phase === "explore") assert.deepEqual(value, { ok: true, runId: "child-1" });
+    }
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("attempt refuses an empty brief or a wrong output mode before registering anything; without a brief it only registers", () => fixture(cwd => {
+  const { runId, cwd: root } = start(cwd, "feat");
+  const workflows = join(root, ".sdd/feat/workflows");
+  assert.throws(() => executionOperation(cwd, { action: "attempt", runId, phase: "plan", round: 1, batch: 1, brief: "  " }), /brief/);
+  assert.throws(() => executionOperation(cwd, { action: "attempt", runId, phase: "explore", round: 1, batch: 1, brief: "b", outputMode: "file-only" }), /outputMode/);
+  assert.throws(() => executionOperation(cwd, { action: "attempt", runId, phase: "plan", round: 1, batch: 1, brief: "b", outputMode: "inline" }), /outputMode/);
+  assert.throws(() => executionOperation(cwd, { action: "attempt", runId, phase: "plan", round: 1, batch: 1, outputMode: "file-only" }), /brief/);
+  assert.equal(readExecution(cwd, runId).attempts.length, 0);
+  assert.equal(existsSync(workflows), false);
+  const ok = executionOperation(cwd, { action: "attempt", runId, phase: "explore", round: 1, batch: 1, brief: "b", outputMode: "inline" });
+  assert.equal(ok.subagent.outputMode, "inline");
+  const bare = attempt(cwd, runId);
+  assert.equal(bare.script, undefined); assert.equal(bare.subagent, undefined);
+  assert.equal(readExecution(cwd, runId).attempts.length, 2);
+}));
