@@ -427,8 +427,8 @@ remaining task in a single growing context — that is what drove a real run to
 463k tokens, 39 minutes, and a dropped connection. Run build as a loop of
 bounded batches, each a fresh `zero-build` sub-agent.
 
-Before delegating build — a fresh build phase, or a `corregir`/`replantear`
-re-run — drive this loop:
+Before delegating build — a fresh build phase, or a `replantear` re-run —
+drive this loop (after a `corregir` verdict, do not run it: see step 6):
 
 1. Read the unchecked (`[ ]`) tasks from `tasks.md` in listed order, their
    `depends:` edges, and their `review: ~N changed lines` estimates from the
