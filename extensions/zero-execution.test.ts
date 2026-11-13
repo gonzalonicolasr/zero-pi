@@ -809,3 +809,17 @@ test("an error computing next never turns an already written close or analyze in
   assert.equal(readExecution(cwd, runId).attempts.find(a => a.phase === "analyze")!.decision, "continue");
   assert.match(readFileSync(join(dir, "build-r1.md"), "utf8"), /## Batch 1\/1: T002\n\nbuilt/);
 }));
+
+test("findings accepts a level-2 or level-3 Code roots heading, and still refuses a report without one", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const target = join(cwd, ".sdd/feat/findings.md");
+  for (const [n, report] of [[1, "# Findings\n\n### Code roots\n\n- `/code`\n"], [2, "## Code roots\n- `/code`\n"]] as const) {
+    const e = launch(cwd, runId, "explore", n, { output: report });
+    executionOperation(cwd, { action: "findings", runId, attemptId: e });
+    assert.equal(readFileSync(target, "utf8"), report);
+  }
+  for (const [n, report] of [[3, "#### Code roots\n- `/code`\n"], [4, "Code roots\n- `/code`\n"]] as const) {
+    const e = launch(cwd, runId, "explore", n, { output: report });
+    assert.throws(() => executionOperation(cwd, { action: "findings", runId, attemptId: e }), /missing Code roots/);
+  }
+}));

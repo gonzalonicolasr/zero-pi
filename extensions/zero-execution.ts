@@ -533,7 +533,7 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       reconcileAttempt(ledger, a);
       if (a.receipt?.state !== "complete" || !a.receipt.outputPath) throw new Error("Explore output receipt unavailable; blocked handoff");
       const content = readFileSync(a.receipt.outputPath, "utf8");
-      if (!content.trim() || !/^## Code roots\s*$/m.test(content)) throw new Error("Explore output incomplete; missing Code roots");
+      if (!content.trim() || !/^#{2,3} Code roots\s*$/m.test(content)) throw new Error("Explore output incomplete; missing Code roots");
       const target = join(cwd, ".sdd", ledger.slug, "findings.md");
       const pointer = JSON.parse(readFileSync(join(dirname(target), "execution.json"), "utf8"));
       if (pointer.runId !== ledger.runId || pointer.cwd !== cwd) throw new Error("Findings target execution mismatch");
