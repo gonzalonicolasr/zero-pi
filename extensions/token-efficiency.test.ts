@@ -129,3 +129,11 @@ test("a refused decision waits again only while bg_wait has not said done; a fai
   assert.match(o, /never close a\s+wave child with `batch-close` \(it does not tick `tasks\.md`\)/);
   assert.doesNotMatch(o, /a running or unverifiable child is rejected/);
 });
+
+test("the prompt shows the subagent launch in the canonical pi-subagents shape: management fields in options", () => {
+  const o = read("prompts/orchestrator.md");
+  assert.match(o, /`subagent\(\{ workflow: "<absolute script path>", async: true,\s+cwd: "<absolute project cwd>", options: \{ context: "fresh", artifacts: true \} \}\)`/);
+  assert.match(o, /`output: false` at the top level and `outputMode: "inline"` in\s+`options` for explore/);
+  assert.match(o, /object `\{ workflow, async: true, cwd, output: false, options: \{ context:\s+"fresh", artifacts: true, outputMode: "inline" \} \}`/);
+  assert.doesNotMatch(o, /context: "fresh", cwd: "<absolute project cwd>", artifacts: true \}\)/);
+});

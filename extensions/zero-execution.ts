@@ -350,7 +350,8 @@ function writeWorkflow(ledger: ExecutionLedger, phase: CostPhase, id: string, in
     : `return runs.run(${q(id)}, ${child});\n`;
   mkdirSync(dir, { recursive: true });
   writeFileSync(script, text, { flag: "wx", mode: 0o600 });
-  return { script, subagent: { workflow: script, async: true, context: "fresh", cwd: ledger.cwd, artifacts: true, ...(explore ? { output: false, outputMode: "inline" } : {}) } };
+  // pi-subagents' model schema: management fields (context, artifacts, outputMode) go in `options`.
+  return { script, subagent: { workflow: script, async: true, cwd: ledger.cwd, ...(explore ? { output: false } : {}), options: { context: "fresh", artifacts: true, ...(explore ? { outputMode: "inline" } : {}) } } };
 }
 
 export function executionOperation(cwd: string, input: ExecutionInput): any {

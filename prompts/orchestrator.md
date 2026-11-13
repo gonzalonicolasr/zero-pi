@@ -241,14 +241,16 @@ waits for all of them):
 2. Launch one async workflow for this phase/batch: call `subagent` with the
    returned `subagent` object verbatim —
    `subagent({ workflow: "<absolute script path>", async: true,
-   context: "fresh", cwd: "<absolute project cwd>", artifacts: true })`, plus
-   `output: false, outputMode: "inline"` for explore.
+   cwd: "<absolute project cwd>", options: { context: "fresh", artifacts: true } })`,
+   plus `output: false` at the top level and `outputMode: "inline"` in
+   `options` for explore (pi-subagents takes `context`, `artifacts` and
+   `outputMode` only inside `options`).
    The script already exists when `attempt` returns. pi-subagents removed the
    old inline script-string parameter; do not pass it, and do not use the
    inline `workflow: true` code-block form either (it needs visible reply text
    that a detached run may not keep).
    Do not combine phases into one workflow, use retained-child `resume`, or
-   inherit parent conversation. Explicit top-level AND child `context: "fresh"`
+   inherit parent conversation. Explicit launch (`options.context`) AND child `context: "fresh"`
    override a global fork preference; generated `defaultContext: fresh` is
    defense only. Code writes the script from the brief; nothing parses or
    rewrites it afterwards.
@@ -284,9 +286,11 @@ waits for all of them):
    unverifiable or never attached as a failed delivery). Their result is your
    delivery check.
 5. Read the output artifact and apply the full Phase result gate. **Explore
-   exception:** `attempt` with `outputMode: "inline"` sets top-level AND child
-   `output: false`, `outputMode: "inline"` (not file-only), keeping
-   `artifacts: true`. The script it writes returns a compact workflow value, not
+   exception:** `attempt` with `outputMode: "inline"` returns the `subagent`
+   object `{ workflow, async: true, cwd, output: false, options: { context:
+   "fresh", artifacts: true, outputMode: "inline" } }` and sets the child's
+   `output: false`, `outputMode: "inline"` (not file-only). The script it
+   writes returns a compact workflow value, not
    the findings text: `const child = await runs.run("<attemptId>", {
    agent: "zero-explore", context: "fresh", task: "<thin brief>", output: false,
    outputMode: "inline" }); return { ok: child.ok, runId: child.runId };`.

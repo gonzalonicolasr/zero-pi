@@ -635,8 +635,10 @@ test("attempt with a brief writes the same workflow script the orchestrator wrot
     const script = s.path.replaceAll(handwritten.root, root).replace(s.attemptId, a.attemptId);
     assert.equal(a.script, script, s.phase);
     assert.equal(readFileSync(script, "utf8"), s.content.replaceAll(handwritten.root, root).replaceAll(s.attemptId, a.attemptId), s.phase);
-    const inline = s.phase === "explore" ? { output: false, outputMode: "inline" } : {};
-    assert.deepEqual(a.subagent, { workflow: script, async: true, context: "fresh", cwd: root, artifacts: true, ...inline }, s.phase);
+    // pi-subagents 0.79.1 declares only agent/task/workflow/args/async/model/cwd/worktree/output/action/id/message
+    // at the top level of a model call; every other field goes in `options`.
+    const explore = s.phase === "explore";
+    assert.deepEqual(a.subagent, { workflow: script, async: true, cwd: root, ...(explore ? { output: false } : {}), options: { context: "fresh", artifacts: true, ...(explore ? { outputMode: "inline" } : {}) } }, s.phase);
   }
   assert.equal(readExecution(cwd, runId).attempts.length, handwritten.scripts.length);
 }));
@@ -668,7 +670,7 @@ test("attempt refuses an empty brief or a wrong output mode before registering a
   assert.equal(readExecution(cwd, runId).attempts.length, 0);
   assert.equal(existsSync(workflows), false);
   const ok = executionOperation(cwd, { action: "attempt", runId, phase: "explore", round: 1, batch: 1, brief: "b", outputMode: "inline" });
-  assert.equal(ok.subagent.outputMode, "inline");
+  assert.equal(ok.subagent.options.outputMode, "inline");
   const bare = attempt(cwd, runId);
   assert.equal(bare.script, undefined); assert.equal(bare.subagent, undefined);
   assert.equal(readExecution(cwd, runId).attempts.length, 2);
