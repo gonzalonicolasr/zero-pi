@@ -40,6 +40,30 @@ clarify y plan, porque `findings`, `analyze`, `round`, `batch-close` y
 Grababan la sección como `unverified`/`failed` y el cierre bueno ya no entraba.
 Ahora rechazan antes de escribir, como `round`, `findings` y `analyze`.
 
+### Fixed — bordes del protocolo rápido de `/forge` (dos revisiones)
+
+- Los cierres sólo rechazan a un hijo que **sigue corriendo**. Un hijo que ya
+  terminó sin recibo verificable (workflow `failed` sin entradas, intento nunca
+  adjuntado, ids inválidos) se cierra como entrega fallida (`unverified`), como
+  antes: la oleada ya no se traba y la tarea se reintenta sola.
+- `batch-close` sólo escribe `## Batch i/n` en `build-r<N>.md` cuando la entrega
+  es `complete`: el reintento bueno de un lote fallido ya no queda tapado.
+- Sin `tasks.md`, `analyze` (continue) y `batch-close` devuelven `next` con
+  `mode: "blocked"` (re-run plan). Un error al calcular `next` ya no convierte en
+  error un cierre ya escrito.
+- `attempt` devuelve los argumentos de `subagent` en la forma que declara
+  pi-subagents 0.79.1: `context`, `artifacts` y `outputMode` dentro de `options`.
+- `orchestrator.md`: después de `corregir` hay un lote que reabre y arregla las
+  tareas (antes `wave` decía `done` y se salteaba el build); si `bg_wait` no
+  dijo done se vuelve a esperar, si dijo `failed` la fase se re-corre; un
+  miembro de tanda que no termina se relanza; el Analyze gate ya no habla de un
+  gate de entrega aparte.
+
+### Changed — `findings` acepta `### Code roots`
+
+Además de `## Code roots`. En 2 de 3 runs reales explore usó el nivel 3 y el
+rechazo costaba un explore entero.
+
 ## [0.1.92] - 2026-11-03
 
 ### Fixed — `/forge` lanzaba las fases con un parámetro que pi-subagents ya no tiene
