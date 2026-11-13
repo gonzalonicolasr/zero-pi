@@ -109,3 +109,13 @@ test("the plan, checkpoint and cost gates run through zero_execution, and archiv
   assert.match(o, /Before the first \*\*build\*\* batch of every round/);
   assert.match(o, /under `Costo:`/);
 });
+
+test("after a corregir verdict the orchestrator runs one reopen-and-fix build batch, not wave or an old next", () => {
+  const o = read("prompts/orchestrator.md");
+  assert.match(o, /\*\*After a `corregir` verdict:\*\* do not call `wave` and ignore any earlier\s+`next`/);
+  assert.match(o, /brief names\s+`\.sdd\/<slug>\/veredicto-r<N>\.md`[\s\S]{0,120}as the defect list/);
+  assert.match(o, /reopen the affected tasks to `\[ \]`, fix them and mark them `\[x\]` again/);
+  assert.match(o, /Close it with `batch-close` \(`batch: 1, total: 1,/);
+  assert.match(o, /After `replantear`, `plan`\s+rewrites `tasks\.md`/);
+  assert.doesNotMatch(o, /re-batching whatever tasks its defects reopened/);
+});

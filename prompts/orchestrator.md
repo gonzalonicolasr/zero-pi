@@ -491,6 +491,19 @@ re-run — drive this loop:
    The veredicto brief references `.sdd/<slug>/build-r<N>.md` (the round's build
    envelopes) by path.
 
+   **After a `corregir` verdict:** do not call `wave` and ignore any earlier
+   `next` — both read `tasks.md`, where every task is `[x]`, and report `done`.
+   After the round's `checkpoint`, run one sequential `zero-build` attempt
+   (round = the ledger's new round) whose brief names
+   `.sdd/<slug>/veredicto-r<N>.md` (the `verdictPath` that `round` returned)
+   as the defect list and tells the child to
+   reopen the affected tasks to `[ ]`, fix them and mark them `[x]` again (the
+   build prompt's "leave `[x]` tasks untouched" is for resume; this brief is the
+   explicit exception). Close it with `batch-close` (`batch: 1, total: 1,
+   tasks: [<ids of the tasks the defects touch>]`), then run veredicto. After `replantear`, `plan`
+   rewrites `tasks.md`, so the normal `analyze → next → checkpoint` path
+   applies.
+
 **Parallel waves.** A task is a wave candidate only when its header line carries
 `[P]` (plan proposes, code confirms). The wave starts with the first eligible
 `[ ]` task — that task must itself carry `[P]` — and adds, in order, later
@@ -507,8 +520,8 @@ fits one batch, build is invoked exactly once.
 
 **Batches are not rounds.** An entire batched build — however many batches and
 parallel waves it took, retries included — is one build phase and counts as one
-build/veredicto round. Batch and wave count never touch the iteration cap. A `corregir` verdict re-runs the whole build
-phase (re-batching whatever tasks its defects reopened) as the next round.
+build/veredicto round. Batch and wave count never touch the iteration cap. A `corregir` verdict re-runs the build
+phase (the reopen-and-fix batch in step 6) as the next round.
 
 **Resume is unaffected.** Each sequential batch marks its tasks `[x]` as they
 land and `wave-close` ticks a wave's tasks, so an interrupted build resumes from
