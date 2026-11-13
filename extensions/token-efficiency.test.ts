@@ -137,3 +137,10 @@ test("the prompt shows the subagent launch in the canonical pi-subagents shape: 
   assert.match(o, /object `\{ workflow, async: true, cwd, output: false, options: \{ context:\s+"fresh", artifacts: true, outputMode: "inline" \} \}`/);
   assert.doesNotMatch(o, /context: "fresh", cwd: "<absolute project cwd>", artifacts: true \}\)/);
 });
+
+test("analyze is called once bg_wait said done and checklist.md was read: analyze itself checks the delivery", () => {
+  const o = read("prompts/orchestrator.md");
+  assert.doesNotMatch(o, /After the delivery gate passes, call `zero_execution` with `action: "analyze"/);
+  assert.match(o, /After `bg_wait` reported the analyze workflow done and you read\s+`checklist\.md`, call `zero_execution` with `action: "analyze"/);
+  assert.match(o, /`analyze` itself\s+verifies the delivery/);
+});

@@ -392,9 +392,11 @@ dependencies, missing focused-test evidence, scope creep, review-workload risk).
 It writes `.sdd/<slug>/checklist.md` with a `Decision: continue` or
 `Decision: replan` line.
 
-After the delivery gate passes, call `zero_execution` with `action: "analyze",
+After `bg_wait` reported the analyze workflow done and you read
+`checklist.md`, call `zero_execution` with `action: "analyze",
 runId: "<runId>", attemptId: "<analyze attemptId>", decision: "continue"` or
-`decision: "replan"`, matching the delivered checklist. This operation records
+`decision: "replan"`, matching the delivered checklist (`analyze` itself
+verifies the delivery and refuses an unverified one). This operation records
 one outcome per attempt; repeating it is idempotent, changing it is an error.
 An unresolved completed analyze must be recorded before another attempt.
 
