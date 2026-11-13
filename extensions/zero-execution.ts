@@ -458,7 +458,9 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       requireTerminal(ledger, a, "Build ");
       const delivery = a.receipt?.state ?? "unverified";
       const round = currentRound(ledger), buildPath = join(runDir(ledger), `build-r${round}.md`);
-      appendSection(buildPath, `## Batch ${i}/${n}: ${ids.join(", ")}`, childOutput(ledger, a) ?? `(no output captured; delivery: ${delivery})`);
+      // Only a delivered batch is logged: the header is idempotent, so a failed
+      // close would shadow the good retry of the same batch.
+      if (delivery === "complete") appendSection(buildPath, `## Batch ${i}/${n}: ${ids.join(", ")}`, childOutput(ledger, a) ?? "(no output captured)");
       save(ledger);
       return { ...state(ledger), round, delivery, buildPath, next: delivery === "complete" ? nextStep(ledger) : undefined };
     }

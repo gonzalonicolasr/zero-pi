@@ -766,3 +766,14 @@ test("batch-close and wave-close refuse a child whose real workflow receipt is n
   assert.equal(readFileSync(join(dir, "tasks.md"), "utf8"), waveTasks);
   assert.equal(existsSync(join(dir, "build-r1.md")), false);
 }));
+
+test("a batch-close that did not deliver writes nothing, so the good retry of the same batch is the one logged", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const build = join(cwd, ".sdd/feat/build-r1.md");
+  const bad = launch(cwd, runId, "build", 1, { status: "failed", output: "FIRST (failed) output\n" });
+  assert.equal(executionOperation(cwd, { action: "batch-close", runId, attemptId: bad, batch: 1, total: 1, tasks: ["T002"] }).delivery, "failed");
+  assert.equal(existsSync(build), false);
+  const good = launch(cwd, runId, "build", 2, { output: "SECOND (good) output\n", batch: 1 });
+  assert.equal(executionOperation(cwd, { action: "batch-close", runId, attemptId: good, batch: 1, total: 1, tasks: ["T002"] }).delivery, "complete");
+  assert.equal(readFileSync(build, "utf8"), "## Batch 1/1: T002\n\nSECOND (good) output\n");
+}));

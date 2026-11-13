@@ -455,10 +455,11 @@ re-run — drive this loop:
      not start a task until its `depends:` entries are `[x]`." Emit the build
      phase-start line noting the batch as `lote <i>/<n>`. Wait for it, apply the
      Phase result gate, then call `zero_execution` `action: "batch-close",
-     runId, attemptId, batch: <i>, total: <n>, tasks: [<batch ids>]`: it appends
-     the child's output to `.sdd/<slug>/build-r<N>.md` under
-     `## Batch <i>/<n>: <ids>` and returns the verified `delivery`. A `delivery`
-     other than `complete` is a failed Phase result gate: re-run the batch.
+     runId, attemptId, batch: <i>, total: <n>, tasks: [<batch ids>]`: it returns
+     the verified `delivery` and, only when it is `complete`, appends the child's
+     output to `.sdd/<slug>/build-r<N>.md` under `## Batch <i>/<n>: <ids>`. A
+     `delivery` other than `complete` is a failed Phase result gate: re-run the
+     batch.
    - **`mode: "parallel"`** (2–3 tasks) — a **parallel wave**. For each task,
      back to back without waiting in between: `attempt` (same round, its own
      batch number — distinct per task), launch **its own** async workflow
