@@ -301,7 +301,7 @@ function open(cwd: string, slug: string, request: string | Buffer): ExecutionLed
 }
 
 /** The next build step from tasks.md, the same value `wave` returns; undefined
- *  without tasks.md so a close or analyze never fails on it. */
+ *  without tasks.md (`wave` refuses it, closes and analyze use nextAfter). */
 function nextStep(ledger: ExecutionLedger) {
   const dir = runDir(ledger);
   const text = readText(join(dir, "tasks.md"));
@@ -309,6 +309,14 @@ function nextStep(ledger: ExecutionLedger) {
   const roots = [...codeRootsFrom(text, readText(join(dir, "design.md")) ?? ""), ledger.cwd];
   const next = nextWave(text, roots);
   return { round: currentRound(ledger), mode: next.mode, tasks: next.tasks, reason: next.mode === "blocked" ? next.reason : undefined, remaining: waveSchedule(text, roots).length };
+}
+/** `next` for a close or analyze that already wrote its result: without tasks.md
+ *  it is blocked (re-run plan, as `wave` says); an error computing it never turns
+ *  the written close into an error, it only leaves `next` out (call `wave`). */
+function nextAfter(ledger: ExecutionLedger) {
+  try {
+    return nextStep(ledger) ?? { round: currentRound(ledger), mode: "blocked" as const, tasks: [] as string[], reason: "tasks.md missing; re-run plan", remaining: 0 };
+  } catch { return undefined; }
 }
 /** Attached workflow with no readable receipt/status, or one whose state is not
  *  terminal yet. A never-attached attempt is not running: its launch failed. */
@@ -448,7 +456,7 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
         rows.map(r => `### ${r.task} — ${r.status}\n\n${(childOutput(ledger, r.a) ?? "(no output captured)").trim()}`).join("\n\n"));
       save(ledger);
       const failed = rows.filter(r => !r.ok).map(r => r.task);
-      return { ...state(ledger), round, ticked: tick.ticked, already: tick.already, failed, evidenceMissing, buildPath, tasksPath, next: failed.length ? undefined : nextStep(ledger) };
+      return { ...state(ledger), round, ticked: tick.ticked, already: tick.already, failed, evidenceMissing, buildPath, tasksPath, next: failed.length ? undefined : nextAfter(ledger) };
     }
     if (input.action === "batch-close") {
       const { i, n } = stepLabel(input);
@@ -462,7 +470,7 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       // close would shadow the good retry of the same batch.
       if (delivery === "complete") appendSection(buildPath, `## Batch ${i}/${n}: ${ids.join(", ")}`, childOutput(ledger, a) ?? "(no output captured)");
       save(ledger);
-      return { ...state(ledger), round, delivery, buildPath, next: delivery === "complete" ? nextStep(ledger) : undefined };
+      return { ...state(ledger), round, delivery, buildPath, next: delivery === "complete" ? nextAfter(ledger) : undefined };
     }
     if (input.action === "finish") {
       if (ledger.finishedAt) return { ...state(ledger), recorded: true, already: true };
@@ -539,7 +547,7 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       reconcileAttempt(ledger, a);
       if (a.receipt?.state !== "complete") throw new Error("Analyze delivery unverified; retry delivery, do not charge a replan");
       a.decision = input.decision as "continue" | "replan"; save(ledger);
-      return { ...state(ledger), attemptId: a.id, decision: a.decision, next: a.decision === "continue" ? nextStep(ledger) : undefined };
+      return { ...state(ledger), attemptId: a.id, decision: a.decision, next: a.decision === "continue" ? nextAfter(ledger) : undefined };
     }
     throw new Error("Unknown zero_execution action");
   });

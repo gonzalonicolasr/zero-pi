@@ -441,7 +441,7 @@ re-run — drive this loop:
    parallel waves below — and returns `mode`, the step's task ids, `remaining`
    (steps left, this one included) and `round`. Use its task ids; never group
    by hand when the tool is available. `mode: "blocked"` → stop and re-run
-   **plan** (its `reason` names the bad dependency). `mode: "done"` → step 6.
+   **plan** (its `reason` names the bad dependency, or a missing `tasks.md`). `mode: "done"` → step 6.
    `<n>` in `lote <i>/<n>` is `<i> - 1 + remaining`. Skip this call when the
    call that ended the previous step already returned `next` — `analyze` with
    `continue` (after its `checkpoint`), a `batch-close` with `delivery:

@@ -777,3 +777,33 @@ test("a batch-close that did not deliver writes nothing, so the good retry of th
   assert.equal(executionOperation(cwd, { action: "batch-close", runId, attemptId: good, batch: 1, total: 1, tasks: ["T002"] }).delivery, "complete");
   assert.equal(readFileSync(build, "utf8"), "## Batch 1/1: T002\n\nSECOND (good) output\n");
 }));
+
+test("without tasks.md, analyze continue and a delivered batch-close hand back next blocked: re-run plan", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const blocked = { round: 1, mode: "blocked", tasks: [], reason: "tasks.md missing; re-run plan", remaining: 0 };
+  const keep = launch(cwd, runId, "analyze", 1, { output: "Decision: continue\n" });
+  assert.deepEqual(executionOperation(cwd, { action: "analyze", runId, attemptId: keep, decision: "continue" }).next, blocked);
+  const built = launch(cwd, runId, "build", 2, { output: "built\n" });
+  assert.deepEqual(executionOperation(cwd, { action: "batch-close", runId, attemptId: built, batch: 1, total: 1, tasks: ["T002"] }).next, blocked);
+}));
+
+test("an error computing next never turns an already written close or analyze into an error", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const dir = join(cwd, ".sdd/feat");
+  writeFileSync(join(dir, "tasks.md"), `${waveTasks}\nNEXT-BOOM\n`);
+  const split = String.prototype.split;
+  String.prototype.split = function (this: string, ...args: any[]) {
+    if (this.includes("NEXT-BOOM")) throw new Error("next step exploded");
+    return (split as any).apply(this, args);
+  } as any;
+  try {
+    const keep = launch(cwd, runId, "analyze", 1, { output: "Decision: continue\n" });
+    const analyzed = executionOperation(cwd, { action: "analyze", runId, attemptId: keep, decision: "continue" });
+    assert.equal(analyzed.decision, "continue"); assert.equal(analyzed.next, undefined);
+    const built = launch(cwd, runId, "build", 2, { output: "built\n" });
+    const closed = executionOperation(cwd, { action: "batch-close", runId, attemptId: built, batch: 1, total: 1, tasks: ["T002"] });
+    assert.equal(closed.delivery, "complete"); assert.equal(closed.next, undefined);
+  } finally { String.prototype.split = split; }
+  assert.equal(readExecution(cwd, runId).attempts.find(a => a.phase === "analyze")!.decision, "continue");
+  assert.match(readFileSync(join(dir, "build-r1.md"), "utf8"), /## Batch 1\/1: T002\n\nbuilt/);
+}));
