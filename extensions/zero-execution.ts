@@ -310,11 +310,21 @@ function nextStep(ledger: ExecutionLedger) {
   const next = nextWave(text, roots);
   return { round: currentRound(ledger), mode: next.mode, tasks: next.tasks, reason: next.mode === "blocked" ? next.reason : undefined, remaining: waveSchedule(text, roots).length };
 }
+/** Attached workflow with no readable receipt/status, or one whose state is not
+ *  terminal yet. A never-attached attempt is not running: its launch failed. */
+function stillRunning(a: ExecutionAttempt): boolean {
+  if (!a.workflow || a.receipt) return false;
+  const states = ["workflow-receipt.json", "status.json"].map(file => {
+    try { return JSON.parse(readFileSync(join(a.workflow!.asyncDir, file), "utf8"))?.state; } catch { return undefined; }
+  }).filter(s => s !== undefined);
+  return !states.length || states.some(s => !["complete", "failed", "paused", "stopped"].includes(s));
+}
 /** A close logs a child's envelope once (the section header is idempotent), so it
- *  must not run while the child is still running: no terminal receipt, no close. */
+ *  must not run while the child is still running. A child that ended without a
+ *  verifiable receipt (or was never attached) closes as a failed delivery. */
 function requireTerminal(ledger: ExecutionLedger, a: ExecutionAttempt, label: string): void {
   const issue = reconcileAttempt(ledger, a);
-  if (!a.receipt) throw new Error(`${label}delivery unverified (${issue ?? "no terminal receipt"}): wait until bg_wait reports the workflow done, then retry the close; if it already did, re-run the batch as a new attempt`);
+  if (stillRunning(a)) throw new Error(`${label}delivery unverified, child still running (${issue ?? "no terminal receipt"}): wait until bg_wait reports the workflow done, then retry the close; if it already did, re-run the batch as a new attempt`);
 }
 /** The one-child workflow script of an attempt, written by code so the launch
  *  shape (one `runs.run`, explicit child `context: "fresh"`, output mode) never
@@ -446,7 +456,7 @@ export function executionOperation(cwd: string, input: ExecutionInput): any {
       if (!ids.length) throw new Error("tasks must name the batch task ids");
       const a = buildAttempt(ledger, input.attemptId);
       requireTerminal(ledger, a, "Build ");
-      const delivery = a.receipt!.state;
+      const delivery = a.receipt?.state ?? "unverified";
       const round = currentRound(ledger), buildPath = join(runDir(ledger), `build-r${round}.md`);
       appendSection(buildPath, `## Batch ${i}/${n}: ${ids.join(", ")}`, childOutput(ledger, a) ?? `(no output captured; delivery: ${delivery})`);
       save(ledger);

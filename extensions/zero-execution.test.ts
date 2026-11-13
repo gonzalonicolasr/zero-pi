@@ -721,3 +721,48 @@ test("analyze continue, a delivered batch-close and a clean wave-close return th
   const clean = executionOperation(cwd, { action: "wave-close", runId: other, batch: 1, total: 2, members: [{ attemptId: c2, task: "T002" }, { attemptId: c3, task: "T003" }] });
   assert.deepEqual(clean.next, { mode: "sequential", tasks: ["T004"], reason: undefined, remaining: 1, round: 1 });
 }));
+
+/** A build attempt whose workflow already ended without a verifiable receipt. */
+function deadEnd(cwd: string, runId: string, n: number, kind: "no-child" | "bad-ids" | "never-attached") {
+  const a = executionOperation(cwd, { action: "attempt", runId, phase: "build", round: 1, batch: n });
+  if (kind === "never-attached") return a.attemptId as string;
+  const wid = `dead-${n}`, dir = join(cwd, "runtime", wid); mkdirSync(dir, { recursive: true });
+  const entries = kind === "no-child" ? {} : { [a.attemptId]: { key: a.attemptId, agent: "zero-build", requestedContext: "fresh", resolvedContext: "fresh", continuation: { runIds: ["../x"] }, latestRunId: "../x" } };
+  const state = kind === "no-child" ? "failed" : "complete";
+  writeFileSync(join(dir, "workflow-receipt.json"), JSON.stringify({ version: 1, workflowRunId: wid, state, entries }));
+  writeFileSync(join(dir, "status.json"), JSON.stringify({ runId: wid, cwd, state, steps: [] }));
+  executionOperation(cwd, { action: "attach", runId, attemptId: a.attemptId, workflowRunId: wid, asyncDir: dir });
+  return a.attemptId as string;
+}
+
+test("a child that already ended without a verifiable receipt closes as a failed delivery, it does not block the close", () => {
+  for (const kind of ["no-child", "bad-ids", "never-attached"] as const) fixture(cwd => {
+    const { runId } = start(cwd, "feat");
+    const dir = join(cwd, ".sdd/feat");
+    writeFileSync(join(dir, "tasks.md"), waveTasks);
+    const ok = launch(cwd, runId, "build", 2, { output: "T002 ok\n" });
+    const dead = deadEnd(cwd, runId, 3, kind);
+    const wave = executionOperation(cwd, { action: "wave-close", runId, batch: 1, total: 1, members: [{ attemptId: ok, task: "T002" }, { attemptId: dead, task: "T003" }] });
+    assert.deepEqual([wave.ticked, wave.failed], [["T002"], ["T003"]], kind);
+    assert.match(readFileSync(join(dir, "build-r1.md"), "utf8"), /### T003 — failed \(unverified\)/, kind);
+    const solo = executionOperation(cwd, { action: "batch-close", runId, attemptId: dead, batch: 2, total: 2, tasks: ["T003"] });
+    assert.equal(solo.delivery, "unverified", kind);
+    assert.equal(solo.next, undefined, kind);
+  });
+});
+
+test("batch-close and wave-close refuse a child whose real workflow receipt is not terminal yet", () => fixture(cwd => {
+  const { runId } = start(cwd, "feat");
+  const dir = join(cwd, ".sdd/feat");
+  writeFileSync(join(dir, "tasks.md"), waveTasks);
+  const a = executionOperation(cwd, { action: "attempt", runId, phase: "build", round: 1, batch: 1 });
+  const rt = join(cwd, "runtime", "live"); mkdirSync(rt, { recursive: true });
+  writeFileSync(join(rt, "workflow-receipt.json"), JSON.stringify({ version: 1, workflowRunId: "live", state: "running", entries: {} }));
+  writeFileSync(join(rt, "status.json"), JSON.stringify({ runId: "live", cwd, state: "running", steps: [] }));
+  executionOperation(cwd, { action: "attach", runId, attemptId: a.attemptId, workflowRunId: "live", asyncDir: rt });
+  assert.throws(() => executionOperation(cwd, { action: "batch-close", runId, attemptId: a.attemptId, batch: 1, total: 1, tasks: ["T002"] }), /still running[\s\S]*bg_wait/i);
+  const done = launch(cwd, runId, "build", 3, { output: "T003 ok\n" });
+  assert.throws(() => executionOperation(cwd, { action: "wave-close", runId, batch: 1, total: 1, members: [{ attemptId: a.attemptId, task: "T002" }, { attemptId: done, task: "T003" }] }), /T002[\s\S]*still running/i);
+  assert.equal(readFileSync(join(dir, "tasks.md"), "utf8"), waveTasks);
+  assert.equal(existsSync(join(dir, "build-r1.md")), false);
+}));
