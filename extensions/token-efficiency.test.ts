@@ -119,3 +119,13 @@ test("after a corregir verdict the orchestrator runs one reopen-and-fix build ba
   assert.match(o, /After `replantear`, `plan`\s+rewrites `tasks\.md`/);
   assert.doesNotMatch(o, /re-batching whatever tasks its defects reopened/);
 });
+
+test("a refused decision waits again only while bg_wait has not said done; a failed child re-runs, and a stuck wave member is relaunched", () => {
+  const o = read("prompts/orchestrator.md");
+  assert.doesNotMatch(o, /wait for the same run and retry the\s+decision/);
+  assert.match(o, /If `bg_wait` did not report `done` \(timeout or\s+attention\), call `bg_wait` again on the same id\./);
+  assert.match(o, /If it reported `failed`,\s+`stopped` or `paused`, do not retry the decision: that is a failed Phase\s+result gate — re-run the phase once as a new attempt\./);
+  assert.match(o, /If `wave-close` is refused because a member\s+never reached a terminal receipt[\s\S]{0,200}launch that task again as a new attempt and call\s+`wave-close` with the delivered member plus the NEW attempt/);
+  assert.match(o, /never close a\s+wave child with `batch-close` \(it does not tick `tasks\.md`\)/);
+  assert.doesNotMatch(o, /a running or unverifiable child is rejected/);
+});

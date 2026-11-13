@@ -263,8 +263,11 @@ waits for all of them):
    Do not call `analyze`, `findings`, `round`, `batch-close` or
    `wave-close` for an attempt until `bg_wait` on its workflowRunId reported it
    done: a decision taken while the child still runs is rejected as
-   "delivery unverified". On that rejection, wait for the same run and retry the
-   decision; never copy outputs from session files by hand.
+   "delivery unverified". If `bg_wait` did not report `done` (timeout or
+   attention), call `bg_wait` again on the same id. If it reported `failed`,
+   `stopped` or `paused`, do not retry the decision: that is a failed Phase
+   result gate — re-run the phase once as a new attempt. Never copy outputs from
+   session files by hand.
 4. After completion of **clarify** or **plan**, call `zero_execution` with
    `action: "status", runId: "<runId>"`. It reads the attached
    workflow-receipt.json + status.json, checks project/workflow/key/agent/fresh
@@ -276,9 +279,10 @@ waits for all of them):
    availability as proof of delivery. **Skip `status`** when the next call for
    the attempt is `findings`, `analyze`, `round`, `batch-close` or `wave-close`:
    each runs the same reconciliation for that attempt and refuses a delivery it
-   cannot verify (a running or unverifiable child is rejected before anything
-   is written; a terminal failed child is reported as failed). Their result is
-   your delivery check.
+   cannot verify (a child still running is rejected before anything is
+   written; `batch-close` and `wave-close` report a child that ended failed,
+   unverifiable or never attached as a failed delivery). Their result is your
+   delivery check.
 5. Read the output artifact and apply the full Phase result gate. **Explore
    exception:** `attempt` with `outputMode: "inline"` sets top-level AND child
    `output: false`, `outputMode: "inline"` (not file-only), keeping
@@ -484,7 +488,13 @@ re-run — drive this loop:
      `build-r<N>.md` under `## Wave <i>/<n>: …`, and returns `failed`. **Each
      failed task retries once, alone, as a sequential batch** (`batch-close`
      included) before the next `wave` call; a second failure is a failed phase
-     gate: STOP and report it.
+     gate: STOP and report it. If `wave-close` is refused because a member
+     never reached a terminal receipt (it is still running and `bg_wait` never
+     reports it done), launch that task again as a new attempt and call
+     `wave-close` with the delivered member plus the NEW attempt; never close a
+     wave child with `batch-close` (it does not tick `tasks.md`). A member whose
+     launch failed or whose receipt cannot be verified is not refused:
+     `wave-close` reports it in `failed`.
 6. Repeat until `wave` (or a close's `next`) returns `done` (no `[ ]` task left), then run
    **veredicto** once. Never run veredicto between batches or waves. The full
    suite runs in the next sequential batch or in veredicto, which already runs it.
