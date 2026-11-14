@@ -59,6 +59,7 @@
     "prompts",
     "skills",
     "themes",
+    "docs",
     "assets/preview.png",
     "extensions/zero-tui-layout.ts",
     "extensions/zero-banner.ts",

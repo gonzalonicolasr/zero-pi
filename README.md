@@ -15,442 +15,150 @@
 
 [![npm](https://img.shields.io/npm/v/@gonrocca/zero-pi?color=af8aff&label=npm)](https://www.npmjs.com/package/@gonrocca/zero-pi) [![repo](https://img.shields.io/badge/repo-github-7497ff?logo=github&logoColor=white)](https://github.com/gonzalonicolasr/zero-pi) [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/aNFCZBZVT3) [![license](https://img.shields.io/npm/l/@gonrocca/zero-pi?color=eebe5c)](./LICENSE) [![node](https://img.shields.io/node/v/@gonrocca/zero-pi?color=4fddab&label=node)](https://nodejs.org)
 
-### 💬 Join the community
-
-Questions, ideas, or want to debate workflow design? Come hang out:
-
-[![Join the Discord](https://img.shields.io/badge/Discord-join%20the%20chat-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/aNFCZBZVT3)
-
 </div>
 
 ---
 
-zero-pi is an installable **[pi](https://pi.dev)** package that adds a
-disciplined spec-driven development pipeline — plus a handful of quality-of-life
-extensions — **without modifying pi**. Same idea as `gentle-pi`: pi stays
-untouched; zero-pi is a package it loads.
+zero-pi is a package for **[pi](https://pi.dev)** that adds `/forge`: one command
+that takes a feature through a spec-driven pipeline, one sub-agent per phase,
+with a model and thinking level you choose for each phase. pi stays untouched.
 
-## 📦 Install
+```
+clarify ─► explore ─► plan ─► analyze ─► build ─► veredicto ─► pasa (done)
+                       ▲         │          ▲          │
+                       └─ replan ┘          └─corregir─┤
+                       ▲                               │
+                       └───────── replantear ──────────┘
+```
 
 ```
 pi install npm:@gonrocca/zero-pi
-pi install npm:pi-subagents      # required — the pipeline delegates to sub-agents
+pi install npm:pi-subagents        # required: every phase runs as a sub-agent
+# restart pi, then inside pi:
+/forge add a dark-mode toggle to the settings page
 ```
 
-Needs Node ≥ 20.6. Restart pi after an install or upgrade so pi regenerates
-the `zero-*` phase agents.
+## Install
 
-### Quick start
+Needs Node ≥ 20.6 and pi. Install both packages as above and **restart pi** so
+it regenerates the `zero-*` phase agents (do it again after every upgrade).
 
-1. Run `/zero-doctor` to catch missing `pi-subagents`, stale generated agents,
-   invalid model config, or GitHub CLI auth before spending tokens.
-2. Run `/zero-models` (or set direct assignments) when you want a different
-   model/thinking profile per phase; otherwise the package defaults are used.
-3. Run `/forge <feature>` and let the automatic gates drive the flow.
-4. Read the final cost table: `/forge` invokes `/zero-cost <runId>` automatically
-   at the end. Re-run `/zero-cost [runId|slug]` manually only when you want to inspect
-   an older run or debug missing metadata.
+Then run `/zero-doctor`. It checks `pi-subagents`, generated agents, model
+config and `gh` auth before you spend tokens.
 
-## 🛠 `/forge` — the SDD pipeline
+## Quick use
 
-The core of zero-pi. Run **`/forge <feature>`** and the orchestrator drives the
-work through six phases — the automatic
-**clarify → explore → plan → analyze → build → veredicto** flow — each delegated
-to its own sub-agent:
+1. `/forge <feature>`. It asks for interactive or automatic mode, then runs the
+   phases. The run is in Spanish and prints one short summary per phase.
+2. In interactive mode it pauses after each phase for your approval.
+3. At the end it prints a cost table and, if the verdict is `pasa`, asks you to
+   run `/zero-archive <slug>`.
+4. `/forge --continue [slug]` resumes an interrupted run.
+
+You can also write "hacelo con sdd" in a normal message: the `sdd-routing`
+skill sends it to `/forge`.
+
+## Phases
 
 | Phase | Does |
 | ----- | ---- |
-| **clarify** | Record de-risking assumptions before exploration; stop only on blocking ambiguity. |
-| **explore** | Investigate the codebase read-only; produce findings. |
-| **plan** | Write requirements, design, and an ordered task list. |
-| **analyze** | Review plan readiness after `/zero-validate`; decide continue or replan. |
-| **build** | Implement the plan. |
-| **veredicto** | Review it adversarially and record a verdict. |
+| **clarify** | Records assumptions; stops only on blocking ambiguity. |
+| **explore** | Reads the codebase (read-only) and writes findings. |
+| **plan** | Writes requirements, design and an ordered task list. |
+| **analyze** | Checks the plan after `/zero-validate`: `continue` or `replan`. |
+| **build** | Implements the plan, test-first (strict TDD when a test runner exists). |
+| **veredicto** | Reviews adversarially: `pasa`, `corregir` (back to build) or `replantear` (back to plan). |
 
-Each run keeps its paper trail under `.sdd/<slug>/`: `clarifications.md`,
-`findings.md`, `proposal.md`, `spec.md`, `design.md`, `tasks.md`,
-`checklist.md`, and (when Strict TDD engages) `tdd-evidence.md`.
+Clarify and analyze run on their own. A run that reaches the round cap (3 by
+default) without a `pasa` is reported as **not verified**. Everything lands in
+`.sdd/<slug>/` (`clarifications.md`, `findings.md`, `spec.md`, `design.md`,
+`tasks.md`, `checklist.md`, ...). Details: [docs/forge-pipeline.md](./docs/forge-pipeline.md).
 
-The **clarify** and **analyze** gates are automatic inside `/forge` — no extra
-slash command in the normal flow. `clarify` writes `.sdd/<slug>/clarifications.md`
-and asks only when proceeding would risk the wrong product; `analyze` writes
-`.sdd/<slug>/checklist.md` after the structural `/zero-validate` gate and returns
-`continue` (build) or `replan` (re-run plan with concrete defects). Neither gate
-counts as a build/veredicto round. Readiness has a separate durable cap: the
-**second analyze `replan` decision stops blocked/not verified**. Resume retains
-that count and execution identity; missing/corrupt legacy accounting fails
-closed rather than buying a new allowance. Analyze is never bypassed.
+## Models and profiles
 
-The verdict is `pasa` (done), `corregir` (re-run build), or `replantear`
-(re-run plan). A hard iteration cap bounds the build↔veredicto loop — reached
-without a `pasa`, the run stops and is reported as **not verified**.
-`/forge --continue [slug]` resumes an interrupted run.
+Each phase has its own model, provider and thinking level. Without config, the
+defaults are: Haiku 4.5 for clarify/explore, Opus 4.8 for plan/analyze/veredicto,
+Sonnet 4.6 for build. A **profile** is a named setup you can switch.
 
-**Build runs test-first.** By default the build phase follows a strict TDD
-cycle — RED → GREEN → TRIANGULATE → REFACTOR — and records a **TDD Cycle
-Evidence** table; veredicto audits that evidence (tests exist, are really green,
-assertions verify real behavior) and returns `corregir` if the discipline
-slipped. It engages only when a test runner exists and the change touches code,
-so docs/config-only work degrades gracefully. Opt a project out with
-`tdd.mode: "off"` in `.sdd/config.json` (see *Configuration*).
+```
+/zero-models                                       # picker (the main screen is the profile list)
+/zero-models build=anthropic/claude-sonnet-4-6 thinking=high
+/zero-models profile new barato                    # snapshot current setup and activate it
+/zero-models profile use premium                   # switch, then restart pi
+```
 
-The run speaks **Spanish**, in a bounded, low-noise format — one short summary
-per phase, naming the model that phase runs on, no raw tool output. Or just
-describe the work and say "hacelo con sdd": the `sdd-routing` skill routes it
-into `/forge` for you.
+| Profile command | Does |
+| --------------- | ---- |
+| `profile list` | List profiles (`*` marks the active one). |
+| `profile new <name> [from <other>]` | Create and activate (from the current setup, or a clone). |
+| `profile use <name>` | Activate. Restart pi afterwards. |
+| `profile save [<name>]` | Save the current setup under `<name>` (create or update) and activate it. No name: update the active profile, e.g. to keep autotune changes. |
+| `profile delete <name>` | Delete. |
 
-## ✨ What else it adds
+zero-pi ships no ready-made profiles; you create them. More:
+[docs/models-and-profiles.md](./docs/models-and-profiles.md).
 
-| Feature | What it does |
-| ------- | ------------ |
-| **Strict TDD** | The build phase drives RED → GREEN → TRIANGULATE → REFACTOR with a TDD Cycle Evidence table; veredicto audits it. On by default, runtime-gated on a test runner; `tdd.mode: "off"` disables it. |
-| **`/zero-models`** | Pick the model + provider + thinking level for each of the six SDD phases — a boxed-window picker, or set one directly. Direct assignments are validated against pi's model registry when available. |
-| **Model profiles** | Save whole per-phase setups as named profiles and switch between them — from the picker's `perfiles` row (create, edit, activate, duplicate, delete) or via `/zero-models profile …`. Editing a profile does not activate it. |
-| **Phase tool gating** | Generated `zero-*` sub-agents get phase-specific tool allowlists: explore/veredicto are read-only, clarify/analyze/plan write only `.sdd` artifacts, build edits code. |
-| **Dependency-aware tasks** | `tasks.md` is validated as a task graph with mandatory `depends:` edges, topological ordering, and review workload totals. |
-| **Autotune** | Proposes model step-ups for build/plan from sufficiently sampled, valid outcome records; it does not automatically downgrade models to save tokens. Optional `autotuneBudget.maxPhaseCostUsd` suppresses costly step-ups when cost samples are available. |
-| **`/zero-doctor`** | Preflight diagnostics for zero-pi: package install, Node version, pi-subagents, generated phase agents, model config, `.sdd/config`, run history, git, and `gh` auth. |
-| **`/zero-cost`** | Reports registered child usage from project/execution identity and attached async receipts; explicit UUID selects one run, legacy/missing data stays unattributed/partial. Not a parent/whole-Forge meter. |
-| **`/zero-checkpoint`** | Writes patch-based worktree checkpoints under `.sdd/<slug>/checkpoints/` before risky build batches. |
-| **`/zero-rounds`** | Durable build/veredicto round ledger in `.sdd/<slug>/rounds.json` — a resumed run recovers the rounds it already spent instead of restarting the iteration cap. |
-| **`/zero-sync` / `/zero-archive`** | Folds each run's spec delta into a canonical, project-wide spec store and archives approved runs. |
-| **Git / PR / Issues** | `/zero-branch`, `/zero-git-validate`, `/zero-pr`, and `/zero-issue` keep branches and GitHub links audit-ready. |
-| **Run memory** | Every run recalls and saves traces to Cortex, so runs learn from each other. |
-| **Provider guard** | Warns when the `anthropic` provider runs on a metered API key instead of your subscription. |
-| **Startup banner** | The sunset ANSI-Shadow `ZERO` wordmark, drawn once at pi startup — `ZERO_HEADER=off` to disable. |
-| **ZERO HUD** | OMP-inspired segmented footer for SDD work: phase, model, tokens, cache, cost, diff, context %, and branch. Switch presets with `/zero-hud compact\|minimal\|full\|ascii\|off` or `ZERO_HUD_PRESET`. |
-| **Pretty input box** | OMP-style prompt chrome with rounded corners, side borders, ZERO chips, and compact keyboard hints. |
-| **Pretty code fences** | Markdown code blocks render as bordered panels with language badges instead of raw ```txt / ```json fence lines. |
-| **Live activity panel** | Shows `/forge` phase progress and recent tool cards above the prompt while work is running. |
-| **Working-phrase ticker** | Swaps pi's static `Working...` / `Procesando...` for a large pool of context-aware Spanish/ZERO/SDD phrases + spinner. |
-| **Conversation resume** | Writes `.pi/zero-resume.md` on exit — the restore command + a conversation tail. |
-| **Windows tree-kill** | Aborting a turn kills the whole process tree — no orphaned `claude`. |
-| **SDD routing skill** | Natural-language requests that say "hacelo con sdd" route into `/forge` without remembering the slash command. |
-| **`zero-sdd` theme** | A dark, high-contrast pi theme tuned for SDD work. |
-| **`zero-sunset` theme** | A warm sunset variant — gold/coral/magenta accents over warm-dark panels, with one cool tone kept for syntax legibility. Activate with `/theme zero-sunset`. |
-| **`zero-omp-neon` theme** | A high-contrast OMP-inspired neon theme with separated colour roles: cyan links/paths, gold titles, mint code/success, violet borders, and navy tool cards. Activate with `/theme zero-omp-neon`. |
-| **ZERO theme pack** | Extra visual variants: `zero-sith`, `zero-saiyan`, `zero-matrix`, and `zero-cyberpunk`. Switch quickly with `/zero-theme sith|saiyan|matrix|cyberpunk`. |
-
-## ⌨️ Commands
+## Commands
 
 | Command | Does |
 | ------- | ---- |
-| `/forge <feature>` | Run the SDD pipeline — `--continue [slug]` resumes. |
-| `/zero-models [<phase>=[<provider>/]<model> [thinking=<level>]]` | Show or set per-phase models, providers, and thinking — `thinking=<level>` (`off\|minimal\|low\|medium\|high\|xhigh`); `autotune=auto\|ask\|off`. Direct assignments fail fast when pi's registry says the provider/model is unknown or ambiguous. |
-| `/zero-models profile [list\|new <name> [from <other>]\|save [<name>]\|use <name>\|delete <name>]` | Manage named per-phase model profiles. `new` and `use` make the profile active; while a profile is active, every model edit lands in it. |
-| `/zero-doctor` | Run zero-pi preflight diagnostics: package, Node, pi-subagents, generated agents/support modules, model config, `.sdd/config`, run history, git, and `gh`. |
-| `/zero-sync <slug>` | Fold a run's spec delta into the canonical spec store; a first all-`## ADDED` delta creates the store lazily. |
-| `/zero-archive <slug>` | Merge an approved run into `.sdd/specs/`, move it to `.sdd/archive/YYYY-MM-DD-<slug>/`, and persist `archivePath`. |
-| `/zero-validate <slug>` | Validate proposal/spec/design/tasks artifacts, including task schema and per-domain specs. |
-| `/zero-status` | Show each `.sdd/` run's artifact, sync, latest-verdict, and GitHub-link status. |
-| `/zero-hud [compact\|minimal\|full\|ascii\|off\|on\|preview]` | Preview or switch the segmented ZERO footer for this pi session. Default preset: `compact`. |
-| `/zero-theme [neon\|sunset\|sdd\|sith\|saiyan\|matrix\|cyberpunk]` | Switch between packaged ZERO theme variants without remembering full `zero-*` names. |
-| `/zero-cost [<runId>\|<slug>]` | Report registered child input/output/cacheRead/cacheWrite and provider-reported USD. Exact UUID selects an execution; slug/default selects a single newest ledger in the current cwd, never sums reused slugs or scans global sessions. |
-| `/zero-checkpoint [<slug>] [--json]` | Save `diff.patch`, `status.txt`, `head.txt`, `meta.json`, and a review-before-running `restore.sh` under `.sdd/<slug>/checkpoints/<id>/`. |
-| `/zero-rounds [status\|record <verdicto>\|reset] [<slug>] [--cap N] [--json]` | Read or append the run's build/veredicto rounds. `record` returns the routing state — `proceed`, `cap-reached` or `done`. The cap defaults to `.sdd/config.json` `rounds.cap` (3). |
-| `/zero-branch <slug>` | Create/reuse the configured SDD Git branch and persist `branch`/`baseBranch`. |
-| `/zero-git-validate <slug>` | Check worktree, branch, remote, `gh auth`, and verdict gating before PR/archive. |
-| `/zero-pr <slug>` | Create an audit-ready GitHub PR from a run that already has verdict `pasa`. |
-| `/zero-issue <slug>` | Create or reuse a GitHub issue for a run and persist the link. |
-| `/zero-diff <slug>` | Preview the logical spec-store merge without writing files. |
+| `/forge <feature>` | Run the pipeline. `--continue [slug]` resumes. |
+| `/zero-models ...` | Show or set models, thinking and profiles. |
+| `/zero-doctor` | Preflight checks. |
+| `/zero-status` | State of every run in `.sdd/`. |
+| `/zero-validate <slug>` | Validate a run's plan artifacts. |
+| `/zero-cost [<runId>\|<slug>]` | Token and USD usage of a run's sub-agents. |
+| `/zero-checkpoint [<slug>]` | Patch checkpoint before risky build batches. |
+| `/zero-rounds [status\|record\|reset]` | Build/veredicto round ledger. |
+| `/zero-branch`, `/zero-issue`, `/zero-pr`, `/zero-git-validate` `<slug>` | Git branch, GitHub issue and PR for a run. |
+| `/zero-sync`, `/zero-diff`, `/zero-archive` `<slug>` | Merge a run's spec into `.sdd/specs/` and archive it. |
+| `/zero-hud`, `/zero-theme` | Footer preset and theme. |
 | `/zero-resume` | Write the session handoff note now. |
 
-## 🎛️ Visual chrome: HUD, activity panel, prompt box
+All flags and arguments: [docs/commands.md](./docs/commands.md).
 
-zero-pi ships several visual extensions. They are related, but each one owns a different part of pi's TUI:
+## Configuration
 
-| Surface | File | Where it appears | Purpose |
-| ------- | ---- | ---------------- | ------- |
-| **ZERO HUD** | `extensions/zero-hud.ts` | Footer/status line at the bottom | Persistent model/tokens/cost/diff/context/branch telemetry. |
-| **Activity panel** | `extensions/zero-activity-panel.ts` | Widget above the prompt while work is running | Live `/forge` phase progress plus recent tool cards. |
-| **Tool cards** | `extensions/zero-pretty-tool-cards.ts` | Each tool execution/result in chat | ZERO-styled bordered cards with status glyphs, title metadata, and padded content. |
-| **Prompt box** | `extensions/zero-pretty-input-box.ts` | The input/editor box | OMP-like rounded box with ZERO chips and key hints. |
-| **Code fences** | `extensions/zero-pretty-code-fences.ts` | Markdown code blocks in chat | Bordered panels with language badges instead of raw ```txt / ```json lines. |
-| **Working phrases** | `extensions/working-phrases.ts` | Tiny loading row (`Procesando… (esc)`) | Rotating ZERO/SDD/Star Wars/DBZ phrases and themed spinner. |
+| Where | What |
+| ----- | ---- |
+| `~/.pi/zero.json` | Per-phase models, providers, thinking, autotune, profiles. |
+| `.sdd/config.json` | Per project: `git`, `tdd.mode` (`strict` or `off`), `rounds.cap`. |
+| `ZERO_HUD_PRESET`, `ZERO_HEADER=off`, `ZERO_RESUME=off` | HUD preset, startup banner, resume note. |
 
-### ZERO HUD presets
-
-The HUD is the **bottom footer**. It is not the activity panel. Control it with:
-
-```txt
-/zero-hud preview
-/zero-hud compact
-/zero-hud minimal
-/zero-hud full
-/zero-hud ascii
-/zero-hud off
-/zero-hud on
-```
-
-Example compact HUD:
-
-```txt
-ZERO ▸ gpt-5.5 ▸ tok ↑1.1M ↓42K ▸ cost $16.22 ▸ diff +0/-0 ▸ ctx 11%
-```
-
-Startup preset can be set with:
-
-```bash
-ZERO_HUD_PRESET=full pi
-```
-
-Supported presets: `compact` (default), `minimal`, `full`, `ascii`, `off`.
-
-### Activity panel vs HUD
-
-During `/forge`, the activity panel appears **above the prompt** and summarizes the live run:
-
-```txt
-╭─ ZERO activity ───────────────────────────────────────────────────────╮
-│ SDD   ✓ clarify › ✓ explore › ⠋ plan › · analyze › · build › · veredicto
-│ Tools ⠋ subagent · ✓ read zero-hud.ts · ✓ bash npm test
-╰────────────────────────────────────────────────────────────────────────╯
-```
-
-The activity panel is transient: it clears after the agent finishes. The HUD stays in the footer across normal work.
-
-### Applying visual changes after install
-
-After `pi install npm:@gonrocca/zero-pi@<version>`, reload the active session:
-
-```txt
-/reload
-```
-
-If a visual monkeypatch was already loaded in the current process, restarting pi is the safest way to force all visual extensions to reinitialize.
-
-### Git / PR / Issues
-
-Recommended flow: `/zero-branch <slug>` → `/zero-issue <slug>` → `/forge <slug>` (the orchestrator validates plan artifacts and can create `/zero-checkpoint` before build) → `/zero-git-validate <slug> --for=pr` → `/zero-pr <slug>` → `/zero-archive <slug>`.
-
-`links.json` is forward-compatible and may contain:
+Example `.sdd/config.json` to turn TDD off:
 
 ```json
-{
-  "issueNumber": 12,
-  "issueUrl": "https://github.com/org/repo/issues/12",
-  "branch": "sdd/my-feature",
-  "baseBranch": "main",
-  "prNumber": 34,
-  "prUrl": "https://github.com/org/repo/pull/34",
-  "archivePath": ".sdd/archive/2026-05-24-my-feature"
-}
+{ "tdd": { "mode": "off" } }
 ```
 
-`/zero-branch <slug>` uses `.sdd/config.json` when present:
+Full reference: [docs/configuration.md](./docs/configuration.md).
 
-```json
-{ "git": { "branchPrefix": "sdd/", "numbering": false, "autoCommit": false, "commitStyle": "conventional", "baseBranch": "main" } }
-```
+## Common problems
 
+| Problem | Fix |
+| ------- | --- |
+| `/forge` does nothing useful or phases fail to launch | Run `/zero-doctor`. The usual cause is a missing `pi-subagents`. |
+| Model or profile change has no effect | Restart pi: the `zero-*` agents are regenerated when pi loads. |
+| `/zero-models build=...` is rejected | The provider/model is unknown or ambiguous in pi's registry. Use `provider/model`. |
+| `/zero-archive` or `/zero-branch` says the worktree is dirty | Commit first, or pass `--allow-dirty`. |
+| `/zero-pr`, `/zero-issue` fail | Install `gh` and run `gh auth login`. |
+| `/zero-pr` refuses to run | The run's latest verdict is not `pasa`. |
+| Visuals look stale after an upgrade | `/reload`, or restart pi. |
+| Run stopped as "not verified" | The round cap or the second analyze `replan` was hit. Read `.sdd/<slug>/` and re-run `/forge`. |
 
-`/zero-pr <slug>` builds a PR title/body from `.sdd/<slug>/proposal.md`,
-`spec.md`, `design.md`, and `tasks.md`, then saves the returned `prNumber` and
-`prUrl` into `.sdd/<slug>/links.json`. It only runs after the run's latest
-recorded verdict is `pasa`; if an issue was already linked, the PR body includes
-`Closes #N`.
+## More docs
 
-`/zero-issue <slug>` searches open GitHub issues for the exact normalized title
-before creating a new one, then saves `issueNumber` and `issueUrl` in the same
-`links.json`. Both commands require the `gh` CLI to be installed and
-authenticated (`gh auth login`). `--type=<label>` is optional: when the label
-exists in the repository it is passed to `gh`, and when it does not exist the
-command continues without it.
-
-The implementation shells out through `gh` rather than GitHub-specific Node
-SDKs, keeping zero-pi dependency-free and portable across Windows, macOS, and
-Linux as long as GitHub CLI is on `PATH`.
-
-### Spec deltas
-
-`/zero-sync` and `/zero-diff` understand four delta sections: `## ADDED`, `## MODIFIED`, `## REMOVED`, and `## RENAMED`. `RENAMED` keeps the requirement's store position while changing its stable name:
-
-```md
-## RENAMED
-
-### REQ: new-name
-
-from: old-name
-
-Updated requirement body.
-
-Acceptance criteria:
-- ...
-```
-
-## 🔧 Configuration
-
-zero-pi keeps its state in `~/.pi/zero.json` (per-phase `models`, `providers`,
-`thinking`, and autotune mode) and `~/.pi/zero-runs.jsonl` (the run-metrics log);
-per-project artifacts live under `.sdd/`. Set `ZERO_RESUME=off` to disable the
-conversation-resume note.
-
-`~/.pi/zero.json` stores three parallel per-phase maps plus the autotune mode.
-The configurable phases are `clarify`, `explore`, `plan`, `analyze`, `build`,
-and `veredicto`; a pre-gates file that lists only the original four stays valid
-and the missing `clarify`/`analyze` fall back to defaults (cheap/fast clarify,
-strong analyze):
-
-```json
-{
-  "models":    { "clarify": "claude-haiku-4-5", "analyze": "claude-opus-4-8", "build": "claude-sonnet-4-6" },
-  "providers": { "clarify": "anthropic",         "analyze": "anthropic",       "build": "anthropic" },
-  "thinking":  { "analyze": "high",              "build": "high" },
-  "autotune": "ask",
-  "autotuneBudget": { "maxPhaseCostUsd": 4, "minSamples": 3 }
-}
-```
-
-The `thinking` map sets each phase's pi effort level — one of `off`, `minimal`,
-`low`, `medium`, `high`, `xhigh`. An explicit entry always wins; a phase with no
-entry (or an invalid level) falls back to the package default — `clarify:
-medium`, `explore: high`, `plan: high`, `analyze: high`, `build: high`,
-`veredicto: xhigh` — so no phase inherits your session-wide
-`defaultThinkingLevel`. `autotuneBudget` is optional:
-when `maxPhaseCostUsd` is set, autotune will not step a blamed phase up to a more
-expensive tier if that phase/model is already at or above the average USD
-ceiling with enough cost samples (`minSamples`, default 3). Set thinking from
-the picker's after-model thinking screen, or directly:
-
-```
-/zero-models build=anthropic/claude-sonnet-4-6 thinking=high
-/zero-models build=anthropic/claude-sonnet-4-6 high      # trailing shorthand
-```
-
-### Model profiles
-
-A profile is a named bundle of the three per-phase maps (`models`, `providers`,
-`thinking`). Profiles live in `~/.pi/zero.json` under `profiles`, and
-`activeProfile` points at the one in use:
-
-From the TUI — run `/zero-models` with no arguments. The main screen **is** the
-profile list: one row per profile (`●` marks the active one), plus
-`— nuevo perfil —`. Opening a profile offers **activate**, **edit models per
-phase**, **duplicate** and **delete**; editing drops you on the familiar
-six-phase screen. Phases are no longer on the main screen — they belong to a
-profile, and `/forge` runs whichever profile is active.
-
-Editing a profile does **not** activate it, and nothing is written until
-`— guardar y salir —`. The first profile you create is activated automatically;
-otherwise it would sit there saved while `/forge` kept running the loose
-config. Until a profile exists, `— configurar modelos sin perfil —` still edits
-the bare `models`/`providers`/`thinking` keys the way it always did.
-
-Or from the command line:
-
-```
-/zero-models profile new barato            # snapshot the current setup, activate it
-/zero-models profile new qa from barato    # clone another profile instead
-/zero-models build=anthropic/claude-sonnet-4-6   # edits land in the active profile
-/zero-models profile use premium           # switch
-/zero-models profile list                  # `*` marks the active one
-```
-
-Activating a profile copies its maps onto the flat `models`/`providers`/
-`thinking` keys, which is what the generated `zero-<phase>.md` agents and
-autotune read — so nothing else in the package needs to know profiles exist.
-Because those agent files are regenerated when pi loads, **restart pi after
-switching profiles**.
-
-Autotune writes the flat keys directly. When that drifts from the active
-profile, the profile shows as `premium*`; `/zero-models profile save` (no name)
-folds the drift back into it.
-
-`.sdd/config.json` carries the per-project git and TDD settings:
-
-```json
-{
-  "git": { "branchPrefix": "sdd/", "numbering": false, "autoCommit": false, "commitStyle": "conventional", "baseBranch": "main" },
-  "tdd": { "mode": "strict", "testCommand": "" }
-}
-```
-
-`tdd.mode` defaults to `"strict"` (the build phase runs test-first; veredicto
-audits the TDD evidence) and accepts `"off"` to disable the discipline.
-`tdd.testCommand` overrides the auto-detected test runner the TDD cycle invokes;
-leave it empty to let the build/veredicto phases detect it from the project.
-
-### Token efficiency
-
-**Implemented first slice (Unreleased; audit baseline was 0.1.78):**
-
-- Forge invokes the `zero_execution` tool to persist the complete verbatim
-  request, create a project/canonical-cwd + UUID identity, register each
-  phase/batch/retry attempt and attach its actual async workflow receipt.
-  `.sdd/<slug>/execution.json` points at `.sdd/.executions/<runId>.json`.
-  `--continue` accumulates new fresh children under that same ID; fresh
-  same-slug runs get new IDs and retain the previous accounting ledger.
-- `/zero-cost` reads only these ledgers and exact attached runtime identities.
-  It snapshots normalized child usage, includes failed attempts with metadata,
-  deduplicates child IDs, shows both cache classes, and reports missing/legacy
-  coverage honestly. Reported `$0.00` is not proof of free tokens/subscription
-  quota; missing USD is `unknown`. Duration is summed child duration, not wall
-  time. **Parent calls/compactions are not captured**, nor are unregistered
-  children: this is not a whole-Forge benchmark. Provider/thinking are not
-  independently verified beyond the model string reported by child metadata.
-- Every async phase/batch brief explicitly requests `context: "fresh"` at the
-  workflow and child levels; generated agents add `defaultContext: fresh` as
-  defense. Receipt reconciliation checks resolved context. Global fork wins
-  over an agent default when an explicit launch context is omitted, so the
-  launch instruction matters. This is **prompt-enforced orchestration**, not
-  a JS rewriter, automatic scheduler, or sandbox. Existing inheritance/skills
-  exclusions and project-local rules/steering handoffs are preserved.
-- Explore retains `read,bash` and its read-only **prompt** boundary. Because
-  the runtime treats bash as mutation-capable, Forge uses `output: false` for
-  explore (no conflicting write instruction) with debug artifacts enabled.
-  Runtime saves its full final report; the parent `findings` operation copies
-  the confirmed output to `findings.md`, then the parent checks completeness.
-  Missing/disabled debug output blocks plan. Other phase outputs use file-only
-  pointers; authored requirements/design/tasks and artifact gates remain.
-- Build keeps cumulative per-task TDD evidence on disk, returns paths/status/
-  exceptions rather than another table, and veredicto independently reruns
-  tests. The support modules follow the same contract.
-- Readiness outcomes are idempotent per analyze attempt, capped at two replans
-  per execution, stop on the second, and never reset on resume. Delivery
-  retries are neither replans nor build rounds. Malformed ledgers fail closed;
-  interrupted lock recovery requires a human to verify no writer is active.
-  Routing/tool invocation remains prompt-enforced; the ledger enforces only
-  operations actually called. Veredicto never writes `zero-runs.jsonl`:
-  terminal outcome persistence belongs to the orchestrator.
-
-Existing 20/40 exploration guidance, four-task / 800-estimated-line batching,
-quality gates, TDD, model/thinking assignments and user configuration remain.
-No measured token savings or A/B quality equivalence is claimed. Deferred:
-parent/compaction accounting, automatic async event capture, temp/custom
-metadata recovery, Cortex metrics transport, and controlled profile/batch
-experiments. The retained historical audit, fixture provenance and limitations
-are in **[TOKEN-EFFICIENCY.md](./TOKEN-EFFICIENCY.md)**.
-
-## Release checks
-
-Before publishing, run `npm test` and `npm run pack-check` from
-`packages/zero-pi`. `prepublishOnly` also runs the test suite, but `pack-check`
-confirms the npm tarball still contains the prompts, skills, themes, assets, and
-extension support modules pi needs.
-
-## 🧭 zero or NODD?
-
-Use **zero** for features: work worth a spec, a plan, and a verdict. For small
-daily work — a typo, a rename, a one-line fix — use
-**[NODD](https://nodd.com.ar)** (`npm i @gonrocca/nodd`), a sibling pi
-extension by the same author: it makes the agent declare a route before
-writing and refuses to mark a task done until the tests were actually seen
-running. They complement each other. When clarify sizes a `/forge` request as
-`Size: small`, the run says so once and suggests NODD — it never blocks or
-changes the route. The other way around, when NODD work outgrows it,
-`/nodd-promote <slug>` hands it to zero and `/forge --continue <slug>` adopts
-that handoff: no clarify, it starts at explore and keeps what NODD already did.
-
-## 🔗 Relationship to `zero`
-
-zero-pi is the pi layer of the **zero** integrator. The `zero` CLI installs it
-onto pi and writes the per-phase model config; you can also install zero-pi on
-its own with the command above.
-
-## Development
-
-Dependency-free, no build step — pi loads the TypeScript extensions directly.
-Run the test suite with `npm test`.
+- [docs/forge-pipeline.md](./docs/forge-pipeline.md): gates, verdicts, caps, TDD, how phases launch.
+- [docs/models-and-profiles.md](./docs/models-and-profiles.md): defaults, thinking, profiles, autotune.
+- [docs/configuration.md](./docs/configuration.md): config files and environment variables.
+- [docs/commands.md](./docs/commands.md): every command with its flags.
+- [docs/git-pr-issues.md](./docs/git-pr-issues.md): branch, issue, PR, archive, spec deltas.
+- [docs/features.md](./docs/features.md): everything else it adds, HUD, activity panel, themes.
+- [docs/token-efficiency.md](./docs/token-efficiency.md): cost accounting and token limits.
+- [docs/forge-contract.md](./docs/forge-contract.md): `.sdd/<slug>/` contract shared with the Claude Code forge mod.
+- [docs/related-projects.md](./docs/related-projects.md): zero or NODD, the `zero` CLI.
+- [docs/development.md](./docs/development.md): tests and release checks.
+- [CHANGELOG.md](./CHANGELOG.md) and [TOKEN-EFFICIENCY.md](./TOKEN-EFFICIENCY.md) (historical audit).
 
 ## License
 

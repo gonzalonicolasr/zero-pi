@@ -62,7 +62,8 @@ Or from the command line:
 /zero-models profile use premium           # switch
 /zero-models profile list                  # `*` marks the active one
 /zero-models profile save                  # fold autotune drift back into the active profile
-/zero-models profile delete qa
+/zero-models profile save mine             # save the current setup as `mine` (create/update) and activate it
+/zero-models profile delete qa             # `rm` also works
 ```
 
 Activating a profile copies its maps onto the flat `models`/`providers`/
