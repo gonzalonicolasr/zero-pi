@@ -15,7 +15,7 @@
 // The SDD orchestrator reads `~/.pi/zero.json` at the start of every `/forge`
 // run, so a change takes effect on the next run.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -149,12 +149,52 @@ export function isPhase(value: string): value is Phase {
   return (PHASES as readonly string[]).includes(value);
 }
 
-/** Read `~/.pi/zero.json`, returning an empty object when absent or invalid. */
-function readZeroJson(): Record<string, unknown> {
+/** `~/.pi/zero.json` as read: `broken` says why an existing file could not be
+ *  used (then `data` is `{}`); it is `null` when the file is fine or absent. */
+interface ZeroJsonRead {
+  data: Record<string, unknown>;
+  broken: string | null;
+}
+
+/** Read `~/.pi/zero.json`. A missing file is an empty config; a file that
+ *  exists but can't be read or parsed is reported as `broken`, so no write
+ *  ever starts from `{}` and wipes profiles, autotune and the rest. */
+function readZeroJson(): ZeroJsonRead {
+  let text: string;
   try {
-    return JSON.parse(readFileSync(zeroJsonPath(), "utf8")) as Record<string, unknown>;
+    text = readFileSync(zeroJsonPath(), "utf8");
+  } catch (error) {
+    if ((error as { code?: string }).code === "ENOENT") return { data: {}, broken: null };
+    return { data: {}, broken: (error as Error).message };
+  }
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return { data: parsed as Record<string, unknown>, broken: null };
+    }
+    return { data: {}, broken: "no es un objeto JSON" };
+  } catch (error) {
+    return { data: {}, broken: (error as Error).message };
+  }
+}
+
+/** Write `~/.pi/zero.json` atomically: a temp file in the same folder, then
+ *  rename, so a crash never leaves it truncated. A symlinked `zero.json` is
+ *  written through to its real target. */
+function writeZeroJson(data: unknown): void {
+  let target = zeroJsonPath();
+  try {
+    target = realpathSync(target);
   } catch {
-    return {};
+    // Not there yet: create it at the usual path.
+  }
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    renameSync(tmp, target);
+  } catch (error) {
+    rmSync(tmp, { force: true });
+    throw error;
   }
 }
 
@@ -967,7 +1007,26 @@ export default function register(pi?: PiExtensionAPI): void {
       "Muestra o cambia los modelos SDD por fase — /zero-models [<fase>=[<provider>/]<modelo>] · perfiles con /zero-models profile",
     handler: async (args: string, ctx: PiCommandContext): Promise<void> => {
       try {
-        const data = readZeroJson();
+        const { data, broken } = readZeroJson();
+        // Un zero.json que existe pero no se puede leer no se pisa nunca:
+        // las escrituras se cancelan y las lecturas solo avisan.
+        const refuseWrite = (): boolean => {
+          if (broken === null) return false;
+          ctx.ui.notify(
+            `zero-models: ${zeroJsonPath()} existe pero no se puede leer (${broken}). ` +
+              "No lo toqué: arreglalo a mano y volvé a correr el comando.",
+            "error",
+          );
+          return true;
+        };
+        const warnUnreadable = (): void => {
+          if (broken === null) return;
+          ctx.ui.notify(
+            `zero-models: ${zeroJsonPath()} no se puede leer (${broken}); muestro los valores por defecto. ` +
+              "Arreglalo a mano antes de guardar cambios.",
+            "warning",
+          );
+        };
         const accounts = loadCpamAccounts();
         const models = readModels(data);
         const providers = readProviders(data);
@@ -982,6 +1041,8 @@ export default function register(pi?: PiExtensionAPI): void {
           // en la ayuda genérica de asignaciones.
           const profileCommand = parseProfileCommand(arg);
           if (profileCommand) {
+            if (profileCommand.kind === "list") warnUnreadable();
+            else if (refuseWrite()) return;
             const result = applyProfileCommand(data, profileCommand);
             if (!result.ok) {
               ctx.ui.notify(`zero-models: ${result.message}`, "warning");
@@ -989,11 +1050,7 @@ export default function register(pi?: PiExtensionAPI): void {
             }
             // `list` no modifica nada: se muestra y no se escribe.
             if (profileCommand.kind !== "list") {
-              writeFileSync(
-                zeroJsonPath(),
-                `${JSON.stringify(result.data, null, 2)}\n`,
-                "utf8",
-              );
+              writeZeroJson(result.data);
             }
             ctx.ui.notify(result.message, "info");
             return;
@@ -1010,11 +1067,8 @@ export default function register(pi?: PiExtensionAPI): void {
               );
               return;
             }
-            writeFileSync(
-              zeroJsonPath(),
-              `${JSON.stringify({ ...data, autotune: mode }, null, 2)}\n`,
-              "utf8",
-            );
+            if (refuseWrite()) return;
+            writeZeroJson({ ...data, autotune: mode });
             ctx.ui.notify(`zero autotune: ${formatAutotune(mode)}`, "info");
             return;
           }
@@ -1066,7 +1120,8 @@ export default function register(pi?: PiExtensionAPI): void {
           else delete merged.thinking;
           // Con un perfil activo, editar una fase edita ese perfil.
           const persisted = mirrorToActiveProfile(merged);
-          writeFileSync(zeroJsonPath(), `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+          if (refuseWrite()) return;
+          writeZeroJson(persisted);
           const shown = withAccount(
             providers[assignment.phase]
               ? `${providers[assignment.phase]}/${assignment.model}`
@@ -1084,6 +1139,7 @@ export default function register(pi?: PiExtensionAPI): void {
         }
 
         // Interactive form: open the boxed picker, then persist on save.
+        warnUnreadable();
         const autotuneMode = readAutotuneMode(data);
         const pending = readAutotunePending(data);
 
@@ -1125,6 +1181,7 @@ export default function register(pi?: PiExtensionAPI): void {
         // Save: pull the accumulated edits off the final picker state.
         const edits = result.state.edits;
         if (edits.changed || edits.autotuneChanged || edits.profilesChanged) {
+          if (refuseWrite()) return;
           // Build the patch, preserving every other key via the spread. When
           // the pending suggestion was applied, clear the `autotunePending` key.
           const patch: Record<string, unknown> = {
@@ -1169,7 +1226,7 @@ export default function register(pi?: PiExtensionAPI): void {
             }
           }
           const persisted = editingOther ? merged : mirrorToActiveProfile(merged);
-          writeFileSync(zeroJsonPath(), `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+          writeZeroJson(persisted);
 
           const summary = [
             `zero · modelos SDD guardados:\n${formatPhases(edits.models, edits.providers, edits.thinking, accounts)}`,
