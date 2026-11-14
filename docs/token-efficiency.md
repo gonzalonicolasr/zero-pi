@@ -4,7 +4,7 @@ How `/forge` accounts for and limits token use. The historical audit behind
 these changes (fixtures, provenance and limitations) is in
 [TOKEN-EFFICIENCY.md](../TOKEN-EFFICIENCY.md).
 
-> Update (Unreleased): the phase script is now written by code. `zero_execution`
+> Update (0.1.93): the phase script is now written by code. `zero_execution`
 > `attempt` takes a `brief` and writes the script with a single `runs.run` and
 > `context: "fresh"` fixed in code, so the orchestrator no longer writes
 > scripts (see the [CHANGELOG](../CHANGELOG.md)). Where the text below says the

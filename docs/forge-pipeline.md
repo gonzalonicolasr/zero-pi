@@ -68,7 +68,7 @@ into `/forge` for you.
 
 ## How a phase is launched
 
-Since the next release (see the `[Unreleased]` entries in the
+Since 0.1.93 (see its entries in the
 [CHANGELOG](../CHANGELOG.md)):
 
 - `/forge` receives the orchestrator rules (`prompts/orchestrator.md`)

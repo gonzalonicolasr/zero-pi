@@ -5,15 +5,7 @@ All notable changes to `@gonrocca/zero-pi` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/); the package
 uses [semantic versioning](https://semver.org/).
 
-## [Unreleased]
-
-### Fixed — las fases se lanzan con un archivo de script, no con `workflowScript`
-
-pi-subagents 0.79.1 rechaza `workflowScript`, y el `orchestrator.md` del repo
-todavía lo pedía: sólo andaba la copia instalada, parcheada a mano. El parche
-pasa al repo: el script va en `.sdd/<slug>/workflows/<attemptId>.js`, se lanza
-con `subagent({ workflow: <ruta> })`, y ninguna decisión se toma antes de que
-`bg_wait` diga done.
+## [0.1.93] - 2026-11-13
 
 ### Added — `/forge` recibe las reglas del orquestador
 
