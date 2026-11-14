@@ -3,9 +3,21 @@
 //
 // Run with: npm test
 
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import fs, {
+  chmodSync,
+  lstatSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -135,5 +147,66 @@ test("zero.json válido: asignar una fase conserva el resto de las claves", asyn
     assert.ok(after.profiles.b);
     assert.equal(after.profiles.a.models.build, "claude-opus-4-8");
     assert.deepEqual(readdirSync(piDir), ["zero.json"]);
+  });
+});
+
+for (const mode of [0o600, 0o640, 0o666]) {
+  test(`escribir conserva los permisos del zero.json existente (${mode.toString(8)})`, async () => {
+    await withHome(JSON.stringify(GOOD, null, 2), async (piDir) => {
+      const file = join(piDir, "zero.json");
+      chmodSync(file, mode);
+      const c = command();
+      await c.run("autotune=off");
+      assert.equal(JSON.parse(readFileSync(file, "utf8")).autotune, "off", JSON.stringify(c.notes));
+      assert.equal(statSync(file).mode & 0o7777, mode);
+    });
+  });
+}
+
+test("zero.json symlink: escribe en el destino y el link sigue siendo link", async () => {
+  await withHome(undefined, async (piDir) => {
+    const real = join(piDir, "..", "real.json");
+    writeFileSync(real, JSON.stringify(GOOD, null, 2), "utf8");
+    symlinkSync(real, join(piDir, "zero.json"));
+    const c = command();
+    await c.run("autotune=off");
+    assert.ok(lstatSync(join(piDir, "zero.json")).isSymbolicLink());
+    assert.equal(JSON.parse(readFileSync(real, "utf8")).autotune, "off", JSON.stringify(c.notes));
+    assert.deepEqual(readdirSync(piDir), ["zero.json"]);
+  });
+});
+
+test("zero.json symlink colgante (relativo): crea el destino y no reemplaza el link", async () => {
+  await withHome(undefined, async (piDir) => {
+    mkdirSync(join(piDir, "..", "dotfiles"));
+    symlinkSync(join("..", "dotfiles", "zero.json"), join(piDir, "zero.json"));
+    const c = command();
+    await c.run("autotune=off");
+    assert.ok(lstatSync(join(piDir, "zero.json")).isSymbolicLink(), "el link se reemplazó por un archivo");
+    const real = join(piDir, "..", "dotfiles", "zero.json");
+    assert.equal(JSON.parse(readFileSync(real, "utf8")).autotune, "off", JSON.stringify(c.notes));
+    assert.deepEqual(readdirSync(piDir), ["zero.json"]);
+    assert.deepEqual(readdirSync(join(piDir, "..", "dotfiles")), ["zero.json"]);
+  });
+});
+
+test("si el rename falla y borrar el temporal también, el aviso muestra el error del rename", async () => {
+  await withHome(JSON.stringify(GOOD, null, 2), async (piDir) => {
+    const file = join(piDir, "zero.json");
+    const before = readFileSync(file);
+    mock.method(fs, "renameSync", () => { throw new Error("rename falló"); });
+    mock.method(fs, "rmSync", () => { throw new Error("rm falló"); });
+    syncBuiltinESMExports();
+    try {
+      const c = command();
+      await c.run("autotune=off");
+      const err = c.notes.find(([, t]) => t === "error");
+      assert.ok(err, JSON.stringify(c.notes));
+      assert.match(err[0], /rename falló/);
+    } finally {
+      mock.restoreAll();
+      syncBuiltinESMExports();
+    }
+    assert.deepEqual(readFileSync(file), before);
   });
 });

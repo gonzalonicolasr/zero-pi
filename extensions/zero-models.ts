@@ -15,9 +15,19 @@
 // The SDD orchestrator reads `~/.pi/zero.json` at the start of every `/forge`
 // run, so a change takes effect on the next run.
 
-import { readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  lstatSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 // This module has NO `@earendil-works/pi-tui` import at all — not a value
 // import, not an `import type`. The no-arg picker is a `ctx.ui.custom()`
@@ -178,22 +188,46 @@ function readZeroJson(): ZeroJsonRead {
   }
 }
 
+/** Where a write of `zero.json` must land: the real file behind a symlink
+ *  (also a dangling one, so the link is never replaced by a plain file). */
+function zeroJsonTarget(): string {
+  const path = zeroJsonPath();
+  try {
+    return realpathSync(path);
+  } catch {
+    // Absent, or a symlink whose target does not exist yet.
+  }
+  try {
+    if (lstatSync(path).isSymbolicLink()) return resolve(dirname(path), readlinkSync(path));
+  } catch {
+    // Not there at all: create it at the usual path.
+  }
+  return path;
+}
+
 /** Write `~/.pi/zero.json` atomically: a temp file in the same folder, then
  *  rename, so a crash never leaves it truncated. A symlinked `zero.json` is
- *  written through to its real target. */
+ *  written through to its target, and an existing file keeps its permissions. */
 function writeZeroJson(data: unknown): void {
-  let target = zeroJsonPath();
+  const target = zeroJsonTarget();
+  let mode: number | null = null;
   try {
-    target = realpathSync(target);
+    mode = statSync(target).mode & 0o7777;
   } catch {
-    // Not there yet: create it at the usual path.
+    // New file: default permissions.
   }
   const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
   try {
     writeFileSync(tmp, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+    // chmod after writing: the `mode` option of writeFileSync is masked by umask.
+    if (mode !== null) chmodSync(tmp, mode);
     renameSync(tmp, target);
   } catch (error) {
-    rmSync(tmp, { force: true });
+    try {
+      rmSync(tmp, { force: true });
+    } catch {
+      // Keep the original error, not the cleanup one.
+    }
     throw error;
   }
 }
