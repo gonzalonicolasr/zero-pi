@@ -146,9 +146,36 @@ test("validateSpecDelta: detects empty body and missing Acceptance criteria", ()
   assert.ok(defects.some((d) => d.kind === "missing-acceptance-criteria"));
 });
 
-test("validateSpecDelta: surfaces RENAMED guardrails", () => {
-  const defects = validateSpecDelta("## RENAMED\n\n### REQ: b\n\nfrom: a\n\nAcceptance criteria:\n- ok");
-  assert.ok(defects.some((d) => d.kind === "renamed-missing"));
+test("validateSpecDelta: surfaces RENAMED guardrails that do not need the store", () => {
+  const defects = validateSpecDelta("## RENAMED\n\n### REQ: b\n\nAcceptance criteria:\n- ok");
+  assert.ok(defects.some((d) => d.kind === "renamed-parse-error"));
+});
+
+// Regression: validateSpecDelta used to check the delta against an EMPTY store, so every
+// MODIFIED/REMOVED/RENAMED block failed with *-missing even when the requirement existed.
+// Store-dependent checks belong to mergeDelta (archive/sync), which sees the real store.
+test("validateSpecDelta: MODIFIED, REMOVED and RENAMED deltas pass without the store", () => {
+  const text = [
+    "## MODIFIED", "", "### REQ: login", "", "New body.", "", "Acceptance criteria:", "- ok", "",
+    "## REMOVED", "", "### REQ: legacy", "", "Gone.", "", "Acceptance criteria:", "- gone", "",
+    "## RENAMED", "", "### REQ: sign-in", "", "from: signin", "", "Acceptance criteria:", "- renamed", "",
+  ].join("\n");
+  assert.deepEqual(validateSpecDelta(text), []);
+});
+
+test("validateSpecDelta: store-independent checks still fire on MODIFIED/REMOVED/RENAMED", () => {
+  const text = [
+    "## MODIFIED", "", "### REQ: login", "", "Body.", "", "Acceptance criteria:", "- ok", "",
+    "### REQ: login", "", "Again.", "", "Acceptance criteria:", "- ok", "",
+    "## REMOVED", "", "### REQ: legacy", "", "",
+    "## RENAMED", "", "### REQ: fresh", "", "from: legacy", "", "Acceptance criteria:", "- ok", "",
+  ].join("\n");
+  const kinds = validateSpecDelta(text).map((d) => d.kind);
+  assert.ok(kinds.includes("duplicate-in-delta"));
+  assert.ok(kinds.includes("empty-body"));
+  assert.ok(kinds.includes("missing-acceptance-criteria"));
+  assert.ok(kinds.includes("renamed-duplicate"));
+  for (const k of ["modified-missing", "removed-missing", "renamed-missing", "renamed-to-collision", "added-name-collision"]) assert.ok(!kinds.includes(k), k);
 });
 
 test("validateArtifactSet: reports all missing artifacts", () => {

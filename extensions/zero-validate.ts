@@ -183,9 +183,14 @@ function allBlocks(delta: ReturnType<typeof parseDelta>): Array<RequirementBlock
   return [...delta.added, ...delta.modified, ...delta.removed, ...delta.renamed];
 }
 
+// Guardrails that compare the delta against the canonical store. This validator has no store,
+// so they would fire on every MODIFIED/REMOVED/RENAMED block; mergeDelta checks them against
+// the real store in archive and sync.
+const STORE_DEPENDENT: ReadonlySet<MergeError["kind"]> = new Set(["modified-missing", "removed-missing", "renamed-missing", "renamed-to-collision", "added-name-collision"]);
+
 export function validateSpecDelta(text: string): ValidationDefect[] {
   const delta = parseDelta(text);
-  const defects: ValidationDefect[] = checkGuardrails([], delta).map((e: MergeError) => ({ kind: e.kind, name: e.name, message: e.message }));
+  const defects: ValidationDefect[] = checkGuardrails([], delta).filter((e: MergeError) => !STORE_DEPENDENT.has(e.kind)).map((e: MergeError) => ({ kind: e.kind, name: e.name, message: e.message }));
   for (const block of allBlocks(delta)) {
     const name = "name" in block ? block.name : block.to;
     if (block.body.trim() === "") defects.push({ kind: "empty-body", name, message: `Requirement ${name} has an empty body` });
